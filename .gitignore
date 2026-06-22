@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+
+# Go
+/bin/
+/dist/
+*.test
+*.out
+
+# Local
+*.local
+.env
