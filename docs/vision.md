@@ -29,7 +29,9 @@ organización del repo y facilita el trabajo en equipo.
 ## Techstack
 
 - **CLI: Go** (decidido).
-- **Panel web: PENDIENTE** (preguntar al usuario — ver Preguntas abiertas).
+- **Panel web (board kanban): backend API en Go + frontend React/Next** (decidido).
+  Nota de distribución: evaluar cómo empaquetar el frontend con el binario Go (embed de
+  assets buildados) para mantener instalación simple desde el día 0.
 - Otras stacks: a definir según se necesite.
 
 ## Workflow ideal — V1
@@ -81,9 +83,8 @@ estructura de manejo con agentes** (sistema de documentación, no el código).
 
 ## Preguntas abiertas
 
-1. **Stack del panel web** (board kanban): ¿qué tecnología? (ver opciones en la conversación).
-2. **`/biz`**: el usuario pidió usar `/biz` para "hacer una lista" sobre los 3 repos. Aclarar
-   el foco (¿análisis de comercialización de Vector vs. análisis de estructura de docs?) y si
-   se ejecuta ahora o después — dado el "aún no hagamos nada".
+1. ~~Stack del panel web~~ → **resuelto: Go API + React/Next.**
+2. **`/biz` + análisis de los 3 repos**: en espera. El usuario decidió esperar el resto del
+   prompt (ejemplo del board + imagen del kanban) antes de arrancar cualquier análisis.
 3. Formato objetivo al que `/vector init` reorganiza el repo (definir tras el análisis).
 4. Nombre/forma exacta del JSON de estado y su esquema.
