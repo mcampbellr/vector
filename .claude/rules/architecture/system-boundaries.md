@@ -32,5 +32,6 @@ tocar más de uno debe declarar explícitamente la dirección de la dependencia.
 - Vector no asume techstack del usuario: la detección ocurre en `/vector init` y se registra
   en el estado, nunca se hardcodea.
 
-> Estado: pendiente — el contrato exacto de la API del board y el versionado se definen al
-> especificar el panel web. Las columnas (etapa vs estado) siguen abiertas en `docs/vision.md`.
+> Resuelto (ver `docs/domain-contract.md`): `web/` consume la API HTTP de `cli/` con SSE para
+> frescura; columnas del board = estado (single-axis). Pendiente solo el detalle fino de los
+> endpoints y su versionado, al especificar el panel web.

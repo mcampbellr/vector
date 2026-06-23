@@ -84,7 +84,12 @@ estructura de manejo con agentes** (sistema de documentación, no el código).
 ## Preguntas abiertas
 
 1. ~~Stack del panel web~~ → **resuelto: Go API + React/Next.**
-2. **`/biz` + análisis de los 3 repos**: en espera. El usuario decidió esperar el resto del
-   prompt (ejemplo del board + imagen del kanban) antes de arrancar cualquier análisis.
-3. Formato objetivo al que `/vector init` reorganiza el repo (definir tras el análisis).
-4. Nombre/forma exacta del JSON de estado y su esquema.
+2. ~~`/biz` + análisis de los 3 repos~~ → **hecho** (`docs/commercialization.md`,
+   `docs/repo-analysis-synthesis.md`).
+3. ~~Columnas del board (etapa vs estado) / estimación tiempo vs tokens / contrato web↔cli~~ →
+   **resuelto en `docs/domain-contract.md`** (columnas=estado, estimación=tiempo + token meter
+   aparte, web↔cli vía API HTTP+SSE, vocabulario de estados canónico).
+4. ~~Nombre/forma exacta del JSON de estado y su esquema~~ → **resuelto**
+   (`docs/schemas/state-and-activity.md`).
+5. Formato objetivo al que `/vector init` reorganiza el repo → "forma Vector" propuesta en
+   `docs/repo-analysis-synthesis.md`; **detalle de la transformación + backup aún pendiente.**

@@ -12,23 +12,26 @@ panel web es una proyección de ese JSON; nunca al revés.
   del frontend ni en una DB paralela.
 - **Escritura serializada por el CLI/API de `cli/`**: el frontend nunca muta el JSON
   directamente; envía intenciones a la API y la API persiste.
-- **Sync explícito y de bajo consumo**: el board refleja la frescura (`updated N sec ago`).
-  El patrón de sincronización JSON ↔ board debe ser eficiente (ver investigación pendiente en
-  `docs/vision.md`).
+- **Sync explícito y de bajo consumo vía SSE**: el board refleja la frescura
+  (`updated N sec ago`) a través del stream de la API de `cli/` (ver `docs/domain-contract.md` §4).
 - **Toda acción que toque el estado actualiza el JSON en el mismo paso** — disciplina
   reforzada en `workflows/state-sync-discipline.md`.
 
 ## Entidades (mapeo al dominio, ver `product/domain-model.md`)
 
 - **Spec** — unidad central (creada con `/vector:raw [text]`). Equivale a una card del board.
-- Atributos de spec: estado (`todo`/`progress`/`review`/`done`), etapa del workflow,
-  prioridad, estimación (tiempo **o** budget de tokens — abierto), link de ticket, notas.
+- Atributos de spec: estado (`open`/`in-progress`/`needs-attention`/`review`/`closed`/
+  `archived`), `stage` opcional, prioridad, `estimateMinutes` (tiempo), link de ticket, notas.
+  El ahorro de tokens es derivado (no atributo del state). Esquema: `docs/schemas/state-and-activity.md`.
 - **Workspace/proyecto** — agrupa specs (mapea al repo raíz administrado por Vector).
 
-## Decisiones abiertas
+## Decisiones cerradas (ver `docs/domain-contract.md`)
 
-> Estado: pendiente.
-> - Nombre, ubicación y **esquema** exacto del JSON (pregunta abierta #4 del vision).
-> - Si la estimación representa tiempo o budget de tokens.
-> - Mecanismo de sync (polling vs SSE vs file-watch) optimizado para bajo consumo.
-> - Si las columnas del board son **estado** o **etapa del workflow** (pregunta abierta #3).
+- **Esquema y ubicación**: `state.json` por-spec en `.vector/specs/<id>/` (committed, sharded);
+  `activity.jsonl` local; `board.json` derivado. Detalle en `docs/schemas/state-and-activity.md`.
+- **Estimación = tiempo** (`estimateMinutes`); token meter derivado de `activity.jsonl`.
+- **Columnas del board = estado** (single-axis); `stage` es campo opcional.
+- **Sync = SSE** vía la API de `cli/` (`vector serve`); `web/` nunca lee el filesystem.
+
+> Estado: pendiente — solo el detalle fino de los endpoints y su versionado, al especificar
+> el panel web.

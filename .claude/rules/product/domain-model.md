@@ -11,25 +11,23 @@ persistencia del dominio vive en el JSON de estado (`architecture/state-model.md
 |-----------------|-----------|
 | Workspace | Repo / proyecto raíz administrado por Vector |
 | Proyecto del sidebar | Repos o sub-workspaces (mono/micro) |
-| Columna | **Etapa del workflow** de specs (configurable) — *no* el estado de la card |
+| Columna | **Estado del lifecycle** del spec (single-axis, V1) — ver `docs/domain-contract.md` |
 | Card / task | **Spec** (creado con `/vector:raw [text]`, equivalente al `/idea` del usuario) |
-| Status pill | Estado del spec: `todo` · `progress` · `review` · `done` |
+| Status pill | Estado: `open` · `in-progress` · `needs-attention` · `review` · `closed` (+ `archived`) |
 | Prioridad (bandera) | Prioridad del spec: urgent / high / normal / low |
-| Estimación (reloj) | Tiempo **o** budget de tokens del spec (abierto) |
+| Estimación (reloj) | Tiempo de planning (`estimateMinutes`, opcional). El ahorro de tokens es un meter derivado **aparte** |
 | Comentarios | Notas / historial / link al ticket asociado |
-| "updated N sec ago" | Frescura del JSON de estado (sync con el board) |
+| "updated N sec ago" | Frescura del JSON de estado (sync con el board vía SSE) |
 
 ## Distinciones clave
 
-- **Etapa ≠ estado**: las columnas representan la etapa del workflow; el estado vive en el
-  pill de la card. (Confirmación final pendiente — pregunta abierta #3 del vision.)
+- **Columna = estado** (LOCKED, `docs/domain-contract.md`). `stage` (etapa de workflow) es un
+  campo **opcional** del spec, no una columna en V1.
 - Un spec puede enriquecerse con metadatos (link de ticket, etc.) administrados sobre el JSON.
 
 ## Operaciones del dominio
 
 - `/vector:raw [text]` → crea un spec.
-- Administración sobre el JSON → añadir ticket, mover de etapa/estado, ajustar prioridad.
+- Administración sobre el JSON → añadir ticket, mover de estado, ajustar prioridad.
 - Cada operación mantiene el JSON up-to-date (`workflows/state-sync-discipline.md`).
-
-> Estado: pendiente — qué representan exactamente las columnas, si la estimación es tiempo o
-> tokens, y cómo se mapea el link de ticket en la card.
+- Mapa completo comando→escritura: `docs/domain-contract.md` §5.

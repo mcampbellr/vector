@@ -11,10 +11,11 @@
 
 ## Identificadores de dominio
 
-- IDs de specs/proyectos: estables, URL-safe y legibles. Definir el esquema junto al del JSON
-  de estado (`architecture/state-model.md`).
-- Estados y etapas se nombran en minúscula sin espacios (`todo`, `progress`, `review`,
-  `done`); la presentación (uppercase en pills) es responsabilidad del frontend.
+- IDs de specs/proyectos: **slug kebab-case**, estables, URL-safe y legibles; == nombre del
+  change de OpenSpec al aplicar (ver `docs/schemas/state-and-activity.md`).
+- Estados en kebab-case: `open`, `in-progress`, `needs-attention`, `review`, `closed`,
+  `archived` (ver `docs/domain-contract.md`); la presentación (uppercase en pills) es
+  responsabilidad del frontend.
 
 ## Código
 
@@ -27,4 +28,4 @@
 
 - Branches en inglés y kebab-case (ver `workflows/git-convention.md` y el global del usuario).
 
-> Estado: pendiente — esquema final de IDs de spec/proyecto (depende del JSON de estado).
+> Resuelto: IDs = slug kebab-case (ver `docs/schemas/state-and-activity.md` y `docs/domain-contract.md`).

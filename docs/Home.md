@@ -9,6 +9,7 @@
 - [[commercialization]] — go-to-market / análisis `/biz` (open-core, Token Savings wedge, pricing)
 
 ## Diseño técnico
+- [[domain-contract]] — **contrato de dominio LOCKED**: estados, columnas=estado, comando→state, web↔cli
 - [[state-architecture]] — arquitectura de estado: 3 capas, CLI-owns-writes, apply wrapper, ciclo de vida
 - [[repo-analysis-synthesis]] — síntesis de **cdr · private-wealth · somnio** y la "forma Vector"
 - [[state-and-activity]] — esquemas concretos `state.json` / `activity.jsonl` (Go + ejemplos)
