@@ -1,0 +1,9 @@
+{
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "attachmentFolderPath": "assets",
+  "showFrontmatter": true,
+  "readableLineLength": true,
+  "showLineNumber": true
+}

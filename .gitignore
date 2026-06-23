@@ -10,3 +10,9 @@
 # Local
 *.local
 .env
+
+# Obsidian (volatile UI state — keep app.json/core-plugins.json/graph.json)
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+docs/.obsidian/workspace.json.bak
+docs/.obsidian/cache

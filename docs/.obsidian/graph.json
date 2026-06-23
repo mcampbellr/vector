@@ -1,0 +1,13 @@
+{
+  "colorGroups": [
+    { "query": "path:schemas", "color": { "a": 1, "rgb": 4367861 } },
+    { "query": "commercialization", "color": { "a": 1, "rgb": 5025616 } },
+    { "query": "kanban", "color": { "a": 1, "rgb": 10233776 } },
+    { "query": "synthesis OR architecture", "color": { "a": 1, "rgb": 16750592 } },
+    { "query": "Home", "color": { "a": 1, "rgb": 15684432 } }
+  ],
+  "showTags": false,
+  "showAttachments": false,
+  "showOrphans": true,
+  "scale": 1
+}
