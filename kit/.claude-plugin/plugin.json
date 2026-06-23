@@ -1,0 +1,6 @@
+{
+  "name": "vector",
+  "version": "0.0.1",
+  "description": "Developer-focused spec/kanban companion for Claude Code: capture and track specs over OpenSpec with token-efficient agent routing. Commands are namespaced /vector:*.",
+  "author": { "name": "Mario Campbell" }
+}

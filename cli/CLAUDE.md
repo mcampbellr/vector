@@ -1,17 +1,24 @@
 # Workspace `cli/` — Manifest
 
-> Carpeta scaffoldeada. **Sin código aún.** Este manifest declara el rol del workspace y
-> enlaza las rules relevantes; no las duplica.
+> Manifest del workspace: rol + enlaces a las rules (no las duplica).
 
 ## Rol
 
-Módulo Go único que produce **el binario de Vector**: los comandos del CLI (`/vector init`,
-`/vector:raw [text]`), la **API HTTP del board** y el servidor que sirve el panel web
-embebido. Es el único que lee/escribe el **JSON de estado**.
+Módulo Go único que produce **el binario de Vector**: los comandos del CLI, la **API HTTP del
+board** y el servidor que sirve el panel web embebido. Es el único que lee/escribe el **JSON
+de estado** (CLI-owns-writes). Los skills `/vector:*` del plugin (`kit/`) invocan este binario.
+
+## Estado actual
+
+- `internal/state` — paquete dueño del estado: `SpecState`/`Event`, `Store` (CreateSpec,
+  ReadSpec, ListSpecs, AppendEvent), slug, escritura atómica. Con tests.
+- `cmd/vector` — entrypoint: `vector spec create`, `vector spec list`, `vector version`.
+- Pendiente: `serve` (API+SSE), `init`, y el resto de subcomandos del contrato.
 
 ## Stack
 
-- Go (módulo único). Layout `cmd/` + `internal/`. Frontend de `web/` embebido vía `embed.FS`.
+- Go (módulo único, stdlib, sin deps externas). Layout `cmd/` + `internal/`. Frontend de
+  `web/` se embeberá vía `embed.FS`.
 
 ## Depende de / es dependido por
 
