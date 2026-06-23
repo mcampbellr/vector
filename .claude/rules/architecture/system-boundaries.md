@@ -12,7 +12,7 @@ tocar más de uno debe declarar explícitamente la dirección de la dependencia.
 |-----------|-------|-------|
 | `cli/` | Go (módulo único) | El binario: comandos (`/vector init`, `/vector:raw …`), la **API HTTP del board** y el servidor que sirve el panel web embebido. Lee/escribe el JSON de estado. |
 | `web/` | React/Next (TS) | El frontend del board kanban. **Consume** la API de `cli/`. No accede al filesystem del usuario ni al JSON directamente. |
-| `kit/` | Markdown + assets | El ecosistema distribuible: skills, rules, memorias y `devup` que Vector instala en el repo del usuario. No contiene lógica de runtime de Go/TS. |
+| `kit/` | Markdown + assets | El ecosistema distribuible, **empaquetado como plugin de Claude `vector`** (skills `/vector:*`, rules, memorias, `devup`) que Vector instala en el repo del usuario. No contiene lógica de runtime de Go/TS. Ver `docs/plugin-and-commands.md`. |
 
 ## Reglas de dependencia
 

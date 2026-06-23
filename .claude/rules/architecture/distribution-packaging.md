@@ -16,8 +16,10 @@ Cada decisión de arquitectura se evalúa contra el costo de instalación.
   justificarse.
 - **Panel web local efímero**: se levanta en un puerto disponible y poco usado solo cuando el
   dev administra Vector; no es un servicio permanente.
-- **El kit se distribuye con el binario o se descarga verificado**: las skills/rules/memorias
-  de `kit/` deben poder instalarse en el repo del usuario de forma reproducible.
+- **El kit ES un plugin de Claude** (`kit/.claude-plugin/plugin.json`, `name: "vector"`): las
+  skills namespaced `/vector:*` viven ahí. El `install.sh` instala el binario **y registra el
+  plugin** en el `.claude/` del repo del usuario, de forma reproducible (sin depender de un
+  marketplace en V1). Ver `docs/plugin-and-commands.md`.
 
 ## Implicaciones para el desarrollo
 
