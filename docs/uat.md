@@ -64,25 +64,36 @@ go -C cli vet ./...     # sin warnings
 go -C cli test ./...    # verde
 ```
 
-## UAT del command `/vector:raw` (dogfooding — instalación per-proyecto)
+## UAT de `vector init` (siembra de commands per-proyecto)
 
-Modelo OpenSpec: binario **global** + commands **per-proyecto**. Aún no hay `vector init` que
-siembre los commands, así que la copia es manual pero reproducible:
+Modelo OpenSpec: binario **global** + commands **per-proyecto** sembrados por `vector init`.
 
-1. **Binario en PATH** (global, lo invoca el command):
+1. **Binario en PATH** (global):
    ```bash
+   go -C cli generate ./internal/scaffold/    # sync kit/commands -> assets embebidos
    go -C cli build -o ~/.local/bin/vector ./cmd/vector
    vector version   # -> vector 0.0.1-dev
    ```
-   Recompila y reinstala con el mismo comando cada vez que cambie el CLI.
-2. **Sembrar los commands en el repo objetivo** — stand-in manual de `vector init` (que aún no
-   embebe/siembra; ver `docs/plugin-and-commands.md`):
+2. **Sembrar en el repo objetivo**:
    ```bash
-   mkdir -p <repo>/.claude/commands/vector
-   cp kit/commands/vector/*.md <repo>/.claude/commands/vector/
+   vector init --repo-root <repo>       # o, dentro del repo: vector init
    ```
-   En el repo de Vector ya está sembrado: `.claude/commands/vector/raw.md`. Tras copiar,
-   `/reload-plugins` o reiniciar la sesión para que el palette muestre `/vector:raw`.
+   Tras sembrar, `/reload-plugins` o reiniciar la sesión para que el palette muestre `/vector:raw`.
+
+### Criterios de aceptación (init)
+
+| # | Acción | Esperado |
+|---|--------|----------|
+| 1 | `vector init` | crea `.claude/commands/vector/raw.md` (`created`) + esqueleto `.vector/` |
+| 2 | `--dry-run` | reporta `created` pero **no escribe** nada |
+| 3 | re-`init` | `skipped` (no sobrescribe) |
+| 4 | command editado por el usuario + re-`init` | `skipped`; el contenido del usuario se **respeta** |
+| 5 | `--force` | `overwritten` |
+| 6 | archivos ajenos en `.claude/` (settings, CLAUDE.md, otros commands) | **intactos** |
+| 7 | `--json` | `{root, dryRun, files:[{path,action}]}` parseable |
+
+## UAT del command `/vector:raw`
+
 3. **Usar**: invocar `/vector:raw <idea>` → el command refina el texto y llama
    `vector spec create …`; verificar que aparece en `vector spec list` y en
    `.vector/specs/<id>/state.json`.
@@ -93,6 +104,6 @@ siembre los commands, así que la copia es manual pero reproducible:
 ## Todavía NO testeable (no implementado)
 
 - `vector serve` / panel web / board (sin API ni SSE aún).
-- `vector init` (subcomando del binario: siembra de commands + detección + backup + consent).
+- Detección/reorg de repo + backup/consent en `init` (pregunta abierta; hoy `init` solo siembra).
 - Transiciones: `/vector:status`, `:link`, `:apply`, `:close`, `:archive`, `:daily`.
 - `install.sh` (instalación day-0).

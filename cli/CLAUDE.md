@@ -12,8 +12,12 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
 
 - `internal/state` — paquete dueño del estado: `SpecState`/`Event`, `Store` (CreateSpec,
   ReadSpec, ListSpecs, AppendEvent), slug, escritura atómica. Con tests.
-- `cmd/vector` — entrypoint: `vector spec create`, `vector spec list`, `vector version`.
-- Pendiente: `serve` (API+SSE), `init`, y el resto de subcomandos del contrato.
+- `internal/scaffold` — embebe `kit/commands/` (`embed.FS`, sync por `go generate`) y siembra
+  los `/vector:*` en `<repo>/.claude/commands/vector/` de forma aditiva. Con tests.
+- `cmd/vector` — entrypoint: `vector init` (siembra commands + esqueleto de estado),
+  `vector spec create`, `vector spec list`, `vector version`.
+- Pendiente: `serve` (API+SSE), la detección/reorg de repo en `init` (pregunta abierta), y el
+  resto de subcomandos del contrato.
 
 ## Stack
 
@@ -22,9 +26,11 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
 
 ## Depende de / es dependido por
 
-- **Embebe** los assets buildados de `web/` (ver `architecture/distribution-packaging.md`).
+- **Embebe** los assets buildados de `web/` y los commands de `kit/commands/`
+  (ver `architecture/distribution-packaging.md`).
 - Expone la **API HTTP** que `web/` consume (contrato versionado).
-- Puede leer/copiar `kit/` durante `/vector init`. No importa código de `kit/`.
+- `vector init` embebe (no lee en runtime) `kit/commands/` vía `internal/scaffold`. No importa
+  código de `kit/`.
 
 ## Rules aplicables (`.claude/rules/`)
 

@@ -105,5 +105,7 @@ Dos artefactos con ciclo de vida distinto:
 Vector se usa a sí mismo: `.claude/commands/vector/raw.md` es la copia instalada en este repo
 (idéntica a la fuente `kit/commands/vector/raw.md`). Pasos en `docs/uat.md`.
 
-> Pendiente: que `vector init` realice la siembra de commands (hoy la copia es manual);
-> versionado de los commands frente a la versión del binario.
+> Implementado: `vector init` siembra los commands (embed.FS vía `internal/scaffold`,
+> sincronizado de `kit/commands/` por `go generate`), aditivo y sin tocar el resto de `.claude/`.
+> Pendiente: detección/reorg de repo + backup/consent en `init`; versionado de los commands
+> frente a la versión del binario.
