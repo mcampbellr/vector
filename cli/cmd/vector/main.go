@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/mariocampbell/vector/internal/config"
+	"github.com/mariocampbell/vector/internal/openspec"
 	"github.com/mariocampbell/vector/internal/scaffold"
 	"github.com/mariocampbell/vector/internal/state"
 )
@@ -34,6 +36,8 @@ func main() {
 		err = runInit(os.Args[2:])
 	case "update":
 		err = runUpdate(os.Args[2:])
+	case "sync":
+		err = runSync(os.Args[2:])
 	case "spec":
 		err = runSpec(os.Args[2:])
 	case "version", "--version", "-v":
@@ -128,6 +132,9 @@ func runInit(args []string) error {
 		fmt.Println("\n(dry run — nothing written; a real init also creates the .vector/ state skeleton)")
 		return nil
 	}
+	if openspec.Detected(root) {
+		fmt.Println("\nDetected openspec/ — run `vector sync` to import existing changes onto the board.")
+	}
 	fmt.Println("\nReload Claude Code (/reload-plugins) to pick up the /vector:* commands.")
 	return nil
 }
@@ -197,6 +204,153 @@ func runUpdate(args []string) error {
 	}
 	fmt.Println("\nConfig and state preserved. Reload Claude Code (/reload-plugins) to pick up changes.")
 	return nil
+}
+
+// runSync projects the repo's OpenSpec changes onto the Vector board. It is
+// additive and idempotent: new changes become cards (status by task progress),
+// existing sync-owned cards are left alone unless --reconcile, and /vector:raw
+// drafts are never touched. Applied capability specs (openspec/specs/) are skipped.
+func runSync(args []string) error {
+	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
+	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	reconcile := fs.Bool("reconcile", false, "update status of already-synced cards to match OpenSpec")
+	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
+	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	root, err := resolveRepoRoot(*repoRoot)
+	if err != nil {
+		return err
+	}
+
+	changes, err := openspec.ReadChanges(root)
+	if err != nil {
+		return err
+	}
+	if len(changes) == 0 {
+		fmt.Println("no OpenSpec changes found under openspec/changes/")
+		return nil
+	}
+
+	store, err := state.Open(root)
+	if err != nil {
+		return err
+	}
+	actor, now := resolveActor(), time.Now()
+
+	type syncResult struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+		Action string `json:"action"`
+	}
+	results := make([]syncResult, 0, len(changes))
+
+	for _, c := range changes {
+		status := syncStatus(c)
+		openSpec := &state.OpenSpec{
+			Change:    c.Name,
+			Artifacts: state.ArtifactSet{Proposal: c.HasProposal, Design: c.HasDesign, Tasks: c.HasTasks},
+		}
+		specDocRel := c.ProposalRel
+		if specDocRel == "" {
+			specDocRel = c.Dir
+		}
+
+		existing, rerr := store.ReadSpec(c.Name)
+		switch {
+		case rerr != nil && !errors.Is(rerr, os.ErrNotExist):
+			return rerr
+		case rerr != nil: // not found → create
+			if !*dryRun {
+				if _, err := store.CreateSpec(state.CreateSpecParams{
+					ID:         c.Name,
+					Title:      humanizeSlug(c.Name),
+					Status:     status,
+					OpenSpec:   openSpec,
+					SpecDocRel: specDocRel,
+					Actor:      actor,
+					Now:        now,
+				}); err != nil {
+					return err
+				}
+			}
+			results = append(results, syncResult{c.Name, string(status), "created"})
+		case existing.OpenSpec == nil: // user-authored (e.g. a /vector:raw draft) — never touch
+			results = append(results, syncResult{c.Name, string(existing.Status), "skipped (not sync-owned)"})
+		case *reconcile:
+			if *dryRun {
+				action := "unchanged"
+				if existing.Status != status {
+					action = "would update"
+				}
+				results = append(results, syncResult{c.Name, string(status), action})
+				break
+			}
+			changed, err := store.ReconcileStatus(c.Name, status, openSpec, actor, now)
+			if err != nil {
+				return err
+			}
+			action := "unchanged"
+			if changed {
+				action = "updated"
+			}
+			results = append(results, syncResult{c.Name, string(status), action})
+		default:
+			results = append(results, syncResult{c.Name, string(existing.Status), "skipped (exists)"})
+		}
+	}
+
+	if *jsonOut {
+		b, err := json.MarshalIndent(struct {
+			Root   string       `json:"root"`
+			DryRun bool         `json:"dryRun"`
+			Specs  []syncResult `json:"specs"`
+		}{Root: root, DryRun: *dryRun, Specs: results}, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal json result: %w", err)
+		}
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Printf("vector sync: %s (%d OpenSpec changes)\n", root, len(changes))
+	for _, r := range results {
+		fmt.Printf("  %-24s %-12s %s\n", r.Action, r.Status, r.ID)
+	}
+	if *dryRun {
+		fmt.Println("\n(dry run — nothing written)")
+	}
+	return nil
+}
+
+// syncStatus maps an OpenSpec change to a Vector status: archived changes are
+// archived; active changes derive from task completion (none done → open, some →
+// in-progress, all → review). Changes without parseable tasks default to open.
+func syncStatus(c openspec.Change) state.Status {
+	if c.Archived {
+		return state.StatusArchived
+	}
+	if c.HasTasks && c.TasksTotal > 0 {
+		switch {
+		case c.TasksDone == 0:
+			return state.StatusOpen
+		case c.TasksDone >= c.TasksTotal:
+			return state.StatusReview
+		default:
+			return state.StatusInProgress
+		}
+	}
+	return state.StatusOpen
+}
+
+// humanizeSlug turns a kebab-case id into a display title ("billing-v1" → "Billing v1").
+func humanizeSlug(slug string) string {
+	s := strings.ReplaceAll(slug, "-", " ")
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func runSpec(args []string) error {
@@ -371,6 +525,7 @@ func usage() {
 usage:
   vector init [--repo-root path] [--force] [--dry-run] [--json]
   vector update [--repo-root path] [--dry-run] [--json]
+  vector sync [--repo-root path] [--reconcile] [--dry-run] [--json]
   vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--json]
   vector spec list
   vector version

@@ -84,6 +84,7 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 | `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) | `openspec apply <change>` (implementa) |
 | `/vector:close [id]` | `status:closed`, `closedAt` | `spec.closed` + `status.changed` | — |
 | `/vector:archive [id]` | `status:archived`, `archivedAt` | `spec.archived` | mover change a `archive/` |
+| `/vector:sync` | crea cards desde `openspec/changes/*` (`open`/`in-progress`/`review`/`archived` por tasks), `openspec{change,artifacts}` provenance; `--reconcile` actualiza | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) | lee (read-only); no modifica OpenSpec |
 | `/vector:daily` | — (read-only) | — (lee hoy + git log) | — |
 | **hook** (surgen preguntas) | `status:needs-attention`, `needsAttention{reason,since,source:hook}` | `status.changed` (`trigger:hook`) | — |
 

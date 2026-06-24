@@ -10,18 +10,21 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
 
 ## Estado actual
 
-- `internal/state` — paquete dueño del estado: `SpecState`/`Event` (incluye estado `draft` y
-  puntero `specDoc`), `Store` (CreateSpec con status/doc-path, ReadSpec, ListSpecs,
-  AppendEvent), slug, escritura atómica. Con tests.
+- `internal/state` — paquete dueño del estado: `SpecState`/`Event` (incluye estado `draft`,
+  puntero `specDoc`, provenance `openspec`), `Store` (CreateSpec con status/doc-path/openspec,
+  `ReconcileStatus` para sync, ReadSpec, ListSpecs, AppendEvent), slug, escritura atómica. Con tests.
 - `internal/config` — `.vector/config.json` (specPath/store/source/kitVersion); `Resolve`
   migra de `.project-structure`, auto-detecta o cae al fallback `.vector/`. Con tests.
+- `internal/openspec` — lectura read-only de `openspec/changes/*` (artefactos + progreso de
+  `tasks.md`) para `vector sync`. Con tests.
 - `internal/scaffold` — embebe `kit/{commands,agents,vector}` (`embed.FS`, sync por
   `go generate`) y siembra el motor en `<repo>/.claude/` de forma aditiva. Con tests.
 - `cmd/vector` — entrypoint: `vector init` (siembra motor + config + esqueleto de estado),
   `vector update` (re-siembra el kit preservando config/state, version stamp),
+  `vector sync` (proyecta changes de OpenSpec al board, idempotente/aditivo),
   `vector spec create|list`, `vector version`.
 - Pendiente: `serve` (API+SSE), la detección/reorg de repo en `init` (pregunta abierta),
-  `vector:propose/apply/...` y `vector sync` (OpenSpec).
+  `vector:propose/apply/link/...` (resto del contrato).
 
 ## Stack
 

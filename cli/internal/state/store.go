@@ -51,9 +51,13 @@ type CreateSpecParams struct {
 
 	// SpecDocAbsPath is where Body is written; empty means the .vector fallback
 	// (.vector/specs/<id>/spec.md). SpecDocRel is the repo-relative pointer stored
-	// in state.json; empty means the .vector fallback path.
+	// in state.json; empty (with an empty AbsPath) means the .vector fallback path.
 	SpecDocAbsPath string
 	SpecDocRel     string
+
+	// OpenSpec, when set, records the source change (used by `vector sync` to mark
+	// a card as derived from an OpenSpec change rather than a /vector:raw draft).
+	OpenSpec *OpenSpec
 }
 
 // CreateSpec writes a new spec's state.json (status open) and spec.md, and
@@ -95,10 +99,10 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		return nil, fmt.Errorf("stat spec %q: %w", id, err)
 	}
 
-	// Resolve where the spec doc lives: the caller's path (repo convention) or
-	// the .vector fallback.
+	// Resolve where the spec doc lives: the caller's path (repo convention or an
+	// OpenSpec change), or the .vector fallback when neither is given.
 	docAbs, docRel := p.SpecDocAbsPath, p.SpecDocRel
-	if docAbs == "" {
+	if docAbs == "" && docRel == "" {
 		docAbs = s.bodyPath(id)
 		docRel = filepath.ToSlash(filepath.Join(".vector", "specs", id, "spec.md"))
 	}
@@ -112,9 +116,11 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		Priority:      priority,
 		Repo:          p.Repo,
 		SpecDoc:       docRel,
+		OpenSpec:      p.OpenSpec,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
+	setStatusTimestamp(spec, status, now)
 
 	if err := os.MkdirAll(s.specDir(id), 0o755); err != nil {
 		return nil, fmt.Errorf("create spec dir: %w", err)
@@ -122,7 +128,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 	if err := writeSpecFile(s.statePath(id), spec); err != nil {
 		return nil, err
 	}
-	if p.Body != "" {
+	if p.Body != "" && docAbs != "" {
 		if err := os.MkdirAll(filepath.Dir(docAbs), 0o755); err != nil {
 			return nil, fmt.Errorf("create spec doc dir: %w", err)
 		}
@@ -131,7 +137,11 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		}
 	}
 
-	data, err := json.Marshal(SpecCreatedData{Title: spec.Title, Source: "raw", Template: "idea"})
+	created := SpecCreatedData{Title: spec.Title, Source: "raw", Template: "idea"}
+	if p.OpenSpec != nil {
+		created = SpecCreatedData{Title: spec.Title, Source: "sync"}
+	}
+	data, err := json.Marshal(created)
 	if err != nil {
 		return nil, fmt.Errorf("marshal spec.created data: %w", err)
 	}
@@ -147,6 +157,81 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		return nil, err
 	}
 	return spec, nil
+}
+
+// ReconcileStatus updates a sync-owned spec's status and OpenSpec artifacts to
+// match its source change, appending a status.changed event (trigger "sync"). It
+// is a no-op returning (false, nil) when nothing differs.
+func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, actor string, now time.Time) (bool, error) {
+	if !status.Valid() {
+		return false, fmt.Errorf("invalid status %q", status)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return false, err
+	}
+	if spec.Status == status && openSpecEqual(spec.OpenSpec, openSpec) {
+		return false, nil
+	}
+
+	from := spec.Status
+	now = now.UTC()
+	spec.Status = status
+	spec.OpenSpec = openSpec
+	spec.UpdatedAt = now
+	setStatusTimestamp(spec, status, now)
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return false, err
+	}
+
+	data, err := json.Marshal(StatusChangedData{From: from, To: status, Trigger: "sync"})
+	if err != nil {
+		return false, fmt.Errorf("marshal status.changed data: %w", err)
+	}
+	if err := s.appendEvent(Event{
+		V:      EventVersion,
+		TS:     now,
+		Type:   EvtStatusChanged,
+		SpecID: id,
+		Repo:   spec.Repo,
+		Actor:  actor,
+		Data:   data,
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// setStatusTimestamp stamps the lifecycle timestamp implied by a status, without
+// overwriting one already set.
+func setStatusTimestamp(spec *SpecState, status Status, now time.Time) {
+	switch status {
+	case StatusInProgress:
+		if spec.StartedAt == nil {
+			spec.StartedAt = &now
+		}
+	case StatusReview:
+		if spec.StartedAt == nil {
+			spec.StartedAt = &now
+		}
+		if spec.ReviewAt == nil {
+			spec.ReviewAt = &now
+		}
+	case StatusArchived:
+		if spec.ArchivedAt == nil {
+			spec.ArchivedAt = &now
+		}
+	}
+}
+
+func openSpecEqual(a, b *OpenSpec) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Change == b.Change && a.Artifacts == b.Artifacts
 }
 
 // ReadSpec loads a spec's state.json.

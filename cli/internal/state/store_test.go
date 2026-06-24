@@ -112,6 +112,60 @@ func TestCreateSpecValidatesInputs(t *testing.T) {
 	}
 }
 
+func TestCreateSpecWithOpenSpecAndStatus(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	os := &OpenSpec{Change: "add-auth", Artifacts: ArtifactSet{Proposal: true, Tasks: true}}
+	spec, err := store.CreateSpec(CreateSpecParams{
+		ID:         "add-auth",
+		Title:      "Add auth",
+		Status:     StatusReview,
+		OpenSpec:   os,
+		SpecDocRel: "openspec/changes/add-auth/proposal.md",
+		Now:        fixedNow(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSpec: %v", err)
+	}
+	if spec.Status != StatusReview || spec.OpenSpec == nil || spec.OpenSpec.Change != "add-auth" {
+		t.Fatalf("unexpected spec: %+v", spec)
+	}
+	if spec.SpecDoc != "openspec/changes/add-auth/proposal.md" {
+		t.Errorf("SpecDoc = %q (should not fall back to .vector)", spec.SpecDoc)
+	}
+	if spec.ReviewAt == nil {
+		t.Error("ReviewAt should be stamped for a review-status spec")
+	}
+}
+
+func TestReconcileStatus(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	os := &OpenSpec{Change: "add-auth", Artifacts: ArtifactSet{Tasks: true}}
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-auth", Title: "Add auth", Status: StatusOpen, OpenSpec: os, SpecDocRel: "x", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := store.ReconcileStatus("add-auth", StatusReview, os, "t", fixedNow())
+	if err != nil {
+		t.Fatalf("ReconcileStatus: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true on open→review")
+	}
+	// idempotent: same status → no change.
+	changed, err = store.ReconcileStatus("add-auth", StatusReview, os, "t", fixedNow())
+	if err != nil {
+		t.Fatalf("ReconcileStatus (2): %v", err)
+	}
+	if changed {
+		t.Fatal("expected changed=false when status already matches")
+	}
+
+	onDisk, _ := store.ReadSpec("add-auth")
+	if onDisk.Status != StatusReview {
+		t.Errorf("Status = %q, want review", onDisk.Status)
+	}
+}
+
 func TestListSpecs(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	for _, title := range []string{"Alpha", "Beta"} {
