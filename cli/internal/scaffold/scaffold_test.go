@@ -90,6 +90,16 @@ func TestSeedCommandsDryRunWritesNothing(t *testing.T) {
 	}
 }
 
+func TestCommandPathsNonEmpty(t *testing.T) {
+	paths, err := CommandPaths()
+	if err != nil {
+		t.Fatalf("CommandPaths: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no embedded commands — go generate vendoring is broken")
+	}
+}
+
 func actionFor(results []FileResult, repoRelPath string) Action {
 	want := filepath.FromSlash(repoRelPath)
 	for _, r := range results {

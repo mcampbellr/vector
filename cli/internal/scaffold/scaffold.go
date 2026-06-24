@@ -84,6 +84,9 @@ func SeedCommands(repoRoot string, opts SeedOptions) ([]FileResult, error) {
 	if walkErr != nil {
 		return nil, walkErr
 	}
+	if len(results) == 0 {
+		return nil, errors.New("no embedded commands found; run `go generate ./internal/scaffold`")
+	}
 	return results, nil
 }
 

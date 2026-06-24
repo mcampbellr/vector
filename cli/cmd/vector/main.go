@@ -98,7 +98,7 @@ func runInit(args []string) error {
 		fmt.Printf("  %-12s %s\n", r.Action, r.Path)
 	}
 	if *dryRun {
-		fmt.Println("\n(dry run — nothing written)")
+		fmt.Println("\n(dry run — nothing written; a real init also creates the .vector/ state skeleton)")
 		return nil
 	}
 	fmt.Println("\nReload Claude Code (/reload-plugins) to pick up the /vector:* commands.")
