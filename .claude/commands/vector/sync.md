@@ -15,8 +15,12 @@ Your job is just to run it and report; **do not** author specs or edit `.vector/
 
 - `changes/<name>` active → `open` (0 tasks done) · `in-progress` (some) · `review` (all done).
 - `changes/archive/<date>-<name>` → `archived` (id keeps the change name, no date prefix).
+- **Standalone spec docs** at the repo's `spec-path` (e.g. a `/idea` spec with no OpenSpec
+  change, or a manual one) → `draft`, with `specDoc` pointing at the doc. If a change with the
+  same slug exists, the **change wins** (no duplicate).
 - `openspec/specs/` (applied capabilities) are **not** imported — they are the catalog, not work items.
-- Synced cards carry `openspec{change,artifacts}` provenance; `/vector:raw` drafts are **never** touched.
+- Synced cards from changes carry `openspec{change,artifacts}` provenance; `/vector:raw` drafts
+  and any card already present are **never** touched (re-sync only adds what's missing).
 
 ## Steps
 
