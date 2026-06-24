@@ -1,6 +1,6 @@
 # Product — Ruteo de tokens
 
-> Aplica a: diseño de skills/agentes del `kit/` y cualquier flujo que invoque modelos.
+> Aplica a: diseño de commands/agentes del `kit/` y cualquier flujo que invoque modelos.
 
 La eficiencia de tokens es un requisito de primera clase. El principio: **rutear cada tarea al
 agente más barato capaz de resolverla**.

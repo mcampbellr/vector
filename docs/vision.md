@@ -62,7 +62,7 @@ organización del repo y facilita el trabajo en equipo.
 
 ## Comandos (nomenclatura tentativa)
 
-Todos bajo el plugin `vector` (namespace con colon — ver `docs/plugin-and-commands.md`):
+Todos como project commands bajo el namespace `vector` (colon vía subdirectorio `.claude/commands/vector/` — ver `docs/plugin-and-commands.md`):
 - `/vector:init` — detectar y estructurar el repo.
 - `/vector:raw [text]` — crear un spec (equivalente a `/idea` actual).
 - `/vector:link · :status · :daily · :apply · :close · :archive` — administración del spec.

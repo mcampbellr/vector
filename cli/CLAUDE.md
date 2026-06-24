@@ -6,7 +6,7 @@
 
 Módulo Go único que produce **el binario de Vector**: los comandos del CLI, la **API HTTP del
 board** y el servidor que sirve el panel web embebido. Es el único que lee/escribe el **JSON
-de estado** (CLI-owns-writes). Los skills `/vector:*` del plugin (`kit/`) invocan este binario.
+de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`) invocan este binario.
 
 ## Estado actual
 

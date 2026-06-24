@@ -16,10 +16,11 @@ Cada decisión de arquitectura se evalúa contra el costo de instalación.
   justificarse.
 - **Panel web local efímero**: se levanta en un puerto disponible y poco usado solo cuando el
   dev administra Vector; no es un servicio permanente.
-- **El kit ES un plugin de Claude** (`kit/.claude-plugin/plugin.json`, `name: "vector"`): las
-  skills namespaced `/vector:*` viven ahí. El `install.sh` instala el binario **y registra el
-  plugin** en el `.claude/` del repo del usuario, de forma reproducible (sin depender de un
-  marketplace en V1). Ver `docs/plugin-and-commands.md`.
+- **El kit son project commands, no un plugin**: los `/vector:*` son archivos markdown en
+  `kit/commands/vector/*.md` (el subdirectorio da el namespace con colon). Instalación
+  **per-proyecto** (modelo OpenSpec): el binario `vector` es global en el `PATH`, y `vector init`
+  copia los commands a `<repo>/.claude/commands/vector/` del repo del usuario, de forma
+  reproducible (sin plugin ni marketplace). Ver `docs/plugin-and-commands.md`.
 
 ## Implicaciones para el desarrollo
 

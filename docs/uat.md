@@ -1,7 +1,7 @@
 # Vector — UAT (lo testeable hoy)
 
 > Qué se puede aceptar manualmente en el estado actual. Crece a medida que aterrizan features.
-> Estado: **slice 1** — `internal/state` + `vector spec create|list` + plugin `/vector:raw`.
+> Estado: **slice 1** — `internal/state` + `vector spec create|list` + command `/vector:raw`.
 
 ## Build
 
@@ -64,28 +64,30 @@ go -C cli vet ./...     # sin warnings
 go -C cli test ./...    # verde
 ```
 
-## UAT del skill `/vector:raw` (dogfooding — instalación manual)
+## UAT del command `/vector:raw` (dogfooding — instalación per-proyecto)
 
-Aún no hay install script; el setup de dogfooding es manual pero reproducible:
+Modelo OpenSpec: binario **global** + commands **per-proyecto**. Aún no hay `vector init` que
+siembre los commands, así que la copia es manual pero reproducible:
 
-1. **Binario en PATH** (lo invoca el skill):
+1. **Binario en PATH** (global, lo invoca el command):
    ```bash
    go -C cli build -o ~/.local/bin/vector ./cmd/vector
    vector version   # -> vector 0.0.1-dev
    ```
    Recompila y reinstala con el mismo comando cada vez que cambie el CLI.
-2. **Registrar el plugin local** (una sola vez; `kit/.claude-plugin/marketplace.json`
-   lo declara). En Claude Code:
+2. **Sembrar los commands en el repo objetivo** (lo que hará `vector init`):
+   ```bash
+   mkdir -p <repo>/.claude/commands/vector
+   cp kit/commands/vector/*.md <repo>/.claude/commands/vector/
    ```
-   /plugin marketplace add ./kit
-   /plugin install vector@vector
-   ```
-3. **Usar**: en cualquier repo, invocar `/vector:raw <idea>` → el skill refina el texto y
-   llama `vector spec create …`; verificar que aparece en `vector spec list` y en
+   En el repo de Vector ya está sembrado: `.claude/commands/vector/raw.md`. Tras copiar,
+   `/reload-plugins` o reiniciar la sesión para que el palette muestre `/vector:raw`.
+3. **Usar**: invocar `/vector:raw <idea>` → el command refina el texto y llama
+   `vector spec create …`; verificar que aparece en `vector spec list` y en
    `.vector/specs/<id>/state.json`.
 
-> El binario es la superficie sólida de UAT hoy; el skill depende de esta instalación manual
-> hasta que aterrice `install.sh` (day-0).
+> El palette muestra `/vector:raw` entero (project command con namespace por subdirectorio),
+> no `/raw (vector)`. Sin plugin ni marketplace.
 
 ## Todavía NO testeable (no implementado)
 

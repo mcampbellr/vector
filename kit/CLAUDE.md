@@ -5,22 +5,25 @@
 
 ## Rol
 
-El **ecosistema distribuible** de Vector: skills, rules, memorias y `devup` que Vector instala
-en el repo **del usuario**. Son artefactos (markdown + assets), no lógica de runtime de Go/TS.
-Es lo que materializa la propuesta "ecosistema que estandariza la organización del repo".
+El **ecosistema distribuible** de Vector: project commands, rules, memorias y `devup` que Vector
+instala en el repo **del usuario**. Son artefactos (markdown + assets), no lógica de runtime de
+Go/TS. Es lo que materializa la propuesta "ecosistema que estandariza la organización del repo".
 
 ## Contenido
 
-- **Skills/comandos** distribuibles (`/vector:raw`, etc.).
+- **Project commands** distribuibles en `commands/vector/*.md` (`/vector:raw`, etc.). El
+  subdirectorio `vector/` da el namespace con colon. **No es un plugin** — ver
+  `docs/plugin-and-commands.md`.
 - **Rules/memorias** plantilla que Vector siembra en el repo del usuario.
 - **`devup`** — herramienta existente del usuario, unificada aquí (lanzar dev local vía bloque
   `run:` en `.project-structure`).
 
 ## Depende de / es dependido por
 
-- **Independiente en runtime** de `cli/` y `web/`. `cli/` puede leer/copiar `kit/` durante
-  `/vector init`, pero `kit/` no importa código de los otros workspaces.
-- Se instala en el repo del usuario bajo las salvaguardas de seguridad.
+- **Independiente en runtime** de `cli/` y `web/`. `cli/` (vía `vector init`) copia
+  `kit/commands/vector/` a `<repo>/.claude/commands/vector/` del usuario; `kit/` no importa
+  código de los otros workspaces.
+- Instalación **per-proyecto** (modelo OpenSpec), bajo las salvaguardas de seguridad.
 
 ## Rules aplicables (`.claude/rules/`)
 
