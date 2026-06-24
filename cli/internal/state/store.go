@@ -45,6 +45,7 @@ type CreateSpecParams struct {
 	Repo     string
 	Priority Priority // defaults to PriorityNormal if empty
 	Status   Status   // defaults to StatusDraft if empty
+	Source   string   // activity source: "raw" (default) | "sync"
 	Body     string   // spec doc content; skipped if empty
 	Actor    string
 	Now      time.Time
@@ -137,11 +138,15 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		}
 	}
 
-	created := SpecCreatedData{Title: spec.Title, Source: "raw", Template: "idea"}
-	if p.OpenSpec != nil {
-		created = SpecCreatedData{Title: spec.Title, Source: "sync"}
+	source, template := p.Source, ""
+	if source == "" {
+		if p.OpenSpec != nil {
+			source = "sync"
+		} else {
+			source, template = "raw", "idea"
+		}
 	}
-	data, err := json.Marshal(created)
+	data, err := json.Marshal(SpecCreatedData{Title: spec.Title, Source: source, Template: template})
 	if err != nil {
 		return nil, fmt.Errorf("marshal spec.created data: %w", err)
 	}

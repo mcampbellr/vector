@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -111,6 +113,78 @@ func Resolve(repoRoot string) *Config {
 		SpecStore:     StoreVector,
 		Source:        SourceDefault,
 	}
+}
+
+// SpecDoc is an authored spec document found at the repo's spec convention.
+type SpecDoc struct {
+	Slug string // the <slug> segment of SpecPath
+	Rel  string // repo-relative path to the doc
+}
+
+// FindSpecDocs scans the repo's spec convention for authored spec docs (e.g.
+// /idea specs with no OpenSpec change) and returns each with its slug. Returns
+// nil unless SpecStore is convention — the .vector fallback has no external specs
+// to discover beyond what /vector:raw already tracked.
+func (c *Config) FindSpecDocs(repoRoot string) ([]SpecDoc, error) {
+	if c.SpecStore != StoreConvention {
+		return nil, nil
+	}
+	filename := c.SpecFilename
+	if filename == "" {
+		filename = defaultSpecFilename
+	}
+	tmpl := path.Join(c.SpecPath, filename) // forward-slash template
+
+	glob := strings.NewReplacer("<slug>", "*", "[branch]", "*").Replace(tmpl)
+	re, err := specPathRegex(tmpl)
+	if err != nil {
+		return nil, err
+	}
+	slugIdx := re.SubexpIndex("slug")
+	if slugIdx < 0 {
+		return nil, nil // no <slug> placeholder → nothing to extract
+	}
+
+	matches, err := filepath.Glob(filepath.Join(repoRoot, filepath.FromSlash(glob)))
+	if err != nil {
+		return nil, fmt.Errorf("glob spec docs: %w", err)
+	}
+	var docs []SpecDoc
+	for _, m := range matches {
+		rel, err := filepath.Rel(repoRoot, m)
+		if err != nil {
+			continue
+		}
+		relSlash := filepath.ToSlash(rel)
+		sm := re.FindStringSubmatch(relSlash)
+		if sm == nil {
+			continue
+		}
+		docs = append(docs, SpecDoc{Slug: sm[slugIdx], Rel: relSlash})
+	}
+	return docs, nil
+}
+
+// specPathRegex compiles a forward-slash path template (with <slug> and [branch]
+// placeholders) into an anchored regex that captures the slug segment.
+func specPathRegex(tmpl string) (*regexp.Regexp, error) {
+	var sb strings.Builder
+	sb.WriteByte('^')
+	for i := 0; i < len(tmpl); {
+		switch {
+		case strings.HasPrefix(tmpl[i:], "<slug>"):
+			sb.WriteString(`(?P<slug>[^/]+)`)
+			i += len("<slug>")
+		case strings.HasPrefix(tmpl[i:], "[branch]"):
+			sb.WriteString(`[^/]+`)
+			i += len("[branch]")
+		default:
+			sb.WriteString(regexp.QuoteMeta(tmpl[i : i+1]))
+			i++
+		}
+	}
+	sb.WriteByte('$')
+	return regexp.Compile(sb.String())
 }
 
 // Write persists the config to .vector/config.json via an atomic rename.

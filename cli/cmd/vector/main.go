@@ -228,8 +228,16 @@ func runSync(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(changes) == 0 {
-		fmt.Println("no OpenSpec changes found under openspec/changes/")
+	// Also discover standalone spec docs at the repo's convention (e.g. /idea
+	// specs with no OpenSpec change) to import as drafts.
+	var specDocs []config.SpecDoc
+	if cfg, cfgErr := config.Load(root); cfgErr == nil {
+		if specDocs, err = cfg.FindSpecDocs(root); err != nil {
+			return err
+		}
+	}
+	if len(changes) == 0 && len(specDocs) == 0 {
+		fmt.Println("nothing to sync (no openspec/changes and no spec docs at the configured spec-path)")
 		return nil
 	}
 
@@ -238,15 +246,17 @@ func runSync(args []string) error {
 		return err
 	}
 	actor, now := resolveActor(), time.Now()
+	seen := make(map[string]bool, len(changes)+len(specDocs))
 
 	type syncResult struct {
 		ID     string `json:"id"`
 		Status string `json:"status"`
 		Action string `json:"action"`
 	}
-	results := make([]syncResult, 0, len(changes))
+	results := make([]syncResult, 0, len(changes)+len(specDocs))
 
 	for _, c := range changes {
+		seen[c.Name] = true
 		status := syncStatus(c)
 		openSpec := &state.OpenSpec{
 			Change:    c.Name,
@@ -301,6 +311,36 @@ func runSync(args []string) error {
 		}
 	}
 
+	// Standalone spec docs with no matching change → import as drafts.
+	for _, d := range specDocs {
+		if seen[d.Slug] {
+			continue // a change with this slug is authoritative
+		}
+		seen[d.Slug] = true
+		existing, rerr := store.ReadSpec(d.Slug)
+		switch {
+		case rerr != nil && !errors.Is(rerr, os.ErrNotExist):
+			return rerr
+		case rerr != nil: // not found → create draft
+			if !*dryRun {
+				if _, err := store.CreateSpec(state.CreateSpecParams{
+					ID:         d.Slug,
+					Title:      humanizeSlug(d.Slug),
+					Status:     state.StatusDraft,
+					Source:     "sync",
+					SpecDocRel: d.Rel,
+					Actor:      actor,
+					Now:        now,
+				}); err != nil {
+					return err
+				}
+			}
+			results = append(results, syncResult{d.Slug, string(state.StatusDraft), "created"})
+		default:
+			results = append(results, syncResult{d.Slug, string(existing.Status), "skipped (exists)"})
+		}
+	}
+
 	if *jsonOut {
 		b, err := json.MarshalIndent(struct {
 			Root   string       `json:"root"`
@@ -314,7 +354,7 @@ func runSync(args []string) error {
 		return nil
 	}
 
-	fmt.Printf("vector sync: %s (%d OpenSpec changes)\n", root, len(changes))
+	fmt.Printf("vector sync: %s (%d changes, %d spec docs)\n", root, len(changes), len(specDocs))
 	for _, r := range results {
 		fmt.Printf("  %-24s %-12s %s\n", r.Action, r.Status, r.ID)
 	}

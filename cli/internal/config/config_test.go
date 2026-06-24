@@ -67,6 +67,64 @@ func TestProjectStructureWinsOverDetection(t *testing.T) {
 	}
 }
 
+func TestFindSpecDocs(t *testing.T) {
+	root := t.TempDir()
+	for _, slug := range []string{"add-auth", "dark-mode"} {
+		dir := filepath.Join(root, "docs", "specs", slug)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "spec.md"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := &Config{SpecPath: "docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention}
+
+	docs, err := c.FindSpecDocs(root)
+	if err != nil {
+		t.Fatalf("FindSpecDocs: %v", err)
+	}
+	got := map[string]string{}
+	for _, d := range docs {
+		got[d.Slug] = d.Rel
+	}
+	if got["add-auth"] != "docs/specs/add-auth/spec.md" || got["dark-mode"] != "docs/specs/dark-mode/spec.md" {
+		t.Fatalf("unexpected docs: %+v", got)
+	}
+}
+
+func TestFindSpecDocsWorktreeTemplate(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "code", "feat-x", "docs", "specs", "baz")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spec.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := &Config{SpecPath: "code/[branch]/docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention}
+
+	docs, err := c.FindSpecDocs(root)
+	if err != nil {
+		t.Fatalf("FindSpecDocs: %v", err)
+	}
+	if len(docs) != 1 || docs[0].Slug != "baz" || docs[0].Rel != "code/feat-x/docs/specs/baz/spec.md" {
+		t.Fatalf("worktree template extraction failed: %+v", docs)
+	}
+}
+
+func TestFindSpecDocsSkipsVectorStore(t *testing.T) {
+	root := t.TempDir()
+	c := &Config{SpecPath: VectorFallbackSpecPath, SpecFilename: "spec.md", SpecStore: StoreVector}
+	docs, err := c.FindSpecDocs(root)
+	if err != nil {
+		t.Fatalf("FindSpecDocs: %v", err)
+	}
+	if docs != nil {
+		t.Errorf("vector store should return no docs, got %v", docs)
+	}
+}
+
 func TestWriteLoadRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	want := Resolve(root)
