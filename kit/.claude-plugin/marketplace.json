@@ -1,0 +1,17 @@
+{
+  "name": "vector",
+  "owner": {
+    "name": "Mario Campbell"
+  },
+  "metadata": {
+    "description": "Local marketplace for the Vector Claude plugin — namespaced /vector:* skills that drive the vector CLI.",
+    "version": "0.0.1"
+  },
+  "plugins": [
+    {
+      "name": "vector",
+      "description": "Developer-focused spec/kanban companion for Claude Code: capture and track specs over OpenSpec with token-efficient agent routing. Skills are namespaced /vector:*.",
+      "source": "./"
+    }
+  ]
+}

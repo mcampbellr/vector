@@ -64,15 +64,28 @@ go -C cli vet ./...     # sin warnings
 go -C cli test ./...    # verde
 ```
 
-## UAT del skill `/vector:raw` (opcional — requiere instalación manual)
+## UAT del skill `/vector:raw` (dogfooding — instalación manual)
 
-Aún no hay install script. Para probarlo end-to-end en Claude Code:
-1. `vector` en el `PATH` (ej. copiar `cli/bin/vector` a `~/.local/bin`).
-2. Registrar el plugin `kit/` como plugin local de Claude (`kit/.claude-plugin/plugin.json`).
-3. En un repo, invocar `/vector:raw <idea>` → el skill refina el texto y llama
-   `vector spec create …`; verificar que aparece en `vector spec list`.
+Aún no hay install script; el setup de dogfooding es manual pero reproducible:
 
-> El binario es la superficie sólida de UAT hoy; el skill depende de la instalación (slice futuro).
+1. **Binario en PATH** (lo invoca el skill):
+   ```bash
+   go -C cli build -o ~/.local/bin/vector ./cmd/vector
+   vector version   # -> vector 0.0.1-dev
+   ```
+   Recompila y reinstala con el mismo comando cada vez que cambie el CLI.
+2. **Registrar el plugin local** (una sola vez; `kit/.claude-plugin/marketplace.json`
+   lo declara). En Claude Code:
+   ```
+   /plugin marketplace add ./kit
+   /plugin install vector@vector
+   ```
+3. **Usar**: en cualquier repo, invocar `/vector:raw <idea>` → el skill refina el texto y
+   llama `vector spec create …`; verificar que aparece en `vector spec list` y en
+   `.vector/specs/<id>/state.json`.
+
+> El binario es la superficie sólida de UAT hoy; el skill depende de esta instalación manual
+> hasta que aterrice `install.sh` (day-0).
 
 ## Todavía NO testeable (no implementado)
 
