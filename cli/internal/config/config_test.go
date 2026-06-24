@@ -102,7 +102,7 @@ func TestFindSpecDocsWorktreeTemplate(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "spec.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	c := &Config{SpecPath: "code/[branch]/docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention}
+	c := &Config{SpecPath: "code/[branch]/docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention, Branch: "feat-x"}
 
 	docs, err := c.FindSpecDocs(root)
 	if err != nil {
@@ -110,6 +110,40 @@ func TestFindSpecDocsWorktreeTemplate(t *testing.T) {
 	}
 	if len(docs) != 1 || docs[0].Slug != "baz" || docs[0].Rel != "code/feat-x/docs/specs/baz/spec.md" {
 		t.Fatalf("worktree template extraction failed: %+v", docs)
+	}
+}
+
+func TestFindSpecDocsRequiresResolvedBranch(t *testing.T) {
+	c := &Config{SpecPath: "code/[branch]/docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention}
+	if _, err := c.FindSpecDocs(t.TempDir()); err == nil {
+		t.Fatal("expected an error when [branch] is unresolved")
+	}
+}
+
+func TestBranchCandidatesAndChangesDir(t *testing.T) {
+	root := t.TempDir()
+	for _, wt := range []string{"main", "feat-a"} {
+		if err := os.MkdirAll(filepath.Join(root, "code", wt, "openspec", "changes"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := &Config{ChangesPath: "code/[branch]/openspec/changes", SpecPath: "code/[branch]/docs/specs/<slug>/"}
+
+	if !c.NeedsBranch() {
+		t.Fatal("NeedsBranch should be true with [branch] templates")
+	}
+	cands, err := c.BranchCandidates(root)
+	if err != nil {
+		t.Fatalf("BranchCandidates: %v", err)
+	}
+	if len(cands) != 2 || cands[0] != "feat-a" || cands[1] != "main" {
+		t.Fatalf("candidates = %v, want [feat-a main]", cands)
+	}
+
+	c.Branch = "main"
+	want := filepath.Join(root, "code", "main", "openspec", "changes")
+	if got := c.ChangesDir(root); got != want {
+		t.Fatalf("ChangesDir = %q, want %q", got, want)
 	}
 }
 

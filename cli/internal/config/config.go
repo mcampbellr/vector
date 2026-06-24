@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -49,10 +50,81 @@ type Config struct {
 	SpecFilename  string    `json:"specFilename"`
 	SpecStore     SpecStore `json:"specStore"`
 	Source        Source    `json:"source"`
+	// ChangesPath is the OpenSpec changes root template (may contain [branch]);
+	// defaults to "openspec/changes". Branch resolves the [branch] placeholder in
+	// ChangesPath and SpecPath to a concrete worktree, for bare+worktree layouts.
+	ChangesPath string `json:"changesPath,omitempty"`
+	Branch      string `json:"branch,omitempty"`
 	// KitVersion records the binary/kit version that last seeded this repo's
 	// .claude artifacts, so `vector update` can report staleness. Stamped by
 	// `vector init` and `vector update`.
 	KitVersion string `json:"kitVersion,omitempty"`
+}
+
+// DefaultChangesPath is used when no convention declares one.
+const DefaultChangesPath = "openspec/changes"
+
+const branchPlaceholder = "[branch]"
+
+// changesTemplate returns ChangesPath or the default.
+func (c *Config) changesTemplate() string {
+	if c.ChangesPath != "" {
+		return c.ChangesPath
+	}
+	return DefaultChangesPath
+}
+
+// NeedsBranch reports whether any path template uses the [branch] placeholder,
+// so a concrete Branch must be resolved before scanning.
+func (c *Config) NeedsBranch() bool {
+	return strings.Contains(c.changesTemplate(), branchPlaceholder) ||
+		strings.Contains(c.SpecPath, branchPlaceholder)
+}
+
+// ChangesDir returns the absolute OpenSpec changes directory, resolving [branch]
+// via Branch. Callers must ensure Branch is set when NeedsBranch is true.
+func (c *Config) ChangesDir(repoRoot string) string {
+	p := strings.ReplaceAll(c.changesTemplate(), branchPlaceholder, c.Branch)
+	return filepath.Join(repoRoot, filepath.FromSlash(p))
+}
+
+// BranchCandidates lists worktree branches that have an OpenSpec changes tree,
+// by globbing the [branch] placeholder in ChangesPath. Empty when ChangesPath
+// has no [branch] placeholder. Sorted and de-duplicated.
+func (c *Config) BranchCandidates(repoRoot string) ([]string, error) {
+	tmpl := c.changesTemplate()
+	if !strings.Contains(tmpl, branchPlaceholder) {
+		return nil, nil
+	}
+	glob := strings.ReplaceAll(tmpl, branchPlaceholder, "*")
+	re, err := compileTemplate(tmpl)
+	if err != nil {
+		return nil, err
+	}
+	idx := re.SubexpIndex("branch")
+	if idx < 0 {
+		return nil, nil
+	}
+	matches, err := filepath.Glob(filepath.Join(repoRoot, filepath.FromSlash(glob)))
+	if err != nil {
+		return nil, fmt.Errorf("glob changes dirs: %w", err)
+	}
+	set := map[string]bool{}
+	for _, m := range matches {
+		rel, err := filepath.Rel(repoRoot, m)
+		if err != nil {
+			continue
+		}
+		if sm := re.FindStringSubmatch(filepath.ToSlash(rel)); sm != nil {
+			set[sm[idx]] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for b := range set {
+		out = append(out, b)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Path returns the absolute path to a repo's .vector/config.json.
@@ -129,14 +201,18 @@ func (c *Config) FindSpecDocs(repoRoot string) ([]SpecDoc, error) {
 	if c.SpecStore != StoreConvention {
 		return nil, nil
 	}
+	if strings.Contains(c.SpecPath, branchPlaceholder) && c.Branch == "" {
+		return nil, fmt.Errorf("specPath uses [branch] but no branch is resolved (set it in config or pass --branch)")
+	}
 	filename := c.SpecFilename
 	if filename == "" {
 		filename = defaultSpecFilename
 	}
-	tmpl := path.Join(c.SpecPath, filename) // forward-slash template
+	// Resolve [branch] to the concrete worktree first, so the match is deterministic.
+	tmpl := strings.ReplaceAll(path.Join(c.SpecPath, filename), branchPlaceholder, c.Branch)
 
-	glob := strings.NewReplacer("<slug>", "*", "[branch]", "*").Replace(tmpl)
-	re, err := specPathRegex(tmpl)
+	glob := strings.ReplaceAll(tmpl, "<slug>", "*")
+	re, err := compileTemplate(tmpl)
 	if err != nil {
 		return nil, err
 	}
@@ -165,9 +241,10 @@ func (c *Config) FindSpecDocs(repoRoot string) ([]SpecDoc, error) {
 	return docs, nil
 }
 
-// specPathRegex compiles a forward-slash path template (with <slug> and [branch]
-// placeholders) into an anchored regex that captures the slug segment.
-func specPathRegex(tmpl string) (*regexp.Regexp, error) {
+// compileTemplate compiles a forward-slash path template into an anchored regex
+// with named captures for whichever placeholders it contains: <slug> → "slug"
+// and [branch] → "branch". Absent placeholders simply have no group.
+func compileTemplate(tmpl string) (*regexp.Regexp, error) {
 	var sb strings.Builder
 	sb.WriteByte('^')
 	for i := 0; i < len(tmpl); {
@@ -175,9 +252,9 @@ func specPathRegex(tmpl string) (*regexp.Regexp, error) {
 		case strings.HasPrefix(tmpl[i:], "<slug>"):
 			sb.WriteString(`(?P<slug>[^/]+)`)
 			i += len("<slug>")
-		case strings.HasPrefix(tmpl[i:], "[branch]"):
-			sb.WriteString(`[^/]+`)
-			i += len("[branch]")
+		case strings.HasPrefix(tmpl[i:], branchPlaceholder):
+			sb.WriteString(`(?P<branch>[^/]+)`)
+			i += len(branchPlaceholder)
 		default:
 			sb.WriteString(regexp.QuoteMeta(tmpl[i : i+1]))
 			i++
@@ -204,7 +281,7 @@ func fromProjectStructure(repoRoot string) *Config {
 	if err != nil {
 		return nil
 	}
-	specPath, specFile := "", ""
+	specPath, specFile, changesPath, branch := "", "", "", ""
 	for _, line := range strings.Split(string(b), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
 			continue // skip comments, blanks, and nested (indented) entries
@@ -218,6 +295,10 @@ func fromProjectStructure(repoRoot string) *Config {
 			specPath = strings.TrimSpace(val)
 		case "spec-filename":
 			specFile = strings.TrimSpace(val)
+		case "changes-path":
+			changesPath = strings.TrimSpace(val)
+		case "base-branch":
+			branch = strings.TrimSpace(val)
 		}
 	}
 	if specPath == "" {
@@ -226,13 +307,29 @@ func fromProjectStructure(repoRoot string) *Config {
 	if specFile == "" {
 		specFile = defaultSpecFilename
 	}
+	if changesPath == "" {
+		changesPath = deriveChangesPath(specPath)
+	}
 	return &Config{
 		SchemaVersion: SchemaVersion,
 		SpecPath:      specPath,
 		SpecFilename:  specFile,
 		SpecStore:     StoreConvention,
 		Source:        SourceProjectStructure,
+		ChangesPath:   changesPath,
+		Branch:        branch,
 	}
+}
+
+// deriveChangesPath infers the OpenSpec changes root from a spec-path template:
+// the worktree root (everything through the [branch] segment) + openspec/changes,
+// or the plain default for non-worktree repos. Generic — no repo-specific names.
+func deriveChangesPath(specPath string) string {
+	if i := strings.Index(specPath, branchPlaceholder); i >= 0 {
+		root := specPath[:i+len(branchPlaceholder)] // e.g. "code/[branch]"
+		return path.Join(root, DefaultChangesPath)
+	}
+	return DefaultChangesPath
 }
 
 // detect looks for a well-known spec directory convention in the repo, in

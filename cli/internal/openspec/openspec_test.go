@@ -77,6 +77,27 @@ func TestReadChangesActiveAndArchived(t *testing.T) {
 	}
 }
 
+func TestPendingRealIgnoresManualQA(t *testing.T) {
+	root := t.TempDir()
+	writeChange(t, root, "openspec/changes/almost-done", map[string]string{
+		"tasks.md": "- [x] 1.1 build it\n- [x] 1.2 wire it\n- [ ] 7.7 Manual check — ready for manual QA\n",
+	})
+	changes, err := ReadChanges(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, ok := find(changes, "almost-done")
+	if !ok {
+		t.Fatal("almost-done not found")
+	}
+	if c.TasksTotal != 3 || c.TasksDone != 2 {
+		t.Fatalf("total=%d done=%d", c.TasksTotal, c.TasksDone)
+	}
+	if c.PendingReal != 0 {
+		t.Fatalf("PendingReal = %d, want 0 (only manual QA left)", c.PendingReal)
+	}
+}
+
 func TestDetected(t *testing.T) {
 	root := t.TempDir()
 	if Detected(root) {

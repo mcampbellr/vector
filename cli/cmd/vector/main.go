@@ -213,6 +213,7 @@ func runUpdate(args []string) error {
 func runSync(args []string) error {
 	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	branch := fs.String("branch", "", "authoritative worktree for [branch] path templates (bare+worktree layouts); persisted to config")
 	reconcile := fs.Bool("reconcile", false, "update status of already-synced cards to match OpenSpec")
 	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
@@ -224,17 +225,22 @@ func runSync(args []string) error {
 		return err
 	}
 
-	changes, err := openspec.ReadChanges(root)
+	cfg, err := config.Load(root)
+	if err != nil {
+		return fmt.Errorf("read .vector/config.json (run `vector init` first): %w", err)
+	}
+	branchPersisted, err := resolveSyncBranch(cfg, root, *branch)
 	if err != nil {
 		return err
 	}
-	// Also discover standalone spec docs at the repo's convention (e.g. /idea
-	// specs with no OpenSpec change) to import as drafts.
-	var specDocs []config.SpecDoc
-	if cfg, cfgErr := config.Load(root); cfgErr == nil {
-		if specDocs, err = cfg.FindSpecDocs(root); err != nil {
-			return err
-		}
+
+	changes, err := openspec.ReadChangesAt(cfg.ChangesDir(root), root)
+	if err != nil {
+		return err
+	}
+	specDocs, err := cfg.FindSpecDocs(root)
+	if err != nil {
+		return err
 	}
 	if len(changes) == 0 && len(specDocs) == 0 {
 		fmt.Println("nothing to sync (no openspec/changes and no spec docs at the configured spec-path)")
@@ -245,8 +251,20 @@ func runSync(args []string) error {
 	if err != nil {
 		return err
 	}
+	if branchPersisted && !*dryRun {
+		if err := config.Write(root, cfg); err != nil {
+			return fmt.Errorf("persist resolved branch: %w", err)
+		}
+	}
 	actor, now := resolveActor(), time.Now()
 	seen := make(map[string]bool, len(changes)+len(specDocs))
+
+	// Index spec docs by slug so a change can point its specDoc at the authoritative
+	// doc (same resolved branch), not an arbitrary worktree.
+	specBySlug := make(map[string]config.SpecDoc, len(specDocs))
+	for _, d := range specDocs {
+		specBySlug[d.Slug] = d
+	}
 
 	type syncResult struct {
 		ID     string `json:"id"`
@@ -263,6 +281,9 @@ func runSync(args []string) error {
 			Artifacts: state.ArtifactSet{Proposal: c.HasProposal, Design: c.HasDesign, Tasks: c.HasTasks},
 		}
 		specDocRel := c.ProposalRel
+		if sd, ok := specBySlug[c.Name]; ok {
+			specDocRel = sd.Rel // prefer the authoritative spec doc over the change's proposal
+		}
 		if specDocRel == "" {
 			specDocRel = c.Dir
 		}
@@ -364,9 +385,44 @@ func runSync(args []string) error {
 	return nil
 }
 
+// resolveSyncBranch ensures cfg.Branch is set when path templates use [branch].
+// Precedence: an explicit --branch flag, then an already-stored branch, then a
+// sole auto-detected candidate. Multiple candidates with no choice is an error
+// (actionable, non-TTY safe) rather than a silent guess. Returns whether Branch
+// changed and should be persisted.
+func resolveSyncBranch(cfg *config.Config, root, branchFlag string) (bool, error) {
+	if !cfg.NeedsBranch() {
+		return false, nil
+	}
+	if branchFlag != "" {
+		if cfg.Branch == branchFlag {
+			return false, nil
+		}
+		cfg.Branch = branchFlag
+		return true, nil
+	}
+	if cfg.Branch != "" {
+		return false, nil
+	}
+	candidates, err := cfg.BranchCandidates(root)
+	if err != nil {
+		return false, err
+	}
+	switch len(candidates) {
+	case 0:
+		return false, fmt.Errorf("config path templates use [branch] but no worktree with openspec/changes was found under %s; set `branch` in .vector/config.json or pass --branch", root)
+	case 1:
+		cfg.Branch = candidates[0]
+		return true, nil
+	default:
+		return false, fmt.Errorf("ambiguous authoritative worktree: %d candidates have openspec/changes (%s) — re-run `vector sync --branch <name>` to choose and persist it", len(candidates), strings.Join(candidates, ", "))
+	}
+}
+
 // syncStatus maps an OpenSpec change to a Vector status: archived changes are
-// archived; active changes derive from task completion (none done → open, some →
-// in-progress, all → review). Changes without parseable tasks default to open.
+// archived; active changes derive from task progress (none done → open; all done,
+// or only manual-QA tasks left → review; otherwise in-progress). Changes without
+// parseable tasks default to open.
 func syncStatus(c openspec.Change) state.Status {
 	if c.Archived {
 		return state.StatusArchived
@@ -375,7 +431,8 @@ func syncStatus(c openspec.Change) state.Status {
 		switch {
 		case c.TasksDone == 0:
 			return state.StatusOpen
-		case c.TasksDone >= c.TasksTotal:
+		case c.TasksDone >= c.TasksTotal || c.PendingReal == 0:
+			// All done, or implementation complete and only manual QA remains.
 			return state.StatusReview
 		default:
 			return state.StatusInProgress

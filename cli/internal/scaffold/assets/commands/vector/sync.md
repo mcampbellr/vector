@@ -22,13 +22,23 @@ Your job is just to run it and report; **do not** author specs or edit `.vector/
 - Synced cards from changes carry `openspec{change,artifacts}` provenance; `/vector:raw` drafts
   and any card already present are **never** touched (re-sync only adds what's missing).
 
+## Bare + worktree layouts (`[branch]`)
+
+If the repo's `spec-path` uses `[branch]` (a bare repo with per-branch worktrees), the binary
+resolves it to one authoritative worktree. It picks it from `base-branch` (migrated by init),
+a single candidate, or a `--branch` flag, and **persists** the choice to config. If several
+worktrees have `openspec/changes/` and none is chosen, `vector sync` **errors** listing the
+candidates instead of guessing — then ask the user which is authoritative (AskUserQuestion) and
+re-run `vector sync --branch <name>`.
+
 ## Steps
 
 1. **Preview** what would change:
    ```bash
    vector sync --dry-run
    ```
-   Report the counts (created / skipped / would-update) by status.
+   Report the counts (created / skipped / would-update) by status. If it errors with an
+   ambiguous-worktree message, ask the user which branch is authoritative, then pass `--branch`.
 2. **Apply**:
    ```bash
    vector sync --json

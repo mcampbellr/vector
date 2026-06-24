@@ -28,6 +28,10 @@ type Change struct {
 	HasTasks    bool
 	TasksTotal  int
 	TasksDone   int
+	// PendingReal counts unchecked tasks that are implementation work (not manual
+	// QA/verification). When it reaches 0 with work already done, the change is
+	// effectively in review — implementation complete, only QA remains.
+	PendingReal int
 	ProposalRel string // repo-relative proposal.md path, if present
 }
 
@@ -41,10 +45,16 @@ func Detected(repoRoot string) bool {
 	return err == nil && info.IsDir()
 }
 
-// ReadChanges returns every change under openspec/changes/ (active) and
-// openspec/changes/archive/ (archived). Returns nil if the directory is absent.
+// ReadChanges returns every change under the repo's default openspec/changes/.
 func ReadChanges(repoRoot string) ([]Change, error) {
-	base := changesDir(repoRoot)
+	return ReadChangesAt(changesDir(repoRoot), repoRoot)
+}
+
+// ReadChangesAt reads changes from an explicit changes directory (resolved by
+// the caller, e.g. from config for bare+worktree layouts). Change paths are
+// reported relative to repoRoot. Returns nil if the directory is absent.
+func ReadChangesAt(changesDirAbs, repoRoot string) ([]Change, error) {
+	base := changesDirAbs
 	entries, err := os.ReadDir(base)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -105,7 +115,7 @@ func readChange(repoRoot, parentDir, dirName string, archived bool) Change {
 		c.ProposalRel = path.Join(c.Dir, "proposal.md")
 	}
 	if c.HasTasks {
-		c.TasksTotal, c.TasksDone = countTasks(filepath.Join(dirAbs, "tasks.md"))
+		c.TasksTotal, c.TasksDone, c.PendingReal = scanTasks(filepath.Join(dirAbs, "tasks.md"))
 	}
 	return c
 }
@@ -124,10 +134,10 @@ func fileExists(p string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func countTasks(taskPath string) (total, done int) {
+func scanTasks(taskPath string) (total, done, pendingReal int) {
 	b, err := os.ReadFile(taskPath)
 	if err != nil {
-		return 0, 0
+		return 0, 0, 0
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		m := taskLine.FindStringSubmatch(line)
@@ -135,9 +145,29 @@ func countTasks(taskPath string) (total, done int) {
 			continue
 		}
 		total++
-		if m[1] == "x" || m[1] == "X" {
+		switch {
+		case m[1] == "x" || m[1] == "X":
 			done++
+		case !isVerificationTask(line):
+			pendingReal++
 		}
 	}
-	return total, done
+	return total, done, pendingReal
+}
+
+// isVerificationTask reports whether an unchecked task is manual QA / verification
+// rather than implementation work — so a change with only these left counts as
+// review. Conservative: the QA/check/test/verify branch requires "manual" to
+// avoid catching implementation tasks like "verify the schema".
+func isVerificationTask(line string) bool {
+	l := strings.ToLower(line)
+	if strings.Contains(l, "smoke test") || strings.Contains(l, "e2e") || strings.Contains(l, "end-to-end") {
+		return true
+	}
+	if strings.Contains(l, "manual") &&
+		(strings.Contains(l, "check") || strings.Contains(l, "qa") ||
+			strings.Contains(l, "test") || strings.Contains(l, "verif")) {
+		return true
+	}
+	return false
 }
