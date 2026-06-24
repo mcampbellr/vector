@@ -35,8 +35,11 @@ func TestCreateSpecWritesStateAndEvent(t *testing.T) {
 	if spec.ID != "new-checkout-flow" {
 		t.Errorf("ID = %q, want new-checkout-flow", spec.ID)
 	}
-	if spec.Status != StatusOpen {
-		t.Errorf("Status = %q, want open", spec.Status)
+	if spec.Status != StatusDraft {
+		t.Errorf("Status = %q, want draft (default)", spec.Status)
+	}
+	if spec.SpecDoc != ".vector/specs/new-checkout-flow/spec.md" {
+		t.Errorf("SpecDoc = %q, want .vector fallback path", spec.SpecDoc)
 	}
 	if spec.Priority != PriorityNormal {
 		t.Errorf("Priority = %q, want normal (default)", spec.Priority)
@@ -53,7 +56,7 @@ func TestCreateSpecWritesStateAndEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadSpec: %v", err)
 	}
-	if onDisk.Title != "New checkout flow" || onDisk.Status != StatusOpen {
+	if onDisk.Title != "New checkout flow" || onDisk.Status != StatusDraft {
 		t.Errorf("on-disk spec mismatch: %+v", onDisk)
 	}
 

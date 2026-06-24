@@ -6,9 +6,13 @@
 
 ## 1. Estados del spec (vocabulario canónico)
 
-`open` · `in-progress` · `needs-attention` · `review` · `closed` · `archived`
+`draft` · `open` · `in-progress` · `needs-attention` · `review` · `closed` · `archived`
 
 - kebab-case en datos; el frontend mapea a display ("Needs attention", uppercase en pills).
+- `draft` es el estado de **entrada** (output de `/vector:raw`): el **spec está escrito pero
+  todavía no existe el change de OpenSpec**. El change se crea en `/vector:propose`, que mueve
+  el spec a `open`. Un spec puede quedarse en `draft` (idea que no se formaliza) o cerrarse desde ahí.
+  Distinción spec≠change: la card de Vector existe sin change; el `specDoc` apunta al doc autorado.
 - **Reemplaza** el set antiguo `todo/progress/review/done`. Ese set queda obsoleto.
 - `needs-attention` es de primera clase (feature central): se entra desde `in-progress` o
   `review` cuando surgen preguntas; lo dispara un **hook**, no el modelo.
@@ -17,21 +21,21 @@
 ### Máquina de estados (transiciones permitidas)
 
 ```
-                /vector:raw
-                    │
-                    ▼
-                  open ──/vector:apply──▶ in-progress ──/vector:status──▶ review
-                                              │  ▲                          │  │
-                                     hook ────┘  └──── /vector:status ──────┘  │
-                                              ▼                                │
-                                       needs-attention ◀──hook (en review)─────┘
-                                              │
-                              (resuelto) /vector:status → in-progress | review
-                    ┌─────────────────────────┴───────────┐
-              /vector:close                          /vector:close
-                    ▼                                       ▼
-                 closed ───────────/vector:archive──────▶ archived
+  /vector:raw      /vector:propose     /vector:apply       /vector:status
+      │                  │                   │                   │
+      ▼                  ▼                   ▼                   ▼
+    draft ───────────▶ open ──────────▶ in-progress ─────────▶ review
+                                            │  ▲                 │
+                                   hook ────┘  └─ /vector:status ┘
+                                            ▼
+                                     needs-attention ◀── hook (en review)
+                                            │  (resuelto) /vector:status → in-progress | review
+
+    in-progress | review ──/vector:close──▶ closed ──/vector:archive──▶ archived
 ```
+
+- `draft` no tiene change de OpenSpec; `/vector:propose` lo crea y pasa a `open`.
+  Un `draft` también puede ir directo a `closed` (idea descartada) sin formalizarse.
 
 - `needs-attention` es un overlay sobre el trabajo activo: al resolverse vuelve a
   `in-progress` o `review`. Se prioriza/resalta en board y en `/vector:daily`.
@@ -39,7 +43,7 @@
 ## 2. Board: columnas = ESTADO (single-axis, V1)
 
 - Columnas del kanban = los estados del lifecycle, en orden:
-  `open | in-progress | needs-attention | review | closed`.
+  `draft | open | in-progress | needs-attention | review | closed`.
 - `archived` → vista separada (no columna del board activo).
 - **`stage`** (etapa de workflow, ej. Concept/Design) queda como **campo opcional** del spec,
   **no** como columna en V1. La referencia visual ([[kanban-ui-reference]]) usaba etapas como
@@ -73,10 +77,11 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 
 | Comando | Escribe en `state.json` | Evento en `activity.jsonl` | Efecto OpenSpec |
 |---------|--------------------------|-----------------------------|------------------|
-| `/vector:raw [text]` | crea `<id>/state.json` (`status:open`, `createdAt`, template ≈ `/idea`) | `spec.created` | — (change se crea en apply) |
+| `/vector:raw [text]` | crea `<id>/state.json` (`status:draft`, `createdAt`, `specDoc` puntero) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | — (change se crea en propose) |
+| `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
 | `/vector:status [id] [status]` | `status` + timestamp del estado (`reviewAt`/etc) | `status.changed` (`trigger:command`) | — |
-| `/vector:apply [id]` | `status:in-progress`, `startedAt`, `openspec{change,artifacts}` | `spec.applied` + `status.changed` (`trigger:apply`) | `openspec apply <change>` |
+| `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) | `openspec apply <change>` (implementa) |
 | `/vector:close [id]` | `status:closed`, `closedAt` | `spec.closed` + `status.changed` | — |
 | `/vector:archive [id]` | `status:archived`, `archivedAt` | `spec.archived` | mover change a `archive/` |
 | `/vector:daily` | — (read-only) | — (lee hoy + git log) | — |

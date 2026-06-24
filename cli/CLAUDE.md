@@ -10,14 +10,18 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
 
 ## Estado actual
 
-- `internal/state` — paquete dueño del estado: `SpecState`/`Event`, `Store` (CreateSpec,
-  ReadSpec, ListSpecs, AppendEvent), slug, escritura atómica. Con tests.
-- `internal/scaffold` — embebe `kit/commands/` (`embed.FS`, sync por `go generate`) y siembra
-  los `/vector:*` en `<repo>/.claude/commands/vector/` de forma aditiva. Con tests.
-- `cmd/vector` — entrypoint: `vector init` (siembra commands + esqueleto de estado),
-  `vector spec create`, `vector spec list`, `vector version`.
-- Pendiente: `serve` (API+SSE), la detección/reorg de repo en `init` (pregunta abierta), y el
-  resto de subcomandos del contrato.
+- `internal/state` — paquete dueño del estado: `SpecState`/`Event` (incluye estado `draft` y
+  puntero `specDoc`), `Store` (CreateSpec con status/doc-path, ReadSpec, ListSpecs,
+  AppendEvent), slug, escritura atómica. Con tests.
+- `internal/config` — `.vector/config.json` (specPath/store/source/kitVersion); `Resolve`
+  migra de `.project-structure`, auto-detecta o cae al fallback `.vector/`. Con tests.
+- `internal/scaffold` — embebe `kit/{commands,agents,vector}` (`embed.FS`, sync por
+  `go generate`) y siembra el motor en `<repo>/.claude/` de forma aditiva. Con tests.
+- `cmd/vector` — entrypoint: `vector init` (siembra motor + config + esqueleto de estado),
+  `vector update` (re-siembra el kit preservando config/state, version stamp),
+  `vector spec create|list`, `vector version`.
+- Pendiente: `serve` (API+SSE), la detección/reorg de repo en `init` (pregunta abierta),
+  `vector:propose/apply/...` y `vector sync` (OpenSpec).
 
 ## Stack
 

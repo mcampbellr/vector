@@ -12,6 +12,10 @@ cli/bin/
 *.local
 .env
 
+# Vector state: config + per-spec state.json are committed; the local activity
+# log is not (per docs/schemas/state-and-activity.md).
+.vector/local/
+
 # Obsidian (volatile UI state — keep app.json/core-plugins.json/graph.json)
 docs/.obsidian/workspace.json
 docs/.obsidian/workspace-mobile.json

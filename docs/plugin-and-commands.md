@@ -105,7 +105,9 @@ Dos artefactos con ciclo de vida distinto:
 Vector se usa a sí mismo: `.claude/commands/vector/raw.md` es la copia instalada en este repo
 (idéntica a la fuente `kit/commands/vector/raw.md`). Pasos en `docs/uat.md`.
 
-> Implementado: `vector init` siembra los commands (embed.FS vía `internal/scaffold`,
-> sincronizado de `kit/commands/` por `go generate`), aditivo y sin tocar el resto de `.claude/`.
-> Pendiente: detección/reorg de repo + backup/consent en `init`; versionado de los commands
-> frente a la versión del binario.
+> Implementado: `vector init` siembra el motor (commands + agents `vector-spec-*` + template),
+> embebido vía `internal/scaffold` (sync de `kit/{commands,agents,vector}` por `go generate`),
+> aditivo y sin tocar el resto de `.claude/`. **Actualización per-repo**: `vector update`
+> re-siembra el kit preservando config (`.vector/config.json`) y state, con `kitVersion` stamp
+> para reportar staleness (binario y kit van versionados juntos).
+> Pendiente: detección/reorg de repo + backup/consent en `init`.

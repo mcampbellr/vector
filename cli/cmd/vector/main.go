@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mariocampbell/vector/internal/config"
 	"github.com/mariocampbell/vector/internal/scaffold"
 	"github.com/mariocampbell/vector/internal/state"
 )
@@ -31,6 +32,8 @@ func main() {
 	switch os.Args[1] {
 	case "init":
 		err = runInit(os.Args[2:])
+	case "update":
+		err = runUpdate(os.Args[2:])
 	case "spec":
 		err = runSpec(os.Args[2:])
 	case "version", "--version", "-v":
@@ -73,10 +76,32 @@ func runInit(args []string) error {
 		return fmt.Errorf("seed vector commands: %w", err)
 	}
 
-	// Initialize the state skeleton so the repo is board-ready.
+	// Resolve the repo config (migrates from .project-structure, else detects,
+	// else .vector fallback). Persisted unless it already exists (kept to respect
+	// edits) or this is a dry run. cfg is what we'd write / what is in effect.
+	cfg := config.Resolve(root)
+	cfgExisted := config.Exists(root)
+	cfgAction := "written"
+	switch {
+	case *dryRun:
+		cfgAction = "would write"
+	case cfgExisted && !*force:
+		cfgAction = "skipped (exists)"
+		if existing, err := config.Load(root); err == nil {
+			cfg = existing // report what's actually in effect
+		}
+	}
+
+	// Initialize the state skeleton and persist config (unless dry-run).
 	if !*dryRun {
 		if _, err := state.Open(root); err != nil {
 			return fmt.Errorf("init state: %w", err)
+		}
+		if !cfgExisted || *force {
+			cfg.KitVersion = version
+			if err := config.Write(root, cfg); err != nil {
+				return fmt.Errorf("write config: %w", err)
+			}
 		}
 	}
 
@@ -85,7 +110,8 @@ func runInit(args []string) error {
 			Root   string                `json:"root"`
 			DryRun bool                  `json:"dryRun"`
 			Files  []scaffold.FileResult `json:"files"`
-		}{Root: root, DryRun: *dryRun, Files: results}, "", "  ")
+			Config *config.Config        `json:"config"`
+		}{Root: root, DryRun: *dryRun, Files: results, Config: cfg}, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal json result: %w", err)
 		}
@@ -97,11 +123,79 @@ func runInit(args []string) error {
 	for _, r := range results {
 		fmt.Printf("  %-12s %s\n", r.Action, r.Path)
 	}
+	fmt.Printf("  %-12s .vector/config.json (specPath: %s, source: %s)\n", cfgAction, cfg.SpecPath, cfg.Source)
 	if *dryRun {
 		fmt.Println("\n(dry run — nothing written; a real init also creates the .vector/ state skeleton)")
 		return nil
 	}
 	fmt.Println("\nReload Claude Code (/reload-plugins) to pick up the /vector:* commands.")
+	return nil
+}
+
+// runUpdate re-seeds the /vector:* kit artifacts (commands, agents, template) to
+// match the binary, preserving the repo's config (.vector/config.json) and state
+// (.vector/specs, activity). Use it to refresh a repo after upgrading the binary.
+func runUpdate(args []string) error {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
+	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	root, err := resolveRepoRoot(*repoRoot)
+	if err != nil {
+		return err
+	}
+	if !config.Exists(root) {
+		return fmt.Errorf("no .vector/config.json in %s — run `vector init` first", root)
+	}
+	cfg, err := config.Load(root)
+	if err != nil {
+		return err
+	}
+	prev := cfg.KitVersion
+	if prev == "" {
+		prev = "(unstamped)"
+	}
+
+	// Force-overwrite the seeded kit artifacts; never touches config or state.
+	results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: true, DryRun: *dryRun})
+	if err != nil {
+		return fmt.Errorf("re-seed vector kit: %w", err)
+	}
+	if !*dryRun {
+		cfg.KitVersion = version
+		if err := config.Write(root, cfg); err != nil {
+			return fmt.Errorf("update kit version stamp: %w", err)
+		}
+	}
+
+	if *jsonOut {
+		b, err := json.MarshalIndent(struct {
+			Root        string                `json:"root"`
+			DryRun      bool                  `json:"dryRun"`
+			FromVersion string                `json:"fromVersion"`
+			ToVersion   string                `json:"toVersion"`
+			Files       []scaffold.FileResult `json:"files"`
+		}{Root: root, DryRun: *dryRun, FromVersion: prev, ToVersion: version, Files: results}, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal json result: %w", err)
+		}
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Printf("vector update: %s\n", root)
+	fmt.Printf("  kit %s -> %s\n", prev, version)
+	for _, r := range results {
+		fmt.Printf("  %-12s %s\n", r.Action, r.Path)
+	}
+	if *dryRun {
+		fmt.Println("\n(dry run — nothing written)")
+		return nil
+	}
+	fmt.Println("\nConfig and state preserved. Reload Claude Code (/reload-plugins) to pick up changes.")
 	return nil
 }
 
@@ -125,7 +219,8 @@ func runSpecCreate(args []string) error {
 	id := fs.String("id", "", "spec id (kebab-case); derived from title if empty")
 	repo := fs.String("repo", "", "repo name for the board")
 	priority := fs.String("priority", "normal", "urgent|high|normal|low")
-	bodyFile := fs.String("body-file", "", "path to spec.md body, or - for stdin")
+	status := fs.String("status", "draft", "draft|open|in-progress|needs-attention|review|closed|archived")
+	bodyFile := fs.String("body-file", "", "path to the spec doc body, or - for stdin")
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
 	if err := fs.Parse(args); err != nil {
@@ -143,18 +238,33 @@ func runSpecCreate(args []string) error {
 	if err != nil {
 		return err
 	}
+
+	specID := *id
+	if specID == "" {
+		specID = state.Slug(*title)
+	}
+	// Resolve the spec doc location from the repo config (migrated by `vector
+	// init`). Without a config, CreateSpec falls back to .vector storage.
+	var docAbs, docRel string
+	if cfg, cfgErr := config.Load(root); cfgErr == nil && specID != "" {
+		docRel, docAbs = cfg.SpecDocPath(root, specID)
+	}
+
 	store, err := state.Open(root)
 	if err != nil {
 		return err
 	}
 	spec, err := store.CreateSpec(state.CreateSpecParams{
-		Title:    *title,
-		ID:       *id,
-		Repo:     *repo,
-		Priority: state.Priority(*priority),
-		Body:     body,
-		Actor:    resolveActor(),
-		Now:      time.Now(),
+		Title:          *title,
+		ID:             specID,
+		Repo:           *repo,
+		Priority:       state.Priority(*priority),
+		Status:         state.Status(*status),
+		Body:           body,
+		Actor:          resolveActor(),
+		Now:            time.Now(),
+		SpecDocAbsPath: docAbs,
+		SpecDocRel:     docRel,
 	})
 	if err != nil {
 		return err
@@ -162,12 +272,13 @@ func runSpecCreate(args []string) error {
 
 	if *jsonOut {
 		return printJSON(map[string]string{
-			"id":     spec.ID,
-			"status": string(spec.Status),
-			"state":  store.StatePath(spec.ID),
+			"id":      spec.ID,
+			"status":  string(spec.Status),
+			"state":   store.StatePath(spec.ID),
+			"specDoc": spec.SpecDoc,
 		})
 	}
-	fmt.Printf("created spec %q (status: %s)\n", spec.ID, spec.Status)
+	fmt.Printf("created spec %q (status: %s)\n  spec doc: %s\n", spec.ID, spec.Status, spec.SpecDoc)
 	return nil
 }
 
@@ -259,7 +370,8 @@ func usage() {
 
 usage:
   vector init [--repo-root path] [--force] [--dry-run] [--json]
-  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--body-file -|path] [--json]
+  vector update [--repo-root path] [--dry-run] [--json]
+  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--json]
   vector spec list
   vector version
 `)

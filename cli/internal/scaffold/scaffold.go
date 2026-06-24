@@ -1,14 +1,16 @@
-// Package scaffold seeds Vector's Claude Code artifacts (the /vector:* project
-// commands) into a target repo. The artifacts are embedded into the binary so
-// the global `vector` binary can seed any repo without needing kit/ on disk.
+// Package scaffold seeds Vector's Claude Code artifacts — the /vector:* project
+// commands, their spec-authoring subagents, and the spec template — into a target
+// repo. The artifacts are embedded into the binary so the global `vector` binary
+// can seed any repo without needing kit/ on disk.
 //
-// The embedded assets under assets/ are a vendored copy of kit/commands/, kept
-// in sync via `go generate`. Everything under assets/ mirrors into the target
-// repo's .claude/ directory (assets/commands/vector/raw.md -> .claude/commands/
-// vector/raw.md), so only files meant to live under .claude/ belong in assets/.
+// The embedded assets under assets/ are a vendored copy of kit/{commands,agents,
+// vector}/, kept in sync via `go generate`. Everything under assets/ mirrors into
+// the target repo's .claude/ directory (assets/commands/vector/raw.md ->
+// .claude/commands/vector/raw.md, assets/agents/x.md -> .claude/agents/x.md), so
+// only files meant to live under .claude/ belong in assets/.
 package scaffold
 
-//go:generate sh -c "rm -rf assets/commands && cp -R ../../../kit/commands assets/commands"
+//go:generate sh -c "rm -rf assets && mkdir -p assets && cp -R ../../../kit/commands ../../../kit/agents ../../../kit/vector assets/"
 
 import (
 	"embed"

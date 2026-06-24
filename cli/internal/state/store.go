@@ -44,9 +44,16 @@ type CreateSpecParams struct {
 	ID       string // optional; derived from Title via Slug if empty
 	Repo     string
 	Priority Priority // defaults to PriorityNormal if empty
-	Body     string   // spec.md content (raw); skipped if empty
+	Status   Status   // defaults to StatusDraft if empty
+	Body     string   // spec doc content; skipped if empty
 	Actor    string
 	Now      time.Time
+
+	// SpecDocAbsPath is where Body is written; empty means the .vector fallback
+	// (.vector/specs/<id>/spec.md). SpecDocRel is the repo-relative pointer stored
+	// in state.json; empty means the .vector fallback path.
+	SpecDocAbsPath string
+	SpecDocRel     string
 }
 
 // CreateSpec writes a new spec's state.json (status open) and spec.md, and
@@ -74,10 +81,26 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		return nil, fmt.Errorf("invalid priority %q", priority)
 	}
 
+	status := p.Status
+	if status == "" {
+		status = StatusDraft
+	}
+	if !status.Valid() {
+		return nil, fmt.Errorf("invalid status %q", status)
+	}
+
 	if _, err := os.Stat(s.statePath(id)); err == nil {
 		return nil, fmt.Errorf("spec %q already exists", id)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("stat spec %q: %w", id, err)
+	}
+
+	// Resolve where the spec doc lives: the caller's path (repo convention) or
+	// the .vector fallback.
+	docAbs, docRel := p.SpecDocAbsPath, p.SpecDocRel
+	if docAbs == "" {
+		docAbs = s.bodyPath(id)
+		docRel = filepath.ToSlash(filepath.Join(".vector", "specs", id, "spec.md"))
 	}
 
 	now := p.Now.UTC()
@@ -85,9 +108,10 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		SchemaVersion: SchemaVersion,
 		ID:            id,
 		Title:         strings.TrimSpace(p.Title),
-		Status:        StatusOpen,
+		Status:        status,
 		Priority:      priority,
 		Repo:          p.Repo,
+		SpecDoc:       docRel,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -99,7 +123,10 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		return nil, err
 	}
 	if p.Body != "" {
-		if err := writeFileAtomic(s.bodyPath(id), []byte(p.Body)); err != nil {
+		if err := os.MkdirAll(filepath.Dir(docAbs), 0o755); err != nil {
+			return nil, fmt.Errorf("create spec doc dir: %w", err)
+		}
+		if err := writeFileAtomic(docAbs, []byte(p.Body)); err != nil {
 			return nil, err
 		}
 	}

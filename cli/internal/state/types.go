@@ -14,6 +14,9 @@ const SchemaVersion = 1
 type Status string
 
 const (
+	// StatusDraft is a captured spec with no OpenSpec change yet (the output of
+	// /vector:raw). It precedes StatusOpen, which means the change exists.
+	StatusDraft          Status = "draft"
 	StatusOpen           Status = "open"
 	StatusInProgress     Status = "in-progress"
 	StatusNeedsAttention Status = "needs-attention"
@@ -25,7 +28,7 @@ const (
 // Valid reports whether s is a known status.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview, StatusClosed, StatusArchived:
+	case StatusDraft, StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview, StatusClosed, StatusArchived:
 		return true
 	}
 	return false
@@ -71,6 +74,7 @@ type SpecState struct {
 	Status        Status   `json:"status"`
 	Priority      Priority `json:"priority"`
 	Repo          string   `json:"repo"`
+	SpecDoc       string   `json:"specDoc,omitempty"` // repo-relative path to the authored spec doc
 	Stage         string   `json:"stage,omitempty"`
 	Assignee      string   `json:"assignee,omitempty"`
 	Labels        []string `json:"labels,omitempty"`
