@@ -3,6 +3,7 @@
 
 # Go
 /bin/
+cli/bin/
 /dist/
 *.test
 *.out
