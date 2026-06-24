@@ -3,5 +3,6 @@
   "specPath": ".vector/specs/\u003cslug\u003e/",
   "specFilename": "spec.md",
   "specStore": "vector",
-  "source": "default"
+  "source": "default",
+  "kitVersion": "0.0.1-dev"
 }
