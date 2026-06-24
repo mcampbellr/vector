@@ -38,7 +38,8 @@ organización del repo y facilita el trabajo en equipo.
 
 1. **Instalación desde GitHub**: un script (`curl … | install.sh` o similar) para instalar
    desde el CLI sin pasos manuales.
-2. **`/vector:init`** dentro de Claude, en el repo elegido. Detecta cómo está organizado:
+2. **`vector init`** (subcomando del binario, en terminal) sobre el repo elegido. Bootstrapea:
+   siembra los `/vector:*` en `.claude/commands/vector/` y detecta cómo está organizado:
    - Checks (no exhaustivos): techstack, git convention, commit convention, versions,
      repo type (mono / micro / etc.).
    - Luego **pide permiso EXPLÍCITO** para crear un **backup del estado actual** (ignorando
@@ -62,10 +63,11 @@ organización del repo y facilita el trabajo en equipo.
 
 ## Comandos (nomenclatura tentativa)
 
-Todos como project commands bajo el namespace `vector` (colon vía subdirectorio `.claude/commands/vector/` — ver `docs/plugin-and-commands.md`):
-- `/vector:init` — detectar y estructurar el repo.
+Project commands bajo el namespace `vector` (colon vía subdirectorio `.claude/commands/vector/` — ver `docs/plugin-and-commands.md`):
 - `/vector:raw [text]` — crear un spec (equivalente a `/idea` actual).
 - `/vector:link · :status · :daily · :apply · :close · :archive` — administración del spec.
+
+`vector init` queda fuera de los slash: es el subcomando de terminal del binario que bootstrapea el repo (detecta el stack y siembra los `/vector:*`).
 
 ## Conceptos heredados
 
@@ -93,5 +95,5 @@ estructura de manejo con agentes** (sistema de documentación, no el código).
    aparte, web↔cli vía API HTTP+SSE, vocabulario de estados canónico).
 4. ~~Nombre/forma exacta del JSON de estado y su esquema~~ → **resuelto**
    (`docs/schemas/state-and-activity.md`).
-5. Formato objetivo al que `/vector:init` reorganiza el repo → "forma Vector" propuesta en
+5. Formato objetivo al que `vector init` reorganiza el repo → "forma Vector" propuesta en
    `docs/repo-analysis-synthesis.md`; **detalle de la transformación + backup aún pendiente.**

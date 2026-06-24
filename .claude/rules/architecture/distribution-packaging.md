@@ -17,10 +17,14 @@ Cada decisión de arquitectura se evalúa contra el costo de instalación.
 - **Panel web local efímero**: se levanta en un puerto disponible y poco usado solo cuando el
   dev administra Vector; no es un servicio permanente.
 - **El kit son project commands, no un plugin**: los `/vector:*` son archivos markdown en
-  `kit/commands/vector/*.md` (el subdirectorio da el namespace con colon). Instalación
-  **per-proyecto** (modelo OpenSpec): el binario `vector` es global en el `PATH`, y `vector init`
-  copia los commands a `<repo>/.claude/commands/vector/` del repo del usuario, de forma
-  reproducible (sin plugin ni marketplace). Ver `docs/plugin-and-commands.md`.
+  `kit/commands/vector/*.md` (el subdirectorio da el namespace con colon). El binario **embebe**
+  esos commands (`embed.FS`, junto con los assets de `web/`), de modo que el binario global basta
+  para sembrarlos sin necesidad de `kit/` en la máquina del usuario.
+- **Instalación per-proyecto (modelo OpenSpec)**: el binario `vector` es global en el `PATH`; el
+  subcomando de terminal **`vector init`** escribe los commands embebidos en
+  `<repo>/.claude/commands/vector/` del repo del usuario (bootstrap + detección + consentimiento),
+  de forma reproducible y sin plugin ni marketplace. `init` es subcomando del binario, **no** un
+  slash command. Ver `docs/plugin-and-commands.md`.
 
 ## Implicaciones para el desarrollo
 

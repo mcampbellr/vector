@@ -75,7 +75,8 @@ siembre los commands, así que la copia es manual pero reproducible:
    vector version   # -> vector 0.0.1-dev
    ```
    Recompila y reinstala con el mismo comando cada vez que cambie el CLI.
-2. **Sembrar los commands en el repo objetivo** (lo que hará `vector init`):
+2. **Sembrar los commands en el repo objetivo** — stand-in manual de `vector init` (que aún no
+   embebe/siembra; ver `docs/plugin-and-commands.md`):
    ```bash
    mkdir -p <repo>/.claude/commands/vector
    cp kit/commands/vector/*.md <repo>/.claude/commands/vector/
@@ -92,6 +93,6 @@ siembre los commands, así que la copia es manual pero reproducible:
 ## Todavía NO testeable (no implementado)
 
 - `vector serve` / panel web / board (sin API ni SSE aún).
-- `/vector:init` (detección + backup + consent).
+- `vector init` (subcomando del binario: siembra de commands + detección + backup + consent).
 - Transiciones: `/vector:status`, `:link`, `:apply`, `:close`, `:archive`, `:daily`.
 - `install.sh` (instalación day-0).

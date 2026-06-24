@@ -10,7 +10,7 @@ tocar más de uno debe declarar explícitamente la dirección de la dependencia.
 
 | Workspace | Stack | Posee |
 |-----------|-------|-------|
-| `cli/` | Go (módulo único) | El binario: comandos (`/vector init`, `/vector:raw …`), la **API HTTP del board** y el servidor que sirve el panel web embebido. Lee/escribe el JSON de estado. |
+| `cli/` | Go (módulo único) | El binario: subcomandos de terminal (`vector init`, `vector spec …`, `vector serve`), la **API HTTP del board** y el servidor que sirve el panel web embebido. Lee/escribe el JSON de estado. Los slash commands `/vector:*` lo invocan, no al revés. |
 | `web/` | React/Next (TS) | El frontend del board kanban. **Consume** la API de `cli/`. No accede al filesystem del usuario ni al JSON directamente. |
 | `kit/` | Markdown + assets | El ecosistema distribuible: **project commands `/vector:*`** (`kit/commands/vector/*.md`), rules, memorias y `devup`, que Vector instala **por proyecto** en `<repo>/.claude/commands/vector/` del usuario. No es un plugin ni contiene runtime de Go/TS. Ver `docs/plugin-and-commands.md`. |
 

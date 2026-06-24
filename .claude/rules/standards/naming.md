@@ -7,9 +7,10 @@
 - **kebab-case** para skills, comandos y flags de cara al usuario: `vector-init`,
   `/vector:raw`, `--dry-run`. Sin camelCase, snake_case ni espacios.
 - Los comandos de Claude son **project commands** en `kit/commands/vector/*.md` → el
-  subdirectorio `vector/` da el namespace con colon, un solo nivel: `/vector:init`, `/vector:raw`,
+  subdirectorio `vector/` da el namespace con colon, un solo nivel: `/vector:raw`,
   `/vector:status`, … (ver `docs/plugin-and-commands.md`). El binario de terminal
-  (`vector serve`, etc.) es superficie aparte.
+  (`vector init`, `vector serve`, etc.) es superficie aparte — `init` siembra los slash commands,
+  no es uno de ellos.
 
 ## Identificadores de dominio
 

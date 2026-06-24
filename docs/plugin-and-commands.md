@@ -49,10 +49,13 @@ tags: [vector, spec, capture]
 - `description` aparece en el palette. `$ARGUMENTS` recibe el texto tras `/vector:raw …`.
 - El cuerpo orquesta llamadas al binario `vector`; nunca escribe `.vector/` a mano.
 
-## Decisión: TODOS los comandos bajo el namespace `vector`
+## Decisión: los slash commands bajo el namespace `vector`
 
-`/vector:init` · `/vector:raw` · `/vector:link` · `/vector:status` · `/vector:daily` ·
-`/vector:apply` · `/vector:close` · `/vector:archive`
+`/vector:raw` · `/vector:link` · `/vector:status` · `/vector:daily` · `/vector:apply` ·
+`/vector:close` · `/vector:archive`
+
+`init` queda **fuera** de los slash commands: es el subcomando de terminal `vector init` que
+bootstrapea el repo y siembra los de arriba (ver §Distribución).
 
 (El mapa de qué escribe cada uno en el state está en `docs/domain-contract.md` §5.)
 
@@ -64,7 +67,6 @@ kit/                              # fuente versionada en el repo Vector
 └── commands/
     └── vector/                   # el subdirectorio = namespace del colon
         ├── raw.md                # → /vector:raw  (template ≈ /idea)
-        ├── init.md               # → /vector:init
         ├── link.md
         ├── status.md
         ├── daily.md
@@ -73,8 +75,9 @@ kit/                              # fuente versionada en el repo Vector
         └── archive.md
 ```
 
-`kit/commands/vector/` es la **fuente distribuible**. Al instalar en un repo, su contenido se
-copia a `<repo>/.claude/commands/vector/`.
+`kit/commands/vector/` es la **fuente distribuible**: el binario la embebe (`embed.FS`) y
+`vector init` la escribe en `<repo>/.claude/commands/vector/`. (`init` no vive aquí: es
+subcomando del binario, no un slash command.)
 
 ## Distribución (V1): instalación **por proyecto**, igual que OpenSpec
 
@@ -82,13 +85,20 @@ Dos artefactos con ciclo de vida distinto:
 
 1. **Binario `vector`** — **global**, una sola vez en el `PATH` (`install.sh` / `go install` /
    brew más adelante). Compartido por todos los repos.
-2. **Commands `/vector:*`** — **per-proyecto**. `vector init` (análogo a `openspec init`) copia
-   `kit/commands/vector/*.md` a `<repo>/.claude/commands/vector/` del repo del usuario, bajo las
-   salvaguardas de `security/destructive-ops-consent.md`. El state `.vector/` también es per-repo.
+2. **Commands `/vector:*`** — **per-proyecto**, sembrados por el **binario** `vector init`
+   (subcomando de terminal, análogo a `openspec init`). El binario **embebe** los commands
+   (`kit/commands/vector/*.md` vía `embed.FS`, igual que los assets de `web/`) y los escribe en
+   `<repo>/.claude/commands/vector/` del repo del usuario, bajo las salvaguardas de
+   `security/destructive-ops-consent.md`. El state `.vector/` también es per-repo.
 
+- **`init` no es un slash command**: es el subcomando de terminal que bootstrapea el repo. No
+  puede ser `/vector:init` porque los slash commands no existen hasta que `vector init` los
+  siembra (mismo patrón que `openspec init`). Los `/vector:*` son lo que `init` **produce**.
+- La fuente versionada `kit/commands/vector/` se compila dentro del binario; en la máquina del
+  usuario no hace falta `kit/`. Re-correr `vector init` re-siembra los commands desde la versión
+  del binario.
 - Sin plugin, sin marketplace, sin `/plugin install`. Un repo "tiene Vector" cuando existen sus
   `.claude/commands/vector/` + (idealmente) `.vector/`.
-- Regenerables: re-correr `vector init` re-siembra los commands desde la versión del binario.
 
 ## Dogfooding en este mismo repo
 
