@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "review-uat-flag",
+  "title": "Distinguir el review que requiere UAT manual",
+  "status": "draft",
+  "priority": "normal",
+  "repo": "vector",
+  "specDoc": ".vector/specs/review-uat-flag/spec.md",
+  "createdAt": "2026-06-25T07:50:07.71539Z",
+  "updatedAt": "2026-06-25T07:50:07.71539Z"
+}
