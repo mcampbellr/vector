@@ -1,7 +1,11 @@
 # Vector — Estado del proyecto (handoff / contexto de continuación)
 
-> Punto de retome rápido. Última actualización: 2026-06-25 (sesión board web). Leé esto +
-> `docs/Home.md` al empezar una sesión. El detalle de cada decisión está en los docs enlazados.
+> Punto de retome rápido. Última actualización: 2026-06-25 (sesión board web + apply + needsUat).
+> Leé esto + `docs/Home.md` al empezar una sesión. El detalle de cada decisión está en los docs enlazados.
+>
+> **Rama abierta:** `feat/board-panel-and-apply` (8 commits, **no** mergeada a `main` ni pusheada).
+> Cubre: board panel (serve+SPA), máquina de estados + transiciones, `/vector:apply`, y la feature
+> `needsUat`. Gate verde. Para retomar: `git checkout feat/board-panel-and-apply`.
 
 ## Qué es Vector (en una línea)
 
@@ -18,8 +22,11 @@ comercial día-0. Visión: `docs/vision.md`.
   ```
 - **Re-sembrar** los comandos en un repo tras actualizar el binario: `vector update` (preserva
   config/state). En este repo ya están sembrados (`.claude/commands/vector/`).
-- **Gate**: `gofmt -l cli && go -C cli vet ./... && go -C cli test ./...` (todo verde hoy).
+- **Gate**: `gofmt -l cli && go -C cli vet ./... && go -C cli test -race ./...` + `npm --prefix web run typecheck` (todo verde hoy).
 - Tras cambiar comandos/agents: `vector update` + `/reload-plugins` en Claude Code.
+- **`vector serve` standalone embebe el board en build-time**: si tocás `web/`, para verlo en el
+  binario hay que rebuildear web → copiar al embed → rebuildear el binario (ver `web/README.md`).
+  En dev es más rápido `vector serve` + `npm --prefix web run dev` (Vite proxy, hot reload).
 
 ## Qué está construido (binario `vector`)
 
@@ -39,10 +46,17 @@ comercial día-0. Visión: `docs/vision.md`.
 - `vector version`.
 
 **Paquetes Go** (stdlib only): `internal/state` (Store, único escritor, eventos +
-`ReadEvents`), `internal/config` (`.vector/config.json`, migración, colapso multi-worktree),
-`internal/openspec` (lectura de changes/tasks), `internal/scaffold` (embed + seed del kit),
-**`internal/board`** (proyección read-only + **Token Savings Meter** desde `agent.routed`;
-`Server` API+SSE), **`internal/webui`** (embed de la SPA de `web/`, handler SPA).
+`ReadEvents`; máquina de estados + `SpecState.NeedsUAT`), `internal/config` (`.vector/config.json`,
+migración, colapso multi-worktree, `applyMode`), `internal/openspec` (lectura de changes/tasks,
+`isVerificationTask`), `internal/scaffold` (embed + seed del kit), **`internal/board`** (proyección
+read-only + **Token Savings Meter** desde `agent.routed` + `Card.NeedsUAT`; `Server` API+SSE),
+**`internal/webui`** (embed de la SPA de `web/`, handler SPA).
+
+**Feature `needsUat`** (refina `review`, change `review-uat-flag`): marcador **derivado** que
+distingue el `review` que solo espera UAT manual del review limpio. Lo computa `sync`
+(`syncNeedsUAT`, reusa `isVerificationTask`) — **no es estado nuevo** ni cambia la máquina; el
+board lo muestra como badge "UAT" (review-gated). Los subcomandos de transición no lo tocan
+(sync-derivado). Ver `docs/domain-contract.md` §1.
 
 ## Qué está construido (kit)
 
@@ -56,14 +70,15 @@ comercial día-0. Visión: `docs/vision.md`.
 
 - **React 19 + Vite + TS**, CSS Modules + tokens (`src/styles/tokens.css` de
   `docs/kanban-ui-reference.md`), iconos `lucide-react`. Sin librería de componentes.
-- Componentes: `KanbanBoard` (columnas=estado) · `BoardColumn` · `SpecCard` (con badge de
-  ahorro por-spec) · `StatusPill` · `PriorityFlag` · `BoardHeader` (frescura + estado SSE) ·
-  **`TokenSavingsMeter`** (héroe: total ahorrado, % más barato, barra spent/baseline, desglose
-  por modelo). Data vía `useBoard` (SSE live).
-- Verificado end-to-end contra `vector serve`: `/api/board` + SSE + UI buildada servida.
-- **Falta para "verlo" lleno**: el board real tiene 1 spec (`add-propose-command`). Para el
-  meter sembré `agent.routed` de muestra en `.vector/local/activity.jsonl` (gitignored/local) —
-  no son datos de producción, son representativos del ruteo de la sesión.
+- Componentes: `KanbanBoard` (columnas=estado) · `BoardColumn` · `SpecCard` (badge de ahorro
+  por-spec + **badge "UAT"** review-gated) · `StatusPill` · `PriorityFlag` · `BoardHeader`
+  (frescura + estado SSE) · **`TokenSavingsMeter`** (héroe: total ahorrado, % más barato, barra
+  spent/baseline, desglose por modelo). Data vía `useBoard` (SSE live).
+- Verificado end-to-end contra `vector serve`: `/api/board` + SSE + UI buildada servida (el
+  binario instalado ya embebe el board real, no el placeholder).
+- **Meter con datos de muestra**: sembré `agent.routed` representativos en
+  `.vector/local/activity.jsonl` (gitignored/local) — no son datos de producción. Falta que el
+  kit emita `agent.routed` por ruteo real.
 
 ## Decisiones cerradas (LOCKED — leer antes de tocar)
 
@@ -76,29 +91,29 @@ comercial día-0. Visión: `docs/vision.md`.
 
 ## Board actual (de Vector sobre sí mismo)
 
-- `add-propose-command` → **`open`** (el spec de `/vector:propose`, ya implementado y self-proposed).
-  El subcomando de transición ya existe (`vector spec apply/status`); falta correr el flujo para
-  moverlo a `review`. `vector spec next` lo recomienda como pick. Change en
-  `openspec/changes/add-propose-command/`.
+- `add-propose-command` → **`review`** (UAT) — impl done, solo QA manual `5.3` pendiente; el flag
+  `needsUat` se activó vía `sync --reconcile`. Change en `openspec/changes/add-propose-command/`.
+- `review-uat-flag` → **`closed`** — la feature `needsUat`, recorrida de punta a punta esta sesión
+  (`raw → propose → apply → review → close`). Change en `openspec/changes/review-uat-flag/`.
+  El `tasks.md` tiene `6.3` (UAT manual) sin marcar; se cerró aceptándolo.
 
 ## Próximo (sugerencias)
 
-- **Dogfood `/vector:apply`** sobre `add-propose-command` para llevarlo a `review` (cierra el
-  loop del board real). Hoy está implementado pero no ejecutado sobre el spec real.
-- Comandos restantes del contrato: `/vector:status`, `/vector:close`, `/vector:archive`,
-  `/vector:link`, `/vector:daily` (el binario ya soporta sus escrituras; faltan los `.md`).
-- API HTTP de escritura en `vector serve` → habilita **drag-and-drop** del board (mover card =
+- **Mergear/abrir PR** de `feat/board-panel-and-apply` a `main` (8 commits, no pusheado).
+- Comandos restantes del contrato como `.md`: `/vector:status`, **`/vector:close`** (lo usé como
+  subcomando `vector spec close`, falta el command), `/vector:archive`, `/vector:link`,
+  `/vector:daily`. El binario ya soporta todas sus escrituras.
+- API HTTP de **escritura** en `vector serve` → habilita **drag-and-drop** del board (mover card =
   `SetStatus`). Hoy las transiciones son solo por CLI.
+- Automatizar el copy `web/dist` → embed en el build del binario (hoy es manual; fricción real
+  para `vector serve` standalone).
 
 ## Pendiente (resto del contrato + producto)
 
-- Comandos: `/vector:apply` (siguiente), `/vector:link`, `/vector:status`, `/vector:close`,
-  `/vector:archive`, `/vector:daily`. Binario: subcomandos de transición de estado.
-- **Board web**: API de **escritura** (mover/cerrar/archivar → habilita drag-and-drop), rail de
-  iconos + sidebar de proyectos, typegen del contrato Go→TS (hoy espejo a mano en `board.ts`),
-  copia de `web/dist` al embed en el pipeline de release.
+- **Board web**: API de **escritura** (drag-and-drop), rail de iconos + sidebar de proyectos,
+  typegen del contrato Go→TS (hoy espejo a mano en `board.ts`).
 - `vector init`: detección/reorg del repo + backup/consent (pregunta abierta #3 del vision).
-- `install.sh` (instalación día-0) — hoy build manual.
+- `install.sh` (instalación día-0) + copy automático del embed — hoy build manual.
 - Emisión real de `agent.routed` (hoy el meter consume eventos sembrados a mano; falta que el
   kit los registre por ruteo real).
 
@@ -119,4 +134,17 @@ comercial día-0. Visión: `docs/vision.md`.
   `assets/` gitignored; el release copia `web/dist` → `cli/internal/webui/dist`.
 - SSE sin deps: el watcher hace **polling** del fingerprint de `.vector/` (count+size+mtime) y
   hace broadcast on-change. Evita fsnotify (regla stdlib-only).
+- **`needsUat` es sync-derivado**, NO lo tocan los subcomandos de transición (decisión del spec).
+  Una card `closed` puede conservar `needsUat:true` como registro histórico; el badge es
+  review-gated en la UI, así que no se muestra. El clear activo ocurre en `ReconcileStatus`/
+  `CreateSpec` cuando el status resultante no es `review`.
+- **`isVerificationTask`** (`internal/openspec`) clasifica QA/UAT manual: `smoke test`/`e2e` o
+  `manual` + (`check`|`qa`|`test`|`verif`). Si un repo escribe "UAT" sin esos tokens, falso
+  negativo → no marca `needsUat` (ampliar el wording es open question del change).
+- **Validación OpenSpec**: `openspec validate` estricto pide deltas en `specs/`, pero los changes
+  de este repo usan la **forma liviana** (proposal/design/tasks, sin deltas) — non-goal explícito
+  del adapter de propose. Los artefactos matchean la convención del repo, no la validación estricta.
+- **Embed en build-time**: reconstruir el binario desde el source con el placeholder restaurado
+  vuelve a embeber el placeholder. Para el board real: build web → copy a `cli/internal/webui/dist/`
+  → build binario, y restaurar el placeholder en el working tree (el binario ya quedó embebido).
 - Artefactos git en inglés; conversación/docs en español.
