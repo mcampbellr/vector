@@ -1,0 +1,9 @@
+.board {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+  padding: var(--space-5) var(--space-6);
+  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+}

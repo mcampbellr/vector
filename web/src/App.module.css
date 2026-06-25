@@ -1,0 +1,23 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.rail {
+  flex-shrink: 0;
+  padding: var(--space-5) 0 var(--space-5) var(--space-6);
+}
+
+.placeholder {
+  margin: auto;
+  padding: var(--space-6);
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
