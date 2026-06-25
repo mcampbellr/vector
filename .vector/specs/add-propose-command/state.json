@@ -6,6 +6,7 @@
   "priority": "normal",
   "repo": "vector",
   "specDoc": ".vector/specs/add-propose-command/spec.md",
+  "needsUat": true,
   "openspec": {
     "change": "add-propose-command",
     "artifacts": {
@@ -17,5 +18,5 @@
   "createdAt": "2026-06-25T06:23:36.608503Z",
   "startedAt": "2026-06-25T07:35:10.876856Z",
   "reviewAt": "2026-06-25T07:35:10.899697Z",
-  "updatedAt": "2026-06-25T07:35:10.899697Z"
+  "updatedAt": "2026-06-25T08:03:46.145192Z"
 }
