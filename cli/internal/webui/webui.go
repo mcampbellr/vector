@@ -6,6 +6,7 @@
 package webui
 
 import (
+	"bytes"
 	"embed"
 	"io"
 	"io/fs"
@@ -31,6 +32,46 @@ func Handler(dir string) (http.Handler, error) {
 		return nil, err
 	}
 	return spaHandler{fsys: sub}, nil
+}
+
+// Resolve picks the panel source and serves it. An explicit dir (from --web-dir)
+// always wins. Otherwise, when allowDevDir is true (the binary is a dev build) and
+// a freshly built <repoRoot>/web/dist exists whose index.html differs from the
+// embedded one, it serves web/dist so `vector serve` reflects the latest frontend
+// without a recompile. Otherwise it serves the embedded build. The returned source
+// string is a short human label for logging ("embedded", the dir path, or the dir
+// path annotated as stale).
+func Resolve(explicitDir, repoRoot string, allowDevDir bool) (handler http.Handler, source string, err error) {
+	if explicitDir != "" {
+		h, herr := Handler(explicitDir)
+		if herr != nil {
+			return nil, "", herr
+		}
+		return h, explicitDir, nil
+	}
+
+	if allowDevDir {
+		candidate := filepath.Join(repoRoot, "web", "dist")
+		candidateIndex := filepath.Join(candidate, "index.html")
+		diskBytes, readErr := os.ReadFile(candidateIndex)
+		if readErr == nil {
+			embeddedBytes, embErr := embedded.ReadFile("dist/index.html")
+			if embErr == nil && !bytes.Equal(diskBytes, embeddedBytes) {
+				h, herr := Handler(candidate)
+				if herr != nil {
+					return nil, "", herr
+				}
+				return h, candidate + " (embedded UI is stale)", nil
+			}
+		}
+		// Any read/stat error or identical bytes → fall through to embedded.
+	}
+
+	h, herr := Handler("")
+	if herr != nil {
+		return nil, "", herr
+	}
+	return h, "embedded", nil
 }
 
 type spaHandler struct {
