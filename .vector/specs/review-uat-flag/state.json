@@ -2,10 +2,18 @@
   "schemaVersion": 1,
   "id": "review-uat-flag",
   "title": "Distinguir el review que requiere UAT manual",
-  "status": "draft",
+  "status": "open",
   "priority": "normal",
   "repo": "vector",
   "specDoc": ".vector/specs/review-uat-flag/spec.md",
+  "openspec": {
+    "change": "review-uat-flag",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
   "createdAt": "2026-06-25T07:50:07.71539Z",
-  "updatedAt": "2026-06-25T07:50:07.71539Z"
+  "updatedAt": "2026-06-25T07:56:59.287207Z"
 }
