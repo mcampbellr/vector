@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "add-propose-command",
+  "title": "Comando /vector:propose (draft → open)",
+  "status": "draft",
+  "priority": "normal",
+  "repo": "vector",
+  "specDoc": ".vector/specs/add-propose-command/spec.md",
+  "createdAt": "2026-06-25T06:23:36.608503Z",
+  "updatedAt": "2026-06-25T06:23:36.608503Z"
+}
