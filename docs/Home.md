@@ -12,6 +12,7 @@
 - [[domain-contract]] — **contrato de dominio LOCKED**: estados, columnas=estado, comando→state, web↔cli
 - [[plugin-and-commands]] — **commands `/vector:*`** (project commands, namespace por subdirectorio), binario global vs commands per-proyecto, distribución
 - [[state-architecture]] — arquitectura de estado: 3 capas, CLI-owns-writes, apply wrapper, ciclo de vida
+- [[sync-and-dedup]] — **sync & dedup LOCKED**: identidad=slug, colapso multi-worktree, `supersededBy`, el patrón que evita duplicados
 - [[repo-analysis-synthesis]] — síntesis de **cdr · private-wealth · somnio** y la "forma Vector"
 - [[state-and-activity]] — esquemas concretos `state.json` / `activity.jsonl` (Go + ejemplos)
 
