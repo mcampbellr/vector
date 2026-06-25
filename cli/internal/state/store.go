@@ -210,6 +210,51 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ac
 	return true, nil
 }
 
+// ProposeSpec formalizes a draft spec: it records the OpenSpec change provenance
+// and transitions draft → open, appending spec.proposed + status.changed events.
+// It does NOT stamp StartedAt — open means the change exists but work has not
+// started; StartedAt is set later at /vector:apply (in-progress). Errors if the
+// spec is not in draft.
+func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now time.Time) (*SpecState, error) {
+	if openSpec == nil || openSpec.Change == "" {
+		return nil, errors.New("propose requires an OpenSpec change reference")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return nil, err
+	}
+	if spec.Status != StatusDraft {
+		return nil, fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", id, spec.Status)
+	}
+
+	now = now.UTC()
+	spec.Status = StatusOpen
+	spec.OpenSpec = openSpec
+	spec.UpdatedAt = now
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return nil, err
+	}
+
+	proposed, err := json.Marshal(ProposedData{Change: openSpec.Change, Artifacts: openSpec.Artifacts})
+	if err != nil {
+		return nil, fmt.Errorf("marshal spec.proposed data: %w", err)
+	}
+	if err := s.appendEvent(Event{V: EventVersion, TS: now, Type: EvtSpecProposed, SpecID: id, Repo: spec.Repo, Actor: actor, Data: proposed}); err != nil {
+		return nil, err
+	}
+	changed, err := json.Marshal(StatusChangedData{From: StatusDraft, To: StatusOpen, Trigger: "command"})
+	if err != nil {
+		return nil, fmt.Errorf("marshal status.changed data: %w", err)
+	}
+	if err := s.appendEvent(Event{V: EventVersion, TS: now, Type: EvtStatusChanged, SpecID: id, Repo: spec.Repo, Actor: actor, Data: changed}); err != nil {
+		return nil, err
+	}
+	return spec, nil
+}
+
 // setStatusTimestamp stamps the lifecycle timestamp implied by a status, without
 // overwriting one already set.
 func setStatusTimestamp(spec *SpecState, status Status, now time.Time) {

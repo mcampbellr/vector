@@ -55,6 +55,9 @@ type Config struct {
 	// ChangesPath and SpecPath to a concrete worktree, for bare+worktree layouts.
 	ChangesPath string `json:"changesPath,omitempty"`
 	Branch      string `json:"branch,omitempty"`
+	// ProposeBranch overrides which worktree /vector:propose creates a change in
+	// (bare+worktree layouts); falls back to Branch when empty.
+	ProposeBranch string `json:"proposeBranch,omitempty"`
 	// KitVersion records the binary/kit version that last seeded this repo's
 	// .claude artifacts, so `vector update` can report staleness. Stamped by
 	// `vector init` and `vector update`.

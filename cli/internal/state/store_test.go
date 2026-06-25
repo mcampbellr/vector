@@ -166,6 +166,59 @@ func TestReconcileStatus(t *testing.T) {
 	}
 }
 
+func TestProposeSpec(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "Add foo", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	os := &OpenSpec{Change: "add-foo", Artifacts: ArtifactSet{Proposal: true, Design: true, Tasks: true}}
+	spec, err := store.ProposeSpec("add-foo", os, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("ProposeSpec: %v", err)
+	}
+	if spec.Status != StatusOpen {
+		t.Errorf("Status = %q, want open", spec.Status)
+	}
+	if spec.OpenSpec == nil || spec.OpenSpec.Change != "add-foo" || !spec.OpenSpec.Artifacts.Tasks {
+		t.Errorf("OpenSpec provenance not set: %+v", spec.OpenSpec)
+	}
+	if spec.StartedAt != nil {
+		t.Error("StartedAt must not be set on propose (open != started)")
+	}
+
+	// Events: spec.created (from CreateSpec) then spec.proposed + status.changed.
+	events := readEvents(t, filepath.Join(store.root, "local", "activity.jsonl"))
+	if len(events) != 3 {
+		t.Fatalf("event count = %d, want 3 (created + proposed + status.changed)", len(events))
+	}
+	if events[1].Type != EvtSpecProposed || events[2].Type != EvtStatusChanged {
+		t.Errorf("unexpected events: %s, %s", events[1].Type, events[2].Type)
+	}
+	var sc StatusChangedData
+	if err := json.Unmarshal(events[2].Data, &sc); err != nil {
+		t.Fatal(err)
+	}
+	if sc.From != StatusDraft || sc.To != StatusOpen || sc.Trigger != "command" {
+		t.Errorf("unexpected status.changed: %+v", sc)
+	}
+}
+
+func TestProposeSpecRejectsNonDraft(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	os := &OpenSpec{Change: "add-foo"}
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "x", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ProposeSpec("add-foo", os, "t", fixedNow()); err != nil {
+		t.Fatalf("first propose: %v", err)
+	}
+	// Now it's open → second propose must fail.
+	if _, err := store.ProposeSpec("add-foo", os, "t", fixedNow()); err == nil {
+		t.Fatal("expected error proposing a non-draft spec")
+	}
+}
+
 func TestListSpecs(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	for _, title := range []string{"Alpha", "Beta"} {

@@ -495,16 +495,128 @@ func humanizeSlug(slug string) string {
 
 func runSpec(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vector spec <create|list> ...")
+		return fmt.Errorf("usage: vector spec <create|list|propose> ...")
 	}
 	switch args[0] {
 	case "create":
 		return runSpecCreate(args[1:])
 	case "list":
 		return runSpecList(args[1:])
+	case "propose":
+		return runSpecPropose(args[1:])
 	default:
 		return fmt.Errorf("unknown spec subcommand %q", args[0])
 	}
+}
+
+// runSpecPropose formalizes a draft spec: records the OpenSpec change provenance
+// and transitions draft → open. The /vector:propose command creates the actual
+// change artifacts (delegated to OpenSpec, or native) and then calls this to flip
+// the board state — the binary stays the sole state writer.
+func runSpecPropose(args []string) error {
+	// Accept the id as a leading positional even when flags follow (Go's flag
+	// package stops parsing at the first non-flag arg).
+	var leadingID string
+	rest := args
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		leadingID, rest = args[0], args[1:]
+	}
+
+	fs := flag.NewFlagSet("spec propose", flag.ContinueOnError)
+	id := fs.String("id", "", "spec id to propose (or pass it as the first argument)")
+	change := fs.String("change", "", "OpenSpec change name (defaults to the spec id)")
+	artifacts := fs.String("artifacts", "proposal,design,tasks", "comma list of created artifacts: proposal,design,tasks")
+	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
+	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+
+	specID := *id
+	if specID == "" {
+		specID = leadingID
+	}
+	if specID == "" && fs.NArg() > 0 {
+		specID = fs.Arg(0)
+	}
+	if specID == "" {
+		return fmt.Errorf("usage: vector spec propose <id> [--change name] [--artifacts proposal,design,tasks]")
+	}
+	changeName := *change
+	if changeName == "" {
+		changeName = specID
+	}
+	if changeName != state.Slug(changeName) {
+		return fmt.Errorf("invalid --change %q: must be kebab-case", changeName)
+	}
+	arts, err := parseArtifacts(*artifacts)
+	if err != nil {
+		return err
+	}
+
+	root, err := resolveRepoRoot(*repoRoot)
+	if err != nil {
+		return err
+	}
+	store, err := state.Open(root)
+	if err != nil {
+		return err
+	}
+
+	// Validate up front (covers dry-run and idempotency without writing).
+	spec, err := store.ReadSpec(specID)
+	if err != nil {
+		return err
+	}
+	if spec.Status == state.StatusOpen {
+		if *jsonOut {
+			return printJSON(map[string]string{"id": specID, "status": string(spec.Status), "note": "already open"})
+		}
+		fmt.Printf("spec %q is already open (no change)\n", specID)
+		return nil
+	}
+	if spec.Status != state.StatusDraft {
+		return fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", specID, spec.Status)
+	}
+
+	if *dryRun {
+		if *jsonOut {
+			return printJSON(map[string]string{"id": specID, "status": "draft", "wouldBe": "open", "change": changeName})
+		}
+		fmt.Printf("would propose spec %q (draft → open)\n  change: %s\n", specID, changeName)
+		return nil
+	}
+
+	updated, err := store.ProposeSpec(specID, &state.OpenSpec{Change: changeName, Artifacts: arts}, resolveActor(), time.Now())
+	if err != nil {
+		return err
+	}
+	if *jsonOut {
+		return printJSON(map[string]string{"id": updated.ID, "status": string(updated.Status), "change": changeName, "specDoc": updated.SpecDoc})
+	}
+	fmt.Printf("proposed spec %q (status: draft → open)\n  change: %s\n  next: /vector:apply %s\n", updated.ID, changeName, updated.ID)
+	return nil
+}
+
+// parseArtifacts turns a comma list into an ArtifactSet, rejecting unknown names.
+func parseArtifacts(list string) (state.ArtifactSet, error) {
+	var a state.ArtifactSet
+	for _, part := range strings.Split(list, ",") {
+		switch strings.TrimSpace(part) {
+		case "proposal":
+			a.Proposal = true
+		case "design":
+			a.Design = true
+		case "tasks":
+			a.Tasks = true
+		case "":
+			// tolerate empty segments
+		default:
+			return a, fmt.Errorf("invalid --artifacts %q: allowed proposal,design,tasks", part)
+		}
+	}
+	return a, nil
 }
 
 func runSpecCreate(args []string) error {
@@ -667,6 +779,7 @@ usage:
   vector update [--repo-root path] [--dry-run] [--json]
   vector sync [--repo-root path] [--reconcile] [--dry-run] [--json]
   vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--json]
+  vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec list
   vector version
 `)

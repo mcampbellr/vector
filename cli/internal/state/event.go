@@ -17,6 +17,7 @@ const (
 	EvtStatusChanged EventType = "status.changed"
 	EvtNoteAdded     EventType = "note.added"
 	EvtReminderSet   EventType = "reminder.set"
+	EvtSpecProposed  EventType = "spec.proposed"
 	EvtSpecApplied   EventType = "spec.applied"
 	EvtSpecClosed    EventType = "spec.closed"
 	EvtSpecArchived  EventType = "spec.archived"
@@ -47,8 +48,15 @@ type SpecCreatedData struct {
 type StatusChangedData struct {
 	From    Status `json:"from"`
 	To      Status `json:"to"`
-	Trigger string `json:"trigger"` // "command" | "hook" | "apply"
+	Trigger string `json:"trigger"` // "command" | "hook" | "apply" | "sync"
 	Reason  string `json:"reason,omitempty"`
+}
+
+// ProposedData is the payload for EvtSpecProposed: the OpenSpec change a draft
+// spec was formalized into and which artifacts were created.
+type ProposedData struct {
+	Change    string      `json:"change"`
+	Artifacts ArtifactSet `json:"artifacts"`
 }
 
 // SpecLinkedData is the payload for EvtSpecLinked.
