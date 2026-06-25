@@ -1,8 +1,16 @@
 # Vector — `/vector:apply` (notas de diseño / contexto capturado)
 
-> **No LOCKED.** Captura del proceso de "apply" recorrido sobre `add-propose-command`, más los
-> requisitos para construir `/vector:apply`. Sirve de input (vía `/vector:raw` o `/fix`) cuando lo
-> implementemos. La diferencia clave con OpenSpec — **autonomía configurable** — está en §3.
+> **Implementado** (binario + command). Este doc fue el blueprint; lo que sigue refleja lo que
+> se construyó. La diferencia clave con OpenSpec — **autonomía configurable** — está en §3.
+>
+> **Estado de implementación:**
+> - Binario: `vector spec apply|status|close|archive|next` sobre la máquina de estados LOCKED
+>   (`cli/internal/state/transition.go`). `applyMode` en `.vector/config.json` (default `ask`).
+>   `vector spec next --json` devuelve el pick recomendado + el modo. Con tests.
+> - Command: `kit/commands/vector/apply.md` (selección por modo → start por status → detección
+>   delegate/native → implementar → `review`). Sembrado en `.claude/`.
+> - Open questions §6: resueltas salvo (a) granularidad change vs task y (b) si `/vector:apply`
+>   commitea — hoy el command **no** auto-commitea (deja el working tree al usuario).
 
 ## 1. Qué es "apply" (y el plus de Vector sobre OpenSpec)
 
