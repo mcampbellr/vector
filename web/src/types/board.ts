@@ -39,6 +39,7 @@ export interface Card {
   hasOpenSpec: boolean
   artifacts?: Artifacts
   attentionReason?: string
+  needsUat?: boolean
   savedUsd: number
   routes: number
   updatedAt: string

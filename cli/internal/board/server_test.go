@@ -39,6 +39,35 @@ func TestHandleBoardReturnsJSON(t *testing.T) {
 	}
 }
 
+func TestNeedsUATSerialization(t *testing.T) {
+	// True → present in the JSON; false → omitted (omitempty), so the web client
+	// reads it as undefined and shows no badge. Guards against a silent regression.
+	flagged := fakeSource{specs: []*state.SpecState{
+		{ID: "a", Title: "A", Status: state.StatusReview, Priority: state.PriorityNormal, NeedsUAT: true},
+	}}
+	clean := fakeSource{specs: []*state.SpecState{
+		{ID: "b", Title: "B", Status: state.StatusReview, Priority: state.PriorityNormal, NeedsUAT: false},
+	}}
+
+	if body := boardJSON(t, flagged); !strings.Contains(body, `"needsUat":true`) {
+		t.Errorf("expected needsUat:true in response, got: %s", body)
+	}
+	if body := boardJSON(t, clean); strings.Contains(body, "needsUat") {
+		t.Errorf("expected needsUat omitted when false, got: %s", body)
+	}
+}
+
+func boardJSON(t *testing.T, src fakeSource) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/board", nil)
+	rec := httptest.NewRecorder()
+	NewServer(src, "demo").Routes(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	return rec.Body.String()
+}
+
 func TestHandleEventsStreamsInitialBoard(t *testing.T) {
 	src := fakeSource{specs: []*state.SpecState{
 		{ID: "a", Title: "A", Status: state.StatusReview, Priority: state.PriorityHigh},

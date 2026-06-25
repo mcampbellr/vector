@@ -144,7 +144,7 @@ func TestReconcileStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	changed, err := store.ReconcileStatus("add-auth", StatusReview, os, "t", fixedNow())
+	changed, err := store.ReconcileStatus("add-auth", StatusReview, os, false, "t", fixedNow())
 	if err != nil {
 		t.Fatalf("ReconcileStatus: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestReconcileStatus(t *testing.T) {
 		t.Fatal("expected changed=true on open→review")
 	}
 	// idempotent: same status → no change.
-	changed, err = store.ReconcileStatus("add-auth", StatusReview, os, "t", fixedNow())
+	changed, err = store.ReconcileStatus("add-auth", StatusReview, os, false, "t", fixedNow())
 	if err != nil {
 		t.Fatalf("ReconcileStatus (2): %v", err)
 	}

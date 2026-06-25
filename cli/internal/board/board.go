@@ -51,6 +51,7 @@ type Card struct {
 	HasOpenSpec     bool       `json:"hasOpenSpec"`
 	Artifacts       *Artifacts `json:"artifacts,omitempty"`
 	AttentionReason string     `json:"attentionReason,omitempty"`
+	NeedsUAT        bool       `json:"needsUat,omitempty"` // review awaiting manual UAT
 	SavedUSD        float64    `json:"savedUsd"`
 	Routes          int        `json:"routes"`
 	UpdatedAt       time.Time  `json:"updatedAt"`
@@ -193,6 +194,7 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 		Labels:      spec.Labels,
 		EstimateMin: spec.EstimateMin,
 		HasOpenSpec: spec.OpenSpec != nil,
+		NeedsUAT:    spec.NeedsUAT,
 		SavedUSD:    econ.savedUSD,
 		Routes:      econ.routes,
 		UpdatedAt:   spec.UpdatedAt.UTC(),

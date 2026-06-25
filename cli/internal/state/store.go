@@ -59,6 +59,10 @@ type CreateSpecParams struct {
 	// OpenSpec, when set, records the source change (used by `vector sync` to mark
 	// a card as derived from an OpenSpec change rather than a /vector:raw draft).
 	OpenSpec *OpenSpec
+
+	// NeedsUAT marks the card as awaiting manual UAT. Only honored when Status is
+	// review (the invariant: the flag is a refinement of review, nothing else).
+	NeedsUAT bool
 }
 
 // CreateSpec writes a new spec's state.json (status open) and spec.md, and
@@ -118,6 +122,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		Repo:          p.Repo,
 		SpecDoc:       docRel,
 		OpenSpec:      p.OpenSpec,
+		NeedsUAT:      p.NeedsUAT && status == StatusReview,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -167,7 +172,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 // ReconcileStatus updates a sync-owned spec's status and OpenSpec artifacts to
 // match its source change, appending a status.changed event (trigger "sync"). It
 // is a no-op returning (false, nil) when nothing differs.
-func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, actor string, now time.Time) (bool, error) {
+func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, needsUAT bool, actor string, now time.Time) (bool, error) {
 	if !status.Valid() {
 		return false, fmt.Errorf("invalid status %q", status)
 	}
@@ -178,7 +183,9 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ac
 	if err != nil {
 		return false, err
 	}
-	if spec.Status == status && openSpecEqual(spec.OpenSpec, openSpec) {
+	// NeedsUAT is a refinement of review; it never persists outside it.
+	wantUAT := needsUAT && status == StatusReview
+	if spec.Status == status && openSpecEqual(spec.OpenSpec, openSpec) && spec.NeedsUAT == wantUAT {
 		return false, nil
 	}
 
@@ -186,6 +193,7 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ac
 	now = now.UTC()
 	spec.Status = status
 	spec.OpenSpec = openSpec
+	spec.NeedsUAT = wantUAT
 	spec.UpdatedAt = now
 	setStatusTimestamp(spec, status, now)
 	if err := writeSpecFile(s.statePath(id), spec); err != nil {

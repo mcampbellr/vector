@@ -1,4 +1,4 @@
-import { Clock, Sparkles, Tag } from 'lucide-react'
+import { ClipboardCheck, Clock, Sparkles, Tag } from 'lucide-react'
 import type { Card } from '../../types/board'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
@@ -35,6 +35,12 @@ export function SpecCard({ card }: SpecCardProps) {
 
       <footer className={styles.meta}>
         <StatusPill status={card.status} />
+        {card.status === 'review' && card.needsUat && (
+          <span className={styles.uat} title="Requires manual UAT" aria-label="Requires manual UAT">
+            <ClipboardCheck size={12} strokeWidth={2} />
+            UAT
+          </span>
+        )}
         <PriorityFlag priority={card.priority} />
         {card.estimateMinutes ? (
           <span className={styles.estimate}>

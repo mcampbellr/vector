@@ -80,6 +80,11 @@ type SpecState struct {
 	Labels        []string `json:"labels,omitempty"`
 	EstimateMin   int      `json:"estimateMinutes,omitempty"`
 
+	// NeedsUAT marks a review card whose only remaining work is manual UAT /
+	// verification. It is derived from the change's tasks.md (set by sync, not by
+	// hand) and cleared whenever the card leaves review. See docs/domain-contract.md.
+	NeedsUAT bool `json:"needsUat,omitempty"`
+
 	Ticket   *Ticket    `json:"ticket,omitempty"`
 	OpenSpec *OpenSpec  `json:"openspec,omitempty"`
 	Flag     *Attention `json:"needsAttention,omitempty"`

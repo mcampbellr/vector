@@ -278,6 +278,7 @@ func runSync(args []string) error {
 	for _, c := range changes {
 		seen[c.Name] = true
 		status := syncStatus(c)
+		needsUAT := syncNeedsUAT(c)
 		openSpec := &state.OpenSpec{
 			Change:    c.Name,
 			Artifacts: state.ArtifactSet{Proposal: c.HasProposal, Design: c.HasDesign, Tasks: c.HasTasks},
@@ -301,6 +302,7 @@ func runSync(args []string) error {
 					Title:      humanizeSlug(c.Name),
 					Status:     status,
 					OpenSpec:   openSpec,
+					NeedsUAT:   needsUAT,
 					SpecDocRel: specDocRel,
 					Actor:      actor,
 					Now:        now,
@@ -320,7 +322,7 @@ func runSync(args []string) error {
 				results = append(results, syncResult{c.Name, string(status), action})
 				break
 			}
-			changed, err := store.ReconcileStatus(c.Name, status, openSpec, actor, now)
+			changed, err := store.ReconcileStatus(c.Name, status, openSpec, needsUAT, actor, now)
 			if err != nil {
 				return err
 			}
@@ -484,6 +486,16 @@ func syncStatus(c openspec.Change) state.Status {
 		}
 	}
 	return state.StatusOpen
+}
+
+// syncNeedsUAT reports whether a change reaching review is doing so because only
+// manual UAT / verification tasks remain (vs everything done). It is the
+// discriminator behind the board's UAT marker, derived from the same task scan
+// as syncStatus — no new metadata. False unless work has started and the only
+// pending tasks are verification ones (PendingReal == 0 with TasksDone > 0).
+func syncNeedsUAT(c openspec.Change) bool {
+	return c.HasTasks && c.TasksTotal > 0 &&
+		c.TasksDone > 0 && c.TasksDone < c.TasksTotal && c.PendingReal == 0
 }
 
 // humanizeSlug turns a kebab-case id into a display title ("billing-v1" → "Billing v1").

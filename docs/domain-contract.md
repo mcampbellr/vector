@@ -17,6 +17,11 @@
 - `needs-attention` es de primera clase (feature central): se entra desde `in-progress` o
   `review` cuando surgen preguntas; lo dispara un **hook**, no el modelo.
 - `archived` no aparece en el board activo (vista separada).
+- `review` puede llevar un **marcador derivado `needsUat`** (UAT manual pendiente): se setea
+  cuando un change entra a `review` porque solo quedan tasks de verificación en `tasks.md`
+  (lo computa `sync`, reusando `isVerificationTask`). **No es un estado nuevo** ni cambia la
+  máquina de estados — es una refinación de `review` que el board muestra como badge "UAT"
+  (ver change `review-uat-flag`).
 
 ### Máquina de estados (transiciones permitidas)
 
