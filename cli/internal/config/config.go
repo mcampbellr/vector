@@ -292,7 +292,7 @@ func (c *Config) ChangesDirs(repoRoot string) ([]ChangesDir, error) {
 	if err != nil {
 		return nil, fmt.Errorf("glob changes dirs: %w", err)
 	}
-	out := make([]ChangesDir, 0, len(matches))
+	out := make([]ChangesDir, 0, len(matches)+1)
 	for _, m := range matches {
 		branch := ""
 		if idx >= 0 {
@@ -304,8 +304,28 @@ func (c *Config) ChangesDirs(repoRoot string) ([]ChangesDir, error) {
 		}
 		out = append(out, ChangesDir{Branch: branch, Dir: m})
 	}
+	// Also include a root-level openspec/changes tree when present: in bare+worktree
+	// layouts the archived/historical changes accumulate at the root while active
+	// ones live in the worktrees, so reading only [branch] would miss the archive.
+	if rootDir := filepath.Join(repoRoot, filepath.FromSlash(DefaultChangesPath)); isDir(rootDir) {
+		dup := false
+		for _, d := range out {
+			if d.Dir == rootDir {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, ChangesDir{Branch: "", Dir: rootDir})
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Branch < out[j].Branch })
 	return out, nil
+}
+
+func isDir(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
 }
 
 // compileTemplate compiles a forward-slash path template into an anchored regex
