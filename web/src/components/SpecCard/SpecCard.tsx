@@ -4,6 +4,7 @@ import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
 import { ArtifactDot } from './ArtifactDot'
 import { NextCommand } from './NextCommand'
+import { SpecTimeline } from '../SpecTimeline'
 import { formatEstimate, formatUsd } from '../../lib/format'
 import styles from './SpecCard.module.css'
 
@@ -58,6 +59,8 @@ export function SpecCard({ card }: SpecCardProps) {
       </footer>
 
       <NextCommand status={card.status} id={card.id} />
+
+      <SpecTimeline specId={card.id} />
     </article>
   )
 }

@@ -69,7 +69,23 @@ conventions — Vector is **agnostic to the user's code** and imposes no archite
   `vector spec status <id> needs-attention --reason "<what's ambiguous>"` and stop with the
   question surfaced.
 
-## 5. Finish — transition to review (or closed)
+## 5. Log the work (enriches the standup trace)
+
+After implementing and **before** transitioning, record what this run actually did so the
+standup digest reflects "what was done", not just "how the status changed":
+
+```
+vector spec worklog <id> --files <comma,sep,files> --tasks "<comma,sep,tasks>" --note "<short note>"
+```
+
+- `--files`: the files you touched this run (from the working-tree diff).
+- `--tasks`: the `tasks.md` / OpenSpec items you completed this run.
+- `--note`: one short line on the substance (truncated to 280 chars).
+
+This appends an **additive** `work.logged` event — it never mutates `state.json` and is **not a
+gate**. Skip it only if the run touched nothing (e.g. a pure continuation that just transitions).
+
+## 6. Finish — transition to review (or closed)
 
 When implementation tasks are done, reuse the `sync` rule:
 
@@ -78,7 +94,7 @@ When implementation tasks are done, reuse the `sync` rule:
 
 Never jump straight to `closed` from here — closing is an explicit user step (`/vector:close`).
 
-## 6. Report
+## 7. Report
 
 Report: the id and the transition made (e.g. `open → in-progress → review`), the mode
 (delegate/native), tasks completed vs total, the gate result, whether the working tree has

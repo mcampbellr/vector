@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/mariocampbell/vector/internal/standup"
 )
 
 // Server exposes the board as a read-only HTTP API with a live SSE stream. It is
@@ -29,6 +31,8 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/board", s.handleBoard)
 	mux.HandleFunc("/api/events", s.handleEvents)
+	mux.HandleFunc("/api/standup", s.handleStandup)
+	mux.HandleFunc("/api/activity", s.handleActivity)
 	if static != nil {
 		mux.Handle("/", static)
 	}
@@ -43,6 +47,98 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Write(b)
+}
+
+// handleStandup serves the persisted standup digest (GET /api/standup). When no
+// digest has been committed yet it returns {} (200), never 500.
+func (s *Server) handleStandup(w http.ResponseWriter, r *http.Request) {
+	digest, err := s.src.ReadStandup()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not read standup digest")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	// A never-run standup has no generatedAt; serialize {} so the client shows empty.
+	if digest == nil || digest.GeneratedAt.IsZero() {
+		w.Write([]byte("{}"))
+		return
+	}
+	b, err := json.Marshal(digest)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not encode standup digest")
+		return
+	}
+	w.Write(b)
+}
+
+// handleActivity serves a spec's projected timeline (GET
+// /api/activity?spec=<id>&since=<dur>). Read-only: 400 on an invalid since, 404
+// on an unknown spec, 500 on a log read error.
+func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
+	specID := r.URL.Query().Get("spec")
+	if specID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing spec query parameter")
+		return
+	}
+	window := r.URL.Query().Get("since")
+	if window == "" {
+		window = "24h"
+	}
+	from, err := standup.ParseSince(window, time.Now())
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	specs, err := s.src.ListSpecs()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not read specs")
+		return
+	}
+	found := false
+	for _, sp := range specs {
+		if sp.ID == specID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("spec %q not found", specID))
+		return
+	}
+
+	events, err := s.src.ReadEvents()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not read activity log")
+		return
+	}
+	timeline := standup.Timeline(events, specID, from)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	b, err := json.Marshal(struct {
+		Spec   string                  `json:"spec"`
+		Since  string                  `json:"since"`
+		Events []standup.TimelineEvent `json:"events"`
+	}{Spec: specID, Since: window, Events: timeline})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not encode activity")
+		return
+	}
+	w.Write(b)
+}
+
+// writeJSONError writes a {"error": msg} body with the given status, matching the
+// shape the web hooks parse (GET-only local API: 400/404/500).
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	b, _ := json.Marshal(struct {
+		Error string `json:"error"`
+	}{Error: msg})
 	w.Write(b)
 }
 

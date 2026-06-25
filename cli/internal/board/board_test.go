@@ -9,12 +9,19 @@ import (
 )
 
 type fakeSource struct {
-	specs  []*state.SpecState
-	events []state.Event
+	specs   []*state.SpecState
+	events  []state.Event
+	standup *state.StandupDigest
 }
 
 func (f fakeSource) ListSpecs() ([]*state.SpecState, error) { return f.specs, nil }
 func (f fakeSource) ReadEvents() ([]state.Event, error)     { return f.events, nil }
+func (f fakeSource) ReadStandup() (*state.StandupDigest, error) {
+	if f.standup == nil {
+		return &state.StandupDigest{}, nil
+	}
+	return f.standup, nil
+}
 
 func routedEvent(t *testing.T, specID, model, baseline string, saved, cost float64) state.Event {
 	t.Helper()

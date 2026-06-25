@@ -72,9 +72,15 @@
   contrato del frontend ni se commitea.
 - Sketch de endpoints (a detallar al especificar el panel):
   - `GET /api/board` → columnas + specs proyectados
-  - `GET /api/specs/:id` → detalle de un spec
-  - `GET /api/daily` → resumen del día (lee `activity.jsonl` + git log)
-  - `GET /api/stream` (SSE) → eventos de cambio para refrescar el board
+  - `GET /api/events` (SSE) → eventos de cambio para refrescar el board
+  - `GET /api/standup` → digest persistido del último standup (`{}` si nunca se corrió);
+    proyección read-only de `.vector/local/standup.json`
+  - `GET /api/activity?spec=<id>&since=<24h|today|7d>` → timeline proyectada de un spec
+    (eventos `status.changed` + `work.logged`); `400` `since` inválido, `404` spec inexistente,
+    `500` lectura del log; body de error `{ "error": "<msg>" }`
+  - `GET /api/specs/:id` → detalle de un spec (pendiente)
+  - El digest NL lo genera el command (`/vector:standup`) vía agente Haiku; el binario
+    **nunca** llama a un LLM (solo proyecta y sirve el digest ya persistido).
 
 ## 5. Comando → escritura en el state (mapa)
 
@@ -86,7 +92,9 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 | `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
 | `/vector:status [id] [status]` | `status` + timestamp del estado (`reviewAt`/etc) | `status.changed` (`trigger:command`) | — |
-| `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) | `openspec apply <change>` (implementa) |
+| `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) + `work.logged` (tras implementar, aditivo) | `openspec apply <change>` (implementa) |
+| `vector spec worklog <id>` (lo invoca `/vector:apply`) | — (aditivo, **no** toca `state.json`) | `work.logged{change,filesTouched,tasksCompleted,note}` | — |
+| `/vector:standup [24h\|today\|7d]` | — (escribe `.vector/local/standup.json`, no `state.json`); avanza el marcador al persistir | lee `activity.jsonl` (proyección read-only); digest NL por agente Haiku | — |
 | `/vector:close [id]` | `status:closed`, `closedAt` | `spec.closed` + `status.changed` | — |
 | `/vector:archive [id]` | `status:archived`, `archivedAt` | `spec.archived` | mover change a `archive/` |
 | `/vector:sync` | crea cards desde `openspec/changes/*` (por tasks) + specs sueltos del `spec-path` → `draft`; en bare+worktrees colapsa copias por slug (identidad = slug; `branch` = preferencia de copia canónica, no filtro); specs con frontmatter `supersededBy`/`status:superseded` se suprimen; `--reconcile` actualiza | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) | lee (read-only); no modifica OpenSpec |

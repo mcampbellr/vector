@@ -41,6 +41,8 @@ func main() {
 		err = runSync(os.Args[2:])
 	case "serve":
 		err = runServe(os.Args[2:])
+	case "standup":
+		err = runStandup(os.Args[2:])
 	case "spec":
 		err = runSpec(os.Args[2:])
 	case "version", "--version", "-v":
@@ -528,6 +530,8 @@ func runSpec(args []string) error {
 		return runSpecArchive(args[1:])
 	case "next":
 		return runSpecNext(args[1:])
+	case "worklog":
+		return runSpecWorklog(args[1:])
 	default:
 		return fmt.Errorf("unknown spec subcommand %q", args[0])
 	}
@@ -803,6 +807,8 @@ usage:
   vector update [--repo-root path] [--dry-run] [--json]
   vector sync [--repo-root path] [--reconcile] [--dry-run] [--json]
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
+  vector standup [--since 24h|today|7d] [--json]
+  vector standup commit --digest-file -|path
   vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
@@ -810,6 +816,7 @@ usage:
   vector spec close <id> [--json]
   vector spec archive <id> [--json]
   vector spec next [--json]
+  vector spec worklog <id> [--files a.go,b.go] [--tasks "DTO mapper"] [--note "..."] [--json]
   vector spec list
   vector version
 `)

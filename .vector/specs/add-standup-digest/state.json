@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "add-standup-digest",
+  "title": "Standup digest con traza de actividad enriquecida",
+  "status": "review",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-standup-digest/spec.md",
+  "openspec": {
+    "change": "add-standup-digest",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-25T16:07:49.76644Z",
+  "startedAt": "2026-06-25T16:38:57.454744Z",
+  "reviewAt": "2026-06-25T16:51:45.115007Z",
+  "updatedAt": "2026-06-25T16:51:45.115007Z"
+}

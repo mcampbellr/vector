@@ -124,10 +124,13 @@ var priorityRank = map[state.Priority]int{
 	state.PriorityLow:    3,
 }
 
-// Source is what Build reads from — satisfied by *state.Store.
+// Source is what the server reads from — satisfied by *state.Store. Build uses
+// ListSpecs + ReadEvents; the standup/activity handlers also read the persisted
+// digest via ReadStandup.
 type Source interface {
 	ListSpecs() ([]*state.SpecState, error)
 	ReadEvents() ([]state.Event, error)
+	ReadStandup() (*state.StandupDigest, error)
 }
 
 // Build projects the store into a Board. repo labels the board (the repo name).
