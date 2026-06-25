@@ -3,6 +3,7 @@ import type { Card } from '../../types/board'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
 import { ArtifactDot } from './ArtifactDot'
+import { NextCommand } from './NextCommand'
 import { formatEstimate, formatUsd } from '../../lib/format'
 import styles from './SpecCard.module.css'
 
@@ -55,6 +56,8 @@ export function SpecCard({ card }: SpecCardProps) {
           </span>
         )}
       </footer>
+
+      <NextCommand status={card.status} id={card.id} />
     </article>
   )
 }
