@@ -270,6 +270,10 @@ func setStatusTimestamp(spec *SpecState, status Status, now time.Time) {
 		if spec.ReviewAt == nil {
 			spec.ReviewAt = &now
 		}
+	case StatusClosed:
+		if spec.ClosedAt == nil {
+			spec.ClosedAt = &now
+		}
 	case StatusArchived:
 		if spec.ArchivedAt == nil {
 			spec.ArchivedAt = &now
@@ -315,6 +319,32 @@ func (s *Store) ListSpecs() ([]*SpecState, error) {
 		specs = append(specs, spec)
 	}
 	return specs, nil
+}
+
+// ReadEvents returns every event in the local activity log, in file order.
+// A missing log is not an error: it returns an empty slice. Malformed lines are
+// skipped (the log is append-only and crash-safe, but tolerate partial tails).
+func (s *Store) ReadEvents() ([]Event, error) {
+	b, err := os.ReadFile(s.activityPath())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read activity log: %w", err)
+	}
+	lines := strings.Split(string(b), "\n")
+	events := make([]Event, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var e Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue // tolerate a torn final line
+		}
+		events = append(events, e)
+	}
+	return events, nil
 }
 
 // AppendEvent appends an event to the local activity log (serialized).

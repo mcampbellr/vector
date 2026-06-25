@@ -59,6 +59,12 @@ type ProposedData struct {
 	Artifacts ArtifactSet `json:"artifacts"`
 }
 
+// AppliedData is the payload for EvtSpecApplied: the OpenSpec change being
+// implemented (empty for a native spec with no change).
+type AppliedData struct {
+	Change string `json:"change,omitempty"`
+}
+
 // SpecLinkedData is the payload for EvtSpecLinked.
 type SpecLinkedData struct {
 	Provider TicketProvider `json:"provider"`

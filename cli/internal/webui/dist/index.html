@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vector — board</title>
+  </head>
+  <body>
+    <!--
+      Placeholder. The real board UI is built from web/ into this directory:
+        npm --prefix web run build   (Vite outputs to web/dist; release copies it here)
+      During development, run `vector serve` and Vite's dev server (npm --prefix web run dev),
+      which proxies /api to the Go server. See web/README.md.
+    -->
+    <main style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; color: #1f2937;">
+      <h1>Vector board</h1>
+      <p>This is the embedded placeholder. Build the web panel to replace it:</p>
+      <pre style="background:#f3f4f6;padding:1rem;border-radius:8px;">npm --prefix web install
+npm --prefix web run build
+cp -r web/dist/. cli/internal/webui/dist/</pre>
+      <p>The API is live: <a href="/api/board">/api/board</a></p>
+    </main>
+  </body>
+</html>

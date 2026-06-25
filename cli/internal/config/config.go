@@ -58,10 +58,40 @@ type Config struct {
 	// ProposeBranch overrides which worktree /vector:propose creates a change in
 	// (bare+worktree layouts); falls back to Branch when empty.
 	ProposeBranch string `json:"proposeBranch,omitempty"`
+	// ApplyMode controls how much /vector:apply decides vs asks when selecting the
+	// next work-item: "auto" (pick and start), "ask" (propose a pick, confirm) or
+	// "always-ask" (always show candidates). Empty defaults to ApplyModeAsk.
+	ApplyMode ApplyMode `json:"applyMode,omitempty"`
 	// KitVersion records the binary/kit version that last seeded this repo's
 	// .claude artifacts, so `vector update` can report staleness. Stamped by
 	// `vector init` and `vector update`.
 	KitVersion string `json:"kitVersion,omitempty"`
+}
+
+// ApplyMode controls /vector:apply autonomy (docs/apply-design.md §3).
+type ApplyMode string
+
+const (
+	ApplyModeAuto      ApplyMode = "auto"       // pick the work-item and start, no prompt
+	ApplyModeAsk       ApplyMode = "ask"        // propose a pick and confirm (default)
+	ApplyModeAlwaysAsk ApplyMode = "always-ask" // always show candidates and choose
+)
+
+// Valid reports whether m is a known apply mode.
+func (m ApplyMode) Valid() bool {
+	switch m {
+	case ApplyModeAuto, ApplyModeAsk, ApplyModeAlwaysAsk:
+		return true
+	}
+	return false
+}
+
+// ResolvedApplyMode returns the configured mode or the ApplyModeAsk default.
+func (c *Config) ResolvedApplyMode() ApplyMode {
+	if c.ApplyMode.Valid() {
+		return c.ApplyMode
+	}
+	return ApplyModeAsk
 }
 
 // DefaultChangesPath is used when no convention declares one.

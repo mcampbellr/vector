@@ -39,6 +39,8 @@ func main() {
 		err = runUpdate(os.Args[2:])
 	case "sync":
 		err = runSync(os.Args[2:])
+	case "serve":
+		err = runServe(os.Args[2:])
 	case "spec":
 		err = runSpec(os.Args[2:])
 	case "version", "--version", "-v":
@@ -504,6 +506,16 @@ func runSpec(args []string) error {
 		return runSpecList(args[1:])
 	case "propose":
 		return runSpecPropose(args[1:])
+	case "apply":
+		return runSpecApply(args[1:])
+	case "status":
+		return runSpecStatus(args[1:])
+	case "close":
+		return runSpecClose(args[1:])
+	case "archive":
+		return runSpecArchive(args[1:])
+	case "next":
+		return runSpecNext(args[1:])
 	default:
 		return fmt.Errorf("unknown spec subcommand %q", args[0])
 	}
@@ -778,8 +790,14 @@ usage:
   vector init [--repo-root path] [--force] [--dry-run] [--json]
   vector update [--repo-root path] [--dry-run] [--json]
   vector sync [--repo-root path] [--reconcile] [--dry-run] [--json]
+  vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
+  vector spec apply <id> [--json]
+  vector spec status <id> <status> [--reason ...] [--json]
+  vector spec close <id> [--json]
+  vector spec archive <id> [--json]
+  vector spec next [--json]
   vector spec list
   vector version
 `)
