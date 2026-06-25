@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "release-standup-digest",
+  "title": "Cierre de standup-digest — embed, reinstall y UAT",
+  "status": "closed",
+  "priority": "high",
+  "repo": "",
+  "specDoc": ".vector/specs/release-standup-digest/spec.md",
+  "openspec": {
+    "change": "release-standup-digest",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-25T17:23:27.387436Z",
+  "startedAt": "2026-06-25T17:29:17.591737Z",
+  "reviewAt": "2026-06-25T17:34:03.328956Z",
+  "closedAt": "2026-06-25T17:46:13.914882Z",
+  "updatedAt": "2026-06-25T17:46:13.914882Z"
+}

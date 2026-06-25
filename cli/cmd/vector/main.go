@@ -263,6 +263,17 @@ func runSync(args []string) error {
 	actor, now := resolveActor(), time.Now()
 	seen := make(map[string]bool, len(changes)+len(specDocs))
 
+	// Worktree-folder ticket index (detectTicket's last-resort fallback), computed
+	// once per sync. Only meaningful when a default provider is set; empty otherwise
+	// or when the layout is not worktree-based.
+	var branchKeys map[string]string
+	if cfg.ResolvedDefaultTicketProvider() != "" {
+		branchKeys, err = cfg.WorktreeTicketKeys(root)
+		if err != nil {
+			return fmt.Errorf("index worktree ticket keys: %w", err)
+		}
+	}
+
 	// Index spec docs by slug so a change can point its specDoc at the authoritative
 	// doc (same resolved branch), not an arbitrary worktree.
 	specBySlug := make(map[string]config.SpecDoc, len(specDocs))
@@ -293,6 +304,10 @@ func runSync(args []string) error {
 			specDocRel = c.Dir
 		}
 
+		// best-effort auto-link (auto:true), nil if none; the default provider +
+		// known prefixes enable bare-key detection when configured.
+		ticket := detectTicket(c, root, cfg.ResolvedDefaultTicketProvider(), cfg.NormalizedTicketKeyPrefixes(), branchKeys[c.Name])
+
 		existing, rerr := store.ReadSpec(c.Name)
 		switch {
 		case rerr != nil && !errors.Is(rerr, os.ErrNotExist):
@@ -306,6 +321,7 @@ func runSync(args []string) error {
 					OpenSpec:   openSpec,
 					NeedsUAT:   needsUAT,
 					SpecDocRel: specDocRel,
+					Ticket:     ticket,
 					Actor:      actor,
 					Now:        now,
 				}); err != nil {
@@ -327,6 +343,13 @@ func runSync(args []string) error {
 			changed, err := store.ReconcileStatus(c.Name, status, openSpec, needsUAT, actor, now)
 			if err != nil {
 				return err
+			}
+			// Reconcile the ticket too: LinkSpec is idempotent and an auto link
+			// never overwrites a manual one.
+			if ticket != nil {
+				if _, err := store.LinkSpec(c.Name, *ticket, actor, now); err != nil {
+					return err
+				}
 			}
 			action := "unchanged"
 			if changed {
@@ -511,7 +534,7 @@ func humanizeSlug(slug string) string {
 
 func runSpec(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vector spec <create|list|propose> ...")
+		return fmt.Errorf("usage: vector spec <create|list|propose|apply|link|status|close|archive|next|worklog> ...")
 	}
 	switch args[0] {
 	case "create":
@@ -522,6 +545,8 @@ func runSpec(args []string) error {
 		return runSpecPropose(args[1:])
 	case "apply":
 		return runSpecApply(args[1:])
+	case "link":
+		return runSpecLink(args[1:])
 	case "status":
 		return runSpecStatus(args[1:])
 	case "close":
@@ -655,6 +680,7 @@ func runSpecCreate(args []string) error {
 	priority := fs.String("priority", "normal", "urgent|high|normal|low")
 	status := fs.String("status", "draft", "draft|open|in-progress|needs-attention|review|closed|archived")
 	bodyFile := fs.String("body-file", "", "path to the spec doc body, or - for stdin")
+	ticketJSON := fs.String("ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
 	if err := fs.Parse(args); err != nil {
@@ -665,6 +691,10 @@ func runSpecCreate(args []string) error {
 	}
 
 	body, err := readBody(*bodyFile)
+	if err != nil {
+		return err
+	}
+	ticket, err := parseTicketFlag(*ticketJSON)
 	if err != nil {
 		return err
 	}
@@ -695,6 +725,7 @@ func runSpecCreate(args []string) error {
 		Priority:       state.Priority(*priority),
 		Status:         state.Status(*status),
 		Body:           body,
+		Ticket:         ticket,
 		Actor:          resolveActor(),
 		Now:            time.Now(),
 		SpecDocAbsPath: docAbs,
@@ -809,9 +840,10 @@ usage:
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector standup [--since 24h|today|7d] [--json]
   vector standup commit --digest-file -|path
-  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--json]
+  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
+  vector spec link <id> <ref> [--provider jira|linear|github|other] [--json]
   vector spec status <id> <status> [--reason ...] [--json]
   vector spec close <id> [--json]
   vector spec archive <id> [--json]

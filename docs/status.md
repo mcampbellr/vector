@@ -1,11 +1,19 @@
 # Vector — Estado del proyecto (handoff / contexto de continuación)
 
-> Punto de retome rápido. Última actualización: 2026-06-25 (sesión board web + apply + needsUat).
-> Leé esto + `docs/Home.md` al empezar una sesión. El detalle de cada decisión está en los docs enlazados.
+> Punto de retome rápido. Última actualización: 2026-06-25 (sesión board web + apply + needsUat +
+> standup-digest + release/UAT). Leé esto + `docs/Home.md` al empezar una sesión. El detalle de
+> cada decisión está en los docs enlazados.
 >
-> **Rama abierta:** `feat/board-panel-and-apply` (8 commits, **no** mergeada a `main` ni pusheada).
-> Cubre: board panel (serve+SPA), máquina de estados + transiciones, `/vector:apply`, y la feature
-> `needsUat`. Gate verde. Para retomar: `git checkout feat/board-panel-and-apply`.
+> **Rama abierta:** `feat/board-panel-and-apply` (**no** mergeada a `main` ni pusheada).
+> Cubre: board panel (serve+SPA), máquina de estados + transiciones, `/vector:apply`, la feature
+> `needsUat`, y la feature **standup-digest** (`work.logged`, `/vector:standup`, StandupView +
+> SpecTimeline). Gate verde. Para retomar: `git checkout feat/board-panel-and-apply`.
+>
+> **Standup-digest:** implementado y verificado. El binario de `~/.local/bin/vector` quedó
+> recompilado con la SPA embebida (StandupView) + subcomandos `standup`/`worklog`, y el UAT
+> exhaustivo pasó (ver `docs/uat.md`). `add-standup-digest` está en `review`, **listo para
+> `/vector:close`**; el cierre (`release-standup-digest`) en `review` tras este apply. El merge de
+> la rama a `main` sigue pendiente (paso aparte). Tras tocar comandos/agents: `/reload-plugins`.
 
 ## Qué es Vector (en una línea)
 

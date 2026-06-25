@@ -239,6 +239,127 @@ func TestListSpecs(t *testing.T) {
 	}
 }
 
+func TestCreateSpecWithTicket(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	spec, err := store.CreateSpec(CreateSpecParams{
+		Title:  "Linked at birth",
+		Actor:  "tester",
+		Now:    fixedNow(),
+		Ticket: &Ticket{Provider: TicketJira, Key: "ACME-1", URL: "https://acme.atlassian.net/browse/ACME-1", Auto: true},
+	})
+	if err != nil {
+		t.Fatalf("CreateSpec: %v", err)
+	}
+	if spec.Ticket == nil || spec.Ticket.Key != "ACME-1" || !spec.Ticket.Auto {
+		t.Fatalf("ticket not persisted on returned spec: %+v", spec.Ticket)
+	}
+	onDisk, err := store.ReadSpec(spec.ID)
+	if err != nil {
+		t.Fatalf("ReadSpec: %v", err)
+	}
+	if onDisk.Ticket == nil || onDisk.Ticket.Provider != TicketJira {
+		t.Fatalf("ticket not on disk: %+v", onDisk.Ticket)
+	}
+
+	// CreateSpec emits spec.created AND spec.linked when a ticket is seeded.
+	events := readEvents(t, filepath.Join(root, ".vector", "local", "activity.jsonl"))
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want 2 (created + linked)", len(events))
+	}
+	if events[0].Type != EvtSpecCreated || events[1].Type != EvtSpecLinked {
+		t.Fatalf("event order = [%s,%s], want [spec.created, spec.linked]", events[0].Type, events[1].Type)
+	}
+	var data SpecLinkedData
+	if err := json.Unmarshal(events[1].Data, &data); err != nil {
+		t.Fatalf("decode spec.linked: %v", err)
+	}
+	if data.Provider != TicketJira || data.Key != "ACME-1" || !data.Auto {
+		t.Errorf("unexpected spec.linked data: %+v", data)
+	}
+}
+
+func TestLinkSpec(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "feat", Title: "Feat", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manual link writes the ticket and emits spec.linked.
+	manual := Ticket{Provider: TicketLinear, Key: "ENG-7", URL: "https://linear.app/acme/issue/ENG-7", Auto: false}
+	changed, err := store.LinkSpec("feat", manual, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("LinkSpec: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true on first link")
+	}
+	onDisk, _ := store.ReadSpec("feat")
+	if onDisk.Ticket == nil || onDisk.Ticket.Key != "ENG-7" {
+		t.Fatalf("ticket not persisted: %+v", onDisk.Ticket)
+	}
+
+	// Idempotent: identical link is a no-op (no event, changed=false).
+	changed, err = store.LinkSpec("feat", manual, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("LinkSpec idempotent: %v", err)
+	}
+	if changed {
+		t.Fatal("expected changed=false re-linking identical ticket")
+	}
+
+	// Precedence: an auto link never overwrites the manual one.
+	auto := Ticket{Provider: TicketJira, Key: "ACME-99", URL: "https://acme.atlassian.net/browse/ACME-99", Auto: true}
+	changed, err = store.LinkSpec("feat", auto, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("LinkSpec auto: %v", err)
+	}
+	if changed {
+		t.Fatal("expected changed=false: auto must not clobber a manual link")
+	}
+	onDisk, _ = store.ReadSpec("feat")
+	if onDisk.Ticket.Key != "ENG-7" {
+		t.Errorf("manual link overwritten by auto: %+v", onDisk.Ticket)
+	}
+
+	// A new manual link DOES replace an existing one.
+	replacement := Ticket{Provider: TicketGitHub, Key: "acme/api#3", URL: "https://github.com/acme/api/issues/3"}
+	changed, err = store.LinkSpec("feat", replacement, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("LinkSpec replace: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true replacing with a new manual link")
+	}
+
+	// Events: created + linked(manual) + linked(replacement) = 3 (idempotent and
+	// precedence-blocked links emit nothing).
+	events := readEvents(t, filepath.Join(root, ".vector", "local", "activity.jsonl"))
+	linked := 0
+	for _, e := range events {
+		if e.Type == EvtSpecLinked {
+			linked++
+		}
+	}
+	if linked != 2 {
+		t.Errorf("spec.linked event count = %d, want 2", linked)
+	}
+}
+
+func TestLinkSpecValidates(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "feat", Title: "Feat", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LinkSpec("feat", Ticket{Provider: TicketJira}, "t", fixedNow()); err == nil {
+		t.Error("expected error linking a ticket with no key")
+	}
+	if _, err := store.LinkSpec("missing", Ticket{Provider: TicketJira, Key: "X-1"}, "t", fixedNow()); err == nil {
+		t.Error("expected error linking a nonexistent spec")
+	}
+}
+
 func readEvents(t *testing.T, path string) []Event {
 	t.Helper()
 	f, err := os.Open(path)

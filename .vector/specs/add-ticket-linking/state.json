@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "add-ticket-linking",
+  "title": "Linkear specs a tickets externos",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "vector",
+  "specDoc": ".vector/specs/add-ticket-linking/spec.md",
+  "openspec": {
+    "change": "add-ticket-linking",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-25T16:00:23.307427Z",
+  "startedAt": "2026-06-25T17:41:58.510614Z",
+  "reviewAt": "2026-06-25T17:49:49.167976Z",
+  "closedAt": "2026-06-25T21:36:26.453778Z",
+  "updatedAt": "2026-06-25T21:36:26.453778Z"
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "extend-ticket-auto-detection",
+  "title": "Auto-detección de tickets por key con defaults configurables",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "vector",
+  "specDoc": ".vector/specs/extend-ticket-auto-detection/spec.md",
+  "openspec": {
+    "change": "extend-ticket-auto-detection",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-25T18:16:04.247669Z",
+  "startedAt": "2026-06-25T18:28:28.19798Z",
+  "reviewAt": "2026-06-25T18:34:58.66602Z",
+  "closedAt": "2026-06-25T21:36:26.436638Z",
+  "updatedAt": "2026-06-25T21:36:26.436638Z"
+}

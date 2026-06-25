@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "detect-ticket-from-worktree-name",
+  "title": "Detectar el ticket del worktree por slug en sync",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "vector",
+  "specDoc": ".vector/specs/detect-ticket-from-worktree-name/spec.md",
+  "openspec": {
+    "change": "detect-ticket-from-worktree-name",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-25T19:09:38.317871Z",
+  "startedAt": "2026-06-25T19:15:38.814618Z",
+  "reviewAt": "2026-06-25T19:21:02.871456Z",
+  "closedAt": "2026-06-25T19:25:20.914908Z",
+  "updatedAt": "2026-06-25T19:25:20.914908Z"
+}

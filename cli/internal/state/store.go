@@ -63,6 +63,12 @@ type CreateSpecParams struct {
 	// NeedsUAT marks the card as awaiting manual UAT. Only honored when Status is
 	// review (the invariant: the flag is a refinement of review, nothing else).
 	NeedsUAT bool
+
+	// Ticket, when set, seeds the spec's external-tracker link at creation time
+	// (e.g. a ref detected in a /vector:raw idea, or sync's conservative scan). It
+	// is persisted on state.json and also emits a spec.linked event alongside
+	// spec.created. Auto-detected seeds carry Auto:true.
+	Ticket *Ticket
 }
 
 // CreateSpec writes a new spec's state.json (status open) and spec.md, and
@@ -123,6 +129,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		SpecDoc:       docRel,
 		OpenSpec:      p.OpenSpec,
 		NeedsUAT:      p.NeedsUAT && status == StatusReview,
+		Ticket:        p.Ticket,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -166,7 +173,76 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if spec.Ticket != nil {
+		if err := s.appendLinkedEvent(spec, now, p.Actor); err != nil {
+			return nil, err
+		}
+	}
 	return spec, nil
+}
+
+// LinkSpec links a spec to an external ticket: lock → read → idempotency &
+// precedence → atomic write + spec.linked event. Re-linking the same
+// provider+key+url is a no-op returning (false, nil). An auto-detected ticket
+// (ticket.Auto) never overwrites a manually-linked one; a manual link always
+// wins and may replace an existing link. The spec's lifecycle status is
+// untouched — linking is metadata, not a transition.
+func (s *Store) LinkSpec(id string, ticket Ticket, actor string, now time.Time) (bool, error) {
+	if ticket.Provider == "" || ticket.Key == "" {
+		return false, errors.New("link requires a ticket provider and key")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return false, err
+	}
+	if cur := spec.Ticket; cur != nil {
+		// Idempotent: identical link is a no-op (no re-emit).
+		if cur.Provider == ticket.Provider && cur.Key == ticket.Key && cur.URL == ticket.URL {
+			return false, nil
+		}
+		// Precedence: auto never clobbers a manual link.
+		if ticket.Auto && !cur.Auto {
+			return false, nil
+		}
+	}
+
+	now = now.UTC()
+	linked := ticket
+	spec.Ticket = &linked
+	spec.UpdatedAt = now
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return false, err
+	}
+	if err := s.appendLinkedEvent(spec, now, actor); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// appendLinkedEvent appends a spec.linked event for spec.Ticket. The caller
+// holds s.mu (it runs inside CreateSpec/LinkSpec while the lock is held).
+func (s *Store) appendLinkedEvent(spec *SpecState, now time.Time, actor string) error {
+	data, err := json.Marshal(SpecLinkedData{
+		Provider: spec.Ticket.Provider,
+		Key:      spec.Ticket.Key,
+		URL:      spec.Ticket.URL,
+		Auto:     spec.Ticket.Auto,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal spec.linked data: %w", err)
+	}
+	return s.appendEvent(Event{
+		V:      EventVersion,
+		TS:     now,
+		Type:   EvtSpecLinked,
+		SpecID: spec.ID,
+		Repo:   spec.Repo,
+		Actor:  actor,
+		Data:   data,
+	})
 }
 
 // ReconcileStatus updates a sync-owned spec's status and OpenSpec artifacts to

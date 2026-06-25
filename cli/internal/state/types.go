@@ -63,6 +63,15 @@ const (
 	TicketOther  TicketProvider = "other"
 )
 
+// Valid reports whether p is a known ticket provider.
+func (p TicketProvider) Valid() bool {
+	switch p {
+	case TicketJira, TicketLinear, TicketGitHub, TicketOther:
+		return true
+	}
+	return false
+}
+
 // SpecState is the committed, per-spec source of truth at
 // .vector/specs/<id>/state.json. It is slow-changing so merge conflicts stay
 // local to the spec being edited. Token economics are NOT stored here — they

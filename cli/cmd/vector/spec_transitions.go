@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -54,6 +56,84 @@ func runSpecApply(args []string) error {
 		return printJSON(map[string]string{"id": updated.ID, "status": string(updated.Status), "change": change})
 	}
 	fmt.Printf("applied spec %q (status: open → in-progress)\n  change: %s\n", updated.ID, change)
+	return nil
+}
+
+// runSpecLink links a spec to an external ticket (Jira/Linear/GitHub). It parses
+// the ref, infers the provider (or honors --provider), and persists a manual link
+// (auto:false) via Store.LinkSpec — metadata only, no status change. An ambiguous
+// bare key with no --provider yields an actionable error rather than a guess.
+func runSpecLink(args []string) error {
+	id, rest := leadingID(args)
+	// A second leading positional is the ticket ref (e.g. `spec link feat ACME-1`).
+	var ref string
+	if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+		ref, rest = rest[0], rest[1:]
+	}
+	fs := flag.NewFlagSet("spec link", flag.ContinueOnError)
+	idFlag := fs.String("id", "", "spec id to link (or pass it as the first argument)")
+	refFlag := fs.String("ref", "", "ticket ref: a URL, <provider>:<key>, or a bare key with --provider")
+	provider := fs.String("provider", "", "force the tracker provider: jira|linear|github|other")
+	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	if id == "" {
+		id = *idFlag
+	}
+	if ref == "" {
+		ref = *refFlag
+	}
+	if id == "" || ref == "" {
+		return fmt.Errorf("usage: vector spec link <id> <ref> [--provider jira|linear|github|other]")
+	}
+
+	// When --provider is omitted, fall back to the repo's defaultTicketProvider so
+	// a bare key (e.g. MH-1592) resolves instead of erroring as ambiguous. A missing
+	// config is fine (no default); an invalid/corrupt one surfaces.
+	forced := *provider
+	if forced == "" {
+		root, rerr := resolveRepoRoot(*repoRoot)
+		if rerr != nil {
+			return rerr
+		}
+		switch cfg, cerr := config.Load(root); {
+		case cerr == nil:
+			forced = string(cfg.ResolvedDefaultTicketProvider())
+		case !errors.Is(cerr, os.ErrNotExist):
+			return cerr
+		}
+	}
+
+	ticket, err := parseRef(ref, forced)
+	if err != nil {
+		return err
+	}
+	ticket.Auto = false // manual links are always authoritative
+
+	store, err := openStore(*repoRoot)
+	if err != nil {
+		return err
+	}
+	changed, err := store.LinkSpec(id, ticket, resolveActor(), time.Now())
+	if err != nil {
+		return err
+	}
+	if *jsonOut {
+		return printJSON(map[string]string{
+			"id":       id,
+			"provider": string(ticket.Provider),
+			"key":      ticket.Key,
+			"url":      ticket.URL,
+			"changed":  fmt.Sprintf("%t", changed),
+		})
+	}
+	if !changed {
+		fmt.Printf("spec %q already linked to %s %s (no change)\n", id, ticket.Provider, ticket.Key)
+		return nil
+	}
+	fmt.Printf("linked spec %q → %s %s\n", id, ticket.Provider, ticket.Key)
 	return nil
 }
 
