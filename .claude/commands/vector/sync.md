@@ -37,6 +37,25 @@ living only in its own worktree is still seen. `specDoc` points to the canonical
 `supersededBy: <change-slug>` to that spec's frontmatter (deterministic; ask the user and persist
 it there rather than guessing).
 
+## First sync: link specs to differently-named changes (the binary can't guess)
+
+A spec implemented by a change with a DIFFERENT slug can't be matched by the binary — name
+similarity is unsafe (false positives) and there is no reliable structural link. Resolve these
+ONCE, here in the command, so the binary stays deterministic and later syncs are silent:
+
+1. `vector sync --dry-run --json` → note the specs that would become `draft`.
+2. For each such draft spec: read its `spec.md`, and scan the changes (every worktree's
+   `openspec/changes/*` incl. `archive/`) for one that **implements that capability**, judging by
+   the change's proposal/spec-delta **content** — never by name resemblance.
+3. Found a confident match → propose it to the user (`AskUserQuestion`, batched). On confirmation,
+   write `supersededBy: <change-slug>` into the spec's frontmatter (the canonical copy: prefer
+   `code/<branch>/docs/specs/<slug>/spec.md` where `branch` is from `.vector/config.json`; add a
+   `---`-fenced YAML block at the very top if none exists). This is a user-repo edit — only with
+   the user's confirmation.
+4. No confident match → leave it as a draft. Never invent a link.
+5. Run the real `vector sync`. Superseded specs are now suppressed deterministically, and the
+   decision lives in the spec, so future syncs need no prompting.
+
 ## Steps
 
 1. **Preview** what would change:
