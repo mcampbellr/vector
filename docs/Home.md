@@ -3,6 +3,9 @@
 Índice de navegación. Abre el **Graph view** (`⌘ G`) para ver las relaciones entre notas
 (coloreadas por tema).
 
+> **Retomando una sesión?** Empezá por [[status]] — estado actual, qué está construido,
+> próximos pasos y gotchas.
+
 ## Visión y producto
 - [[vision]] — visión general: idea cruda → workflow V1, principios, comandos
 - [[vision-raw]] — captura cruda original
