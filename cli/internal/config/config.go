@@ -74,59 +74,6 @@ func (c *Config) changesTemplate() string {
 	return DefaultChangesPath
 }
 
-// NeedsBranch reports whether any path template uses the [branch] placeholder,
-// so a concrete Branch must be resolved before scanning.
-func (c *Config) NeedsBranch() bool {
-	return strings.Contains(c.changesTemplate(), branchPlaceholder) ||
-		strings.Contains(c.SpecPath, branchPlaceholder)
-}
-
-// ChangesDir returns the absolute OpenSpec changes directory, resolving [branch]
-// via Branch. Callers must ensure Branch is set when NeedsBranch is true.
-func (c *Config) ChangesDir(repoRoot string) string {
-	p := strings.ReplaceAll(c.changesTemplate(), branchPlaceholder, c.Branch)
-	return filepath.Join(repoRoot, filepath.FromSlash(p))
-}
-
-// BranchCandidates lists worktree branches that have an OpenSpec changes tree,
-// by globbing the [branch] placeholder in ChangesPath. Empty when ChangesPath
-// has no [branch] placeholder. Sorted and de-duplicated.
-func (c *Config) BranchCandidates(repoRoot string) ([]string, error) {
-	tmpl := c.changesTemplate()
-	if !strings.Contains(tmpl, branchPlaceholder) {
-		return nil, nil
-	}
-	glob := strings.ReplaceAll(tmpl, branchPlaceholder, "*")
-	re, err := compileTemplate(tmpl)
-	if err != nil {
-		return nil, err
-	}
-	idx := re.SubexpIndex("branch")
-	if idx < 0 {
-		return nil, nil
-	}
-	matches, err := filepath.Glob(filepath.Join(repoRoot, filepath.FromSlash(glob)))
-	if err != nil {
-		return nil, fmt.Errorf("glob changes dirs: %w", err)
-	}
-	set := map[string]bool{}
-	for _, m := range matches {
-		rel, err := filepath.Rel(repoRoot, m)
-		if err != nil {
-			continue
-		}
-		if sm := re.FindStringSubmatch(filepath.ToSlash(rel)); sm != nil {
-			set[sm[idx]] = true
-		}
-	}
-	out := make([]string, 0, len(set))
-	for b := range set {
-		out = append(out, b)
-	}
-	sort.Strings(out)
-	return out, nil
-}
-
 // Path returns the absolute path to a repo's .vector/config.json.
 func Path(repoRoot string) string {
 	return filepath.Join(repoRoot, ".vector", "config.json")
@@ -187,31 +134,35 @@ func Resolve(repoRoot string) *Config {
 	}
 }
 
-// SpecDoc is an authored spec document found at the repo's spec convention.
+// SpecDoc is an authored spec document found at the repo's spec convention. A
+// slug maps to ONE SpecDoc even when the file is checked out in several worktrees
+// (Rel/Branch are the canonical copy).
 type SpecDoc struct {
-	Slug string // the <slug> segment of SpecPath
-	Rel  string // repo-relative path to the doc
+	Slug         string // the <slug> segment of SpecPath
+	Rel          string // repo-relative path to the canonical copy
+	Branch       string // worktree of the canonical copy ("" for non-worktree repos)
+	SupersededBy string // frontmatter supersededBy: this spec is covered by that change
+	Superseded   bool   // SupersededBy set, or frontmatter status is superseded/implemented
 }
 
-// FindSpecDocs scans the repo's spec convention for authored spec docs (e.g.
-// /idea specs with no OpenSpec change) and returns each with its slug. Returns
-// nil unless SpecStore is convention — the .vector fallback has no external specs
-// to discover beyond what /vector:raw already tracked.
+// FindSpecDocs scans the repo's spec convention for authored spec docs and
+// collapses worktree copies of the same slug into ONE canonical SpecDoc (identity
+// is the slug, never (worktree, slug)). The canonical copy prefers the configured
+// Branch, then a worktree named after the slug (an in-progress idea/change not yet
+// merged), then the lexically-first one — so a spec that only lives in its own
+// worktree is never hidden. Frontmatter supersededBy/status is parsed so callers
+// can suppress specs already represented by a change. Returns nil unless SpecStore
+// is convention.
 func (c *Config) FindSpecDocs(repoRoot string) ([]SpecDoc, error) {
 	if c.SpecStore != StoreConvention {
 		return nil, nil
-	}
-	if strings.Contains(c.SpecPath, branchPlaceholder) && c.Branch == "" {
-		return nil, fmt.Errorf("specPath uses [branch] but no branch is resolved (set it in config or pass --branch)")
 	}
 	filename := c.SpecFilename
 	if filename == "" {
 		filename = defaultSpecFilename
 	}
-	// Resolve [branch] to the concrete worktree first, so the match is deterministic.
-	tmpl := strings.ReplaceAll(path.Join(c.SpecPath, filename), branchPlaceholder, c.Branch)
-
-	glob := strings.ReplaceAll(tmpl, "<slug>", "*")
+	tmpl := path.Join(c.SpecPath, filename)
+	glob := strings.NewReplacer("<slug>", "*", branchPlaceholder, "*").Replace(tmpl)
 	re, err := compileTemplate(tmpl)
 	if err != nil {
 		return nil, err
@@ -220,12 +171,14 @@ func (c *Config) FindSpecDocs(repoRoot string) ([]SpecDoc, error) {
 	if slugIdx < 0 {
 		return nil, nil // no <slug> placeholder → nothing to extract
 	}
+	branchIdx := re.SubexpIndex("branch")
 
 	matches, err := filepath.Glob(filepath.Join(repoRoot, filepath.FromSlash(glob)))
 	if err != nil {
 		return nil, fmt.Errorf("glob spec docs: %w", err)
 	}
-	var docs []SpecDoc
+
+	bySlug := map[string][]specCopy{}
 	for _, m := range matches {
 		rel, err := filepath.Rel(repoRoot, m)
 		if err != nil {
@@ -236,9 +189,123 @@ func (c *Config) FindSpecDocs(repoRoot string) ([]SpecDoc, error) {
 		if sm == nil {
 			continue
 		}
-		docs = append(docs, SpecDoc{Slug: sm[slugIdx], Rel: relSlash})
+		branch := ""
+		if branchIdx >= 0 {
+			branch = sm[branchIdx]
+		}
+		bySlug[sm[slugIdx]] = append(bySlug[sm[slugIdx]], specCopy{branch: branch, rel: relSlash})
+	}
+
+	slugs := make([]string, 0, len(bySlug))
+	for s := range bySlug {
+		slugs = append(slugs, s)
+	}
+	sort.Strings(slugs)
+
+	docs := make([]SpecDoc, 0, len(slugs))
+	for _, slug := range slugs {
+		canon := pickCanonical(bySlug[slug], c.Branch, slug)
+		sup, superseded := parseSupersede(filepath.Join(repoRoot, filepath.FromSlash(canon.rel)))
+		docs = append(docs, SpecDoc{Slug: slug, Rel: canon.rel, Branch: canon.branch, SupersededBy: sup, Superseded: superseded})
 	}
 	return docs, nil
+}
+
+// specCopy is one physical copy of a spec doc (in a given worktree).
+type specCopy struct{ branch, rel string }
+
+// pickCanonical chooses the canonical copy of a slug: prefer the configured
+// branch, then a worktree named after the slug, then the lexically-first branch.
+func pickCanonical(copies []specCopy, preferBranch, slug string) specCopy {
+	sort.Slice(copies, func(i, j int) bool { return copies[i].branch < copies[j].branch })
+	if preferBranch != "" {
+		for _, c := range copies {
+			if c.branch == preferBranch {
+				return c
+			}
+		}
+	}
+	for _, c := range copies {
+		if c.branch == slug {
+			return c
+		}
+	}
+	return copies[0]
+}
+
+// parseSupersede reads a spec doc's leading YAML frontmatter for supersededBy /
+// status. No frontmatter (or absent keys) → not superseded.
+func parseSupersede(docPath string) (supersededBy string, superseded bool) {
+	b, err := os.ReadFile(docPath)
+	if err != nil {
+		return "", false
+	}
+	lines := strings.Split(string(b), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return "", false
+	}
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			break
+		}
+		key, val, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "supersededBy":
+			supersededBy = strings.TrimSpace(val)
+		case "status":
+			switch strings.ToLower(strings.TrimSpace(val)) {
+			case "superseded", "implemented":
+				superseded = true
+			}
+		}
+	}
+	if supersededBy != "" {
+		superseded = true
+	}
+	return supersededBy, superseded
+}
+
+// ChangesDir is one OpenSpec changes directory (one per worktree under [branch]).
+type ChangesDir struct {
+	Branch string // worktree name ("" for non-worktree repos)
+	Dir    string // absolute changes directory
+}
+
+// ChangesDirs returns each OpenSpec changes directory: one per worktree when the
+// changes template uses [branch] (so in-progress changes living only in their own
+// worktree are visible), else a single directory.
+func (c *Config) ChangesDirs(repoRoot string) ([]ChangesDir, error) {
+	tmpl := c.changesTemplate()
+	if !strings.Contains(tmpl, branchPlaceholder) {
+		return []ChangesDir{{Dir: filepath.Join(repoRoot, filepath.FromSlash(tmpl))}}, nil
+	}
+	glob := strings.ReplaceAll(tmpl, branchPlaceholder, "*")
+	re, err := compileTemplate(tmpl)
+	if err != nil {
+		return nil, err
+	}
+	idx := re.SubexpIndex("branch")
+	matches, err := filepath.Glob(filepath.Join(repoRoot, filepath.FromSlash(glob)))
+	if err != nil {
+		return nil, fmt.Errorf("glob changes dirs: %w", err)
+	}
+	out := make([]ChangesDir, 0, len(matches))
+	for _, m := range matches {
+		branch := ""
+		if idx >= 0 {
+			if rel, err := filepath.Rel(repoRoot, m); err == nil {
+				if sm := re.FindStringSubmatch(filepath.ToSlash(rel)); sm != nil {
+					branch = sm[idx]
+				}
+			}
+		}
+		out = append(out, ChangesDir{Branch: branch, Dir: m})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Branch < out[j].Branch })
+	return out, nil
 }
 
 // compileTemplate compiles a forward-slash path template into an anchored regex

@@ -16,20 +16,26 @@ Your job is just to run it and report; **do not** author specs or edit `.vector/
 - `changes/<name>` active → `open` (0 tasks done) · `in-progress` (some) · `review` (all done).
 - `changes/archive/<date>-<name>` → `archived` (id keeps the change name, no date prefix).
 - **Standalone spec docs** at the repo's `spec-path` (e.g. a `/idea` spec with no OpenSpec
-  change, or a manual one) → `draft`, with `specDoc` pointing at the doc. If a change with the
-  same slug exists, the **change wins** (no duplicate).
+  change, or a manual one) → `draft`, with `specDoc` pointing at the canonical copy. A change
+  with the **same slug** wins (no duplicate).
+- **Superseded specs** — a spec whose frontmatter declares `supersededBy: <change-slug>` (or
+  `status: superseded|implemented`) is **skipped**: the change of a *different* slug already
+  represents that feature. This is the only cross-slug dedup — Vector never guesses by name.
 - `openspec/specs/` (applied capabilities) are **not** imported — they are the catalog, not work items.
 - Synced cards from changes carry `openspec{change,artifacts}` provenance; `/vector:raw` drafts
   and any card already present are **never** touched (re-sync only adds what's missing).
 
 ## Bare + worktree layouts (`[branch]`)
 
-If the repo's `spec-path` uses `[branch]` (a bare repo with per-branch worktrees), the binary
-resolves it to one authoritative worktree. It picks it from `base-branch` (migrated by init),
-a single candidate, or a `--branch` flag, and **persists** the choice to config. If several
-worktrees have `openspec/changes/` and none is chosen, `vector sync` **errors** listing the
-candidates instead of guessing — then ask the user which is authoritative (AskUserQuestion) and
-re-run `vector sync --branch <name>`.
+If `spec-path`/`changes-path` use `[branch]` (a bare repo with per-branch worktrees), the binary
+reads **every** worktree and collapses copies of the same slug/change to one card — identity is
+the slug, not `(worktree, slug)`. The `branch` (migrated from `base-branch`, or set via
+`--branch` and persisted) is only a **preference** for which copy is canonical (prefer it, then a
+worktree named after the slug, then lexically-first) — never a filter, so an in-progress change
+living only in its own worktree is still seen. `specDoc` points to the canonical copy (prefer
+`main`/the configured branch). To dedup an `/idea` spec against a differently-named change, add
+`supersededBy: <change-slug>` to that spec's frontmatter (deterministic; ask the user and persist
+it there rather than guessing).
 
 ## Steps
 
@@ -37,8 +43,8 @@ re-run `vector sync --branch <name>`.
    ```bash
    vector sync --dry-run
    ```
-   Report the counts (created / skipped / would-update) by status. If it errors with an
-   ambiguous-worktree message, ask the user which branch is authoritative, then pass `--branch`.
+   Report the counts (created / skipped / would-update) by status. To prefer a worktree as the
+   canonical copy (e.g. `main`), pass `--branch <name>` (persisted to config).
 2. **Apply**:
    ```bash
    vector sync --json

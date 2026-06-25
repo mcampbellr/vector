@@ -113,37 +113,102 @@ func TestFindSpecDocsWorktreeTemplate(t *testing.T) {
 	}
 }
 
-func TestFindSpecDocsRequiresResolvedBranch(t *testing.T) {
-	c := &Config{SpecPath: "code/[branch]/docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention}
-	if _, err := c.FindSpecDocs(t.TempDir()); err == nil {
-		t.Fatal("expected an error when [branch] is unresolved")
+func TestFindSpecDocsCollapsesWorktreesPreferBranch(t *testing.T) {
+	root := t.TempDir()
+	for _, wt := range []string{"main", "feat-a", "feat-b"} {
+		dir := filepath.Join(root, "code", wt, "docs", "specs", "shared")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "spec.md"), []byte("# shared"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := &Config{SpecPath: "code/[branch]/docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention, Branch: "main"}
+
+	docs, err := c.FindSpecDocs(root)
+	if err != nil {
+		t.Fatalf("FindSpecDocs: %v", err)
+	}
+	if len(docs) != 1 {
+		t.Fatalf("3 worktree copies should collapse to 1 doc, got %d: %+v", len(docs), docs)
+	}
+	if docs[0].Branch != "main" || docs[0].Rel != "code/main/docs/specs/shared/spec.md" {
+		t.Fatalf("canonical should prefer main: %+v", docs[0])
 	}
 }
 
-func TestBranchCandidatesAndChangesDir(t *testing.T) {
+func TestFindSpecDocsSeesInProgressWorktree(t *testing.T) {
+	root := t.TempDir()
+	// slug "feat-x" lives only in worktree "feat-x" (not yet merged to main).
+	dir := filepath.Join(root, "code", "feat-x", "docs", "specs", "feat-x")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spec.md"), []byte("# x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := &Config{SpecPath: "code/[branch]/docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention, Branch: "main"}
+
+	docs, err := c.FindSpecDocs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) != 1 || docs[0].Branch != "feat-x" {
+		t.Fatalf("an in-progress spec must be visible in its own worktree even when Branch=main: %+v", docs)
+	}
+}
+
+func TestFindSpecDocsSupersededFrontmatter(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "specs", "old-spec")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spec.md"), []byte("---\nsupersededBy: the-change\n---\n# old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := &Config{SpecPath: "docs/specs/<slug>/", SpecFilename: "spec.md", SpecStore: StoreConvention}
+
+	docs, err := c.FindSpecDocs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) != 1 || !docs[0].Superseded || docs[0].SupersededBy != "the-change" {
+		t.Fatalf("supersededBy frontmatter not parsed: %+v", docs)
+	}
+}
+
+func TestChangesDirsAcrossWorktrees(t *testing.T) {
 	root := t.TempDir()
 	for _, wt := range []string{"main", "feat-a"} {
 		if err := os.MkdirAll(filepath.Join(root, "code", wt, "openspec", "changes"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	c := &Config{ChangesPath: "code/[branch]/openspec/changes", SpecPath: "code/[branch]/docs/specs/<slug>/"}
+	c := &Config{ChangesPath: "code/[branch]/openspec/changes"}
 
-	if !c.NeedsBranch() {
-		t.Fatal("NeedsBranch should be true with [branch] templates")
-	}
-	cands, err := c.BranchCandidates(root)
+	dirs, err := c.ChangesDirs(root)
 	if err != nil {
-		t.Fatalf("BranchCandidates: %v", err)
+		t.Fatalf("ChangesDirs: %v", err)
 	}
-	if len(cands) != 2 || cands[0] != "feat-a" || cands[1] != "main" {
-		t.Fatalf("candidates = %v, want [feat-a main]", cands)
+	if len(dirs) != 2 || dirs[0].Branch != "feat-a" || dirs[1].Branch != "main" {
+		t.Fatalf("dirs = %+v, want feat-a then main", dirs)
 	}
+	if dirs[1].Dir != filepath.Join(root, "code", "main", "openspec", "changes") {
+		t.Fatalf("main changes dir = %q", dirs[1].Dir)
+	}
+}
 
-	c.Branch = "main"
-	want := filepath.Join(root, "code", "main", "openspec", "changes")
-	if got := c.ChangesDir(root); got != want {
-		t.Fatalf("ChangesDir = %q, want %q", got, want)
+func TestChangesDirsSimpleRepo(t *testing.T) {
+	root := t.TempDir()
+	c := &Config{} // no ChangesPath → default openspec/changes, single dir, no [branch]
+	dirs, err := c.ChangesDirs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirs) != 1 || dirs[0].Branch != "" || dirs[0].Dir != filepath.Join(root, "openspec", "changes") {
+		t.Fatalf("simple repo dirs = %+v", dirs)
 	}
 }
 

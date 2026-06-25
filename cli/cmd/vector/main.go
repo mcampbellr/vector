@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -229,12 +230,11 @@ func runSync(args []string) error {
 	if err != nil {
 		return fmt.Errorf("read .vector/config.json (run `vector init` first): %w", err)
 	}
-	branchPersisted, err := resolveSyncBranch(cfg, root, *branch)
-	if err != nil {
-		return err
-	}
+	branchPersisted := resolveSyncBranch(cfg, *branch)
 
-	changes, err := openspec.ReadChangesAt(cfg.ChangesDir(root), root)
+	// Read changes across every worktree (so in-progress changes living only in
+	// their own worktree are visible), collapsed to one canonical change per name.
+	changes, err := readCanonicalChanges(cfg, root)
 	if err != nil {
 		return err
 	}
@@ -337,6 +337,17 @@ func runSync(args []string) error {
 		if seen[d.Slug] {
 			continue // a change with this slug is authoritative
 		}
+		if d.Superseded {
+			// Covered by a change under a different slug (frontmatter supersededBy /
+			// status). The change provides the card; do not emit a draft.
+			seen[d.Slug] = true
+			msg := "skipped (superseded)"
+			if d.SupersededBy != "" {
+				msg = "skipped (superseded by " + d.SupersededBy + ")"
+			}
+			results = append(results, syncResult{d.Slug, "—", msg})
+			continue
+		}
 		seen[d.Slug] = true
 		existing, rerr := store.ReadSpec(d.Slug)
 		switch {
@@ -385,37 +396,69 @@ func runSync(args []string) error {
 	return nil
 }
 
-// resolveSyncBranch ensures cfg.Branch is set when path templates use [branch].
-// Precedence: an explicit --branch flag, then an already-stored branch, then a
-// sole auto-detected candidate. Multiple candidates with no choice is an error
-// (actionable, non-TTY safe) rather than a silent guess. Returns whether Branch
-// changed and should be persisted.
-func resolveSyncBranch(cfg *config.Config, root, branchFlag string) (bool, error) {
-	if !cfg.NeedsBranch() {
-		return false, nil
+// resolveSyncBranch records a --branch preference (the canonical-copy tie-breaker)
+// to config. Branch is a preference, not a filter: sync reads every worktree, so
+// an empty branch is never an error. Returns whether the config changed.
+func resolveSyncBranch(cfg *config.Config, branchFlag string) bool {
+	if branchFlag == "" || cfg.Branch == branchFlag {
+		return false
 	}
-	if branchFlag != "" {
-		if cfg.Branch == branchFlag {
-			return false, nil
-		}
-		cfg.Branch = branchFlag
-		return true, nil
-	}
-	if cfg.Branch != "" {
-		return false, nil
-	}
-	candidates, err := cfg.BranchCandidates(root)
+	cfg.Branch = branchFlag
+	return true
+}
+
+// readCanonicalChanges reads OpenSpec changes from every worktree and collapses
+// them to one canonical change per name (so the same change checked out in N
+// worktrees is one card, and an in-progress change in its own worktree is seen).
+func readCanonicalChanges(cfg *config.Config, root string) ([]openspec.Change, error) {
+	dirs, err := cfg.ChangesDirs(root)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	switch len(candidates) {
-	case 0:
-		return false, fmt.Errorf("config path templates use [branch] but no worktree with openspec/changes was found under %s; set `branch` in .vector/config.json or pass --branch", root)
-	case 1:
-		cfg.Branch = candidates[0]
-		return true, nil
+	byName := map[string]openspec.Change{}
+	for _, bd := range dirs {
+		cs, err := openspec.ReadChangesAt(bd.Dir, root)
+		if err != nil {
+			return nil, err
+		}
+		for _, ch := range cs {
+			ch.Branch = bd.Branch
+			if cur, ok := byName[ch.Name]; !ok || moreCanonical(ch, cur, cfg.Branch) {
+				byName[ch.Name] = ch
+			}
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for n := range byName {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]openspec.Change, 0, len(names))
+	for _, n := range names {
+		out = append(out, byName[n])
+	}
+	return out, nil
+}
+
+// moreCanonical reports whether candidate should replace current as the canonical
+// copy of a change: prefer the configured branch, then a worktree named after the
+// change, then the lexically-smaller branch.
+func moreCanonical(candidate, current openspec.Change, preferBranch string) bool {
+	cs, cur := canonScore(candidate, preferBranch), canonScore(current, preferBranch)
+	if cs != cur {
+		return cs > cur
+	}
+	return candidate.Branch < current.Branch
+}
+
+func canonScore(c openspec.Change, preferBranch string) int {
+	switch {
+	case preferBranch != "" && c.Branch == preferBranch:
+		return 2
+	case c.Branch == c.Name:
+		return 1
 	default:
-		return false, fmt.Errorf("ambiguous authoritative worktree: %d candidates have openspec/changes (%s) — re-run `vector sync --branch <name>` to choose and persist it", len(candidates), strings.Join(candidates, ", "))
+		return 0
 	}
 }
 

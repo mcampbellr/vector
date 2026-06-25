@@ -22,6 +22,7 @@ var (
 type Change struct {
 	Name        string // id: change dir name (date prefix stripped when archived)
 	Dir         string // repo-relative change directory
+	Branch      string // worktree it was read from ("" for non-worktree repos)
 	Archived    bool   // lives under changes/archive/
 	HasProposal bool
 	HasDesign   bool
