@@ -59,6 +59,16 @@ type CreateSpecParams struct {
 	// OpenSpec, when set, records the source change (used by `vector sync` to mark
 	// a card as derived from an OpenSpec change rather than a /vector:raw draft).
 	OpenSpec *OpenSpec
+
+	// NeedsUAT marks the card as awaiting manual UAT. Only honored when Status is
+	// review (the invariant: the flag is a refinement of review, nothing else).
+	NeedsUAT bool
+
+	// Ticket, when set, seeds the spec's external-tracker link at creation time
+	// (e.g. a ref detected in a /vector:raw idea, or sync's conservative scan). It
+	// is persisted on state.json and also emits a spec.linked event alongside
+	// spec.created. Auto-detected seeds carry Auto:true.
+	Ticket *Ticket
 }
 
 // CreateSpec writes a new spec's state.json (status open) and spec.md, and
@@ -118,6 +128,8 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		Repo:          p.Repo,
 		SpecDoc:       docRel,
 		OpenSpec:      p.OpenSpec,
+		NeedsUAT:      p.NeedsUAT && status == StatusReview,
+		Ticket:        p.Ticket,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -161,13 +173,82 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if spec.Ticket != nil {
+		if err := s.appendLinkedEvent(spec, now, p.Actor); err != nil {
+			return nil, err
+		}
+	}
 	return spec, nil
+}
+
+// LinkSpec links a spec to an external ticket: lock → read → idempotency &
+// precedence → atomic write + spec.linked event. Re-linking the same
+// provider+key+url is a no-op returning (false, nil). An auto-detected ticket
+// (ticket.Auto) never overwrites a manually-linked one; a manual link always
+// wins and may replace an existing link. The spec's lifecycle status is
+// untouched — linking is metadata, not a transition.
+func (s *Store) LinkSpec(id string, ticket Ticket, actor string, now time.Time) (bool, error) {
+	if ticket.Provider == "" || ticket.Key == "" {
+		return false, errors.New("link requires a ticket provider and key")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return false, err
+	}
+	if cur := spec.Ticket; cur != nil {
+		// Idempotent: identical link is a no-op (no re-emit).
+		if cur.Provider == ticket.Provider && cur.Key == ticket.Key && cur.URL == ticket.URL {
+			return false, nil
+		}
+		// Precedence: auto never clobbers a manual link.
+		if ticket.Auto && !cur.Auto {
+			return false, nil
+		}
+	}
+
+	now = now.UTC()
+	linked := ticket
+	spec.Ticket = &linked
+	spec.UpdatedAt = now
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return false, err
+	}
+	if err := s.appendLinkedEvent(spec, now, actor); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// appendLinkedEvent appends a spec.linked event for spec.Ticket. The caller
+// holds s.mu (it runs inside CreateSpec/LinkSpec while the lock is held).
+func (s *Store) appendLinkedEvent(spec *SpecState, now time.Time, actor string) error {
+	data, err := json.Marshal(SpecLinkedData{
+		Provider: spec.Ticket.Provider,
+		Key:      spec.Ticket.Key,
+		URL:      spec.Ticket.URL,
+		Auto:     spec.Ticket.Auto,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal spec.linked data: %w", err)
+	}
+	return s.appendEvent(Event{
+		V:      EventVersion,
+		TS:     now,
+		Type:   EvtSpecLinked,
+		SpecID: spec.ID,
+		Repo:   spec.Repo,
+		Actor:  actor,
+		Data:   data,
+	})
 }
 
 // ReconcileStatus updates a sync-owned spec's status and OpenSpec artifacts to
 // match its source change, appending a status.changed event (trigger "sync"). It
 // is a no-op returning (false, nil) when nothing differs.
-func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, actor string, now time.Time) (bool, error) {
+func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, needsUAT bool, actor string, now time.Time) (bool, error) {
 	if !status.Valid() {
 		return false, fmt.Errorf("invalid status %q", status)
 	}
@@ -178,7 +259,9 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ac
 	if err != nil {
 		return false, err
 	}
-	if spec.Status == status && openSpecEqual(spec.OpenSpec, openSpec) {
+	// NeedsUAT is a refinement of review; it never persists outside it.
+	wantUAT := needsUAT && status == StatusReview
+	if spec.Status == status && openSpecEqual(spec.OpenSpec, openSpec) && spec.NeedsUAT == wantUAT {
 		return false, nil
 	}
 
@@ -186,6 +269,7 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ac
 	now = now.UTC()
 	spec.Status = status
 	spec.OpenSpec = openSpec
+	spec.NeedsUAT = wantUAT
 	spec.UpdatedAt = now
 	setStatusTimestamp(spec, status, now)
 	if err := writeSpecFile(s.statePath(id), spec); err != nil {
@@ -270,6 +354,10 @@ func setStatusTimestamp(spec *SpecState, status Status, now time.Time) {
 		if spec.ReviewAt == nil {
 			spec.ReviewAt = &now
 		}
+	case StatusClosed:
+		if spec.ClosedAt == nil {
+			spec.ClosedAt = &now
+		}
 	case StatusArchived:
 		if spec.ArchivedAt == nil {
 			spec.ArchivedAt = &now
@@ -315,6 +403,32 @@ func (s *Store) ListSpecs() ([]*SpecState, error) {
 		specs = append(specs, spec)
 	}
 	return specs, nil
+}
+
+// ReadEvents returns every event in the local activity log, in file order.
+// A missing log is not an error: it returns an empty slice. Malformed lines are
+// skipped (the log is append-only and crash-safe, but tolerate partial tails).
+func (s *Store) ReadEvents() ([]Event, error) {
+	b, err := os.ReadFile(s.activityPath())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read activity log: %w", err)
+	}
+	lines := strings.Split(string(b), "\n")
+	events := make([]Event, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var e Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue // tolerate a torn final line
+		}
+		events = append(events, e)
+	}
+	return events, nil
 }
 
 // AppendEvent appends an event to the local activity log (serialized).

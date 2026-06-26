@@ -1,6 +1,6 @@
 # Workspace `web/` — Manifest
 
-> Carpeta scaffoldeada. **Sin código aún.** Declara el rol del workspace y enlaza las rules
+> SPA del board en marcha (slice inicial). Declara el rol del workspace y enlaza las rules
 > relevantes; no las duplica.
 
 ## Rol
@@ -11,12 +11,35 @@ usuario.
 
 ## Stack
 
-- React/Next (TypeScript). Output buildado **embebido** en el binario Go de `cli/`.
+- **React 19 + Vite + TypeScript**. Estilos: **CSS Modules + CSS variables** (tokens en
+  `src/styles/tokens.css`, derivados de `docs/kanban-ui-reference.md`). Iconos: `lucide-react`.
+  Sin librería de componentes (regla de bundle ligero). Output buildado **embebido** en el
+  binario Go de `cli/`.
+
+## Estructura
+
+- `src/types/board.ts` — contrato espejo de `cli/internal/board` (única forma que renderiza).
+- `src/api/useBoard.ts` — suscripción SSE a `/api/events` (push del board; auto-reconnect).
+- `src/components/*` — un componente por carpeta (`KanbanBoard`, `BoardColumn`, `SpecCard`,
+  `StatusPill`, `PriorityFlag`, `BoardHeader`, **`TokenSavingsMeter`** = el diferenciador).
+- `src/lib/` — `format.ts` (USD/tiempo/relativo), `useNow.ts` (tick de frescura).
+
+## Dev loop
+
+- `vector serve --port 8787` (API+SSE) **+** `npm run dev` (Vite 5173, proxy `/api` → 8787).
+- Alternativa: `npm run build` y `vector serve --web-dir web/dist`.
+- Build embebido (release): `npm run build` → copiar `web/dist` a `cli/internal/webui/dist/`
+  antes de compilar el binario. El `index.html` placeholder mantiene válido el `embed`.
 
 ## Depende de / es dependido por
 
 - **Consume** la API HTTP de `cli/` (única fuente de datos). Nunca lee el JSON directamente.
 - Su build es **previo** al build de `cli/` (los assets deben existir antes del embed).
+
+## Pendiente
+
+- Drag-and-drop (mover cards = API de escritura, otro slice). Rail de iconos + sidebar de
+  proyectos. Typegen del contrato desde Go (hoy el espejo en `board.ts` es a mano).
 
 ## Rules aplicables (`.claude/rules/`)
 

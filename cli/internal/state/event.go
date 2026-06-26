@@ -23,6 +23,7 @@ const (
 	EvtSpecArchived  EventType = "spec.archived"
 	EvtBoardMoved    EventType = "board.moved"
 	EvtAgentRouted   EventType = "agent.routed" // feeds the Token Savings Meter
+	EvtWorkLogged    EventType = "work.logged"  // enriched apply trace for the standup digest
 )
 
 // Event is one line of .vector/local/activity.jsonl (append-only, gitignored,
@@ -57,6 +58,23 @@ type StatusChangedData struct {
 type ProposedData struct {
 	Change    string      `json:"change"`
 	Artifacts ArtifactSet `json:"artifacts"`
+}
+
+// AppliedData is the payload for EvtSpecApplied: the OpenSpec change being
+// implemented (empty for a native spec with no change).
+type AppliedData struct {
+	Change string `json:"change,omitempty"`
+}
+
+// WorkLoggedData is the payload for EvtWorkLogged: the concrete work done during
+// a /vector:apply run — the "what was done" the standup digest needs that
+// status.changed alone cannot express. Purely additive; a consumer that does not
+// know work.logged ignores it.
+type WorkLoggedData struct {
+	Change         string   `json:"change,omitempty"`
+	FilesTouched   []string `json:"filesTouched,omitempty"`
+	TasksCompleted []string `json:"tasksCompleted,omitempty"`
+	Note           string   `json:"note,omitempty"`
 }
 
 // SpecLinkedData is the payload for EvtSpecLinked.

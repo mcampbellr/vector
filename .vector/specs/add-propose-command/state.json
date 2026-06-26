@@ -2,10 +2,11 @@
   "schemaVersion": 1,
   "id": "add-propose-command",
   "title": "Comando /vector:propose (draft → open)",
-  "status": "open",
+  "status": "closed",
   "priority": "normal",
   "repo": "vector",
   "specDoc": ".vector/specs/add-propose-command/spec.md",
+  "needsUat": true,
   "openspec": {
     "change": "add-propose-command",
     "artifacts": {
@@ -15,5 +16,8 @@
     }
   },
   "createdAt": "2026-06-25T06:23:36.608503Z",
-  "updatedAt": "2026-06-25T06:33:25.153494Z"
+  "startedAt": "2026-06-25T07:35:10.876856Z",
+  "reviewAt": "2026-06-25T07:35:10.899697Z",
+  "closedAt": "2026-06-25T21:36:26.470761Z",
+  "updatedAt": "2026-06-25T21:36:26.470761Z"
 }

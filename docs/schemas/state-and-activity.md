@@ -146,6 +146,7 @@ const (
 	EvtSpecArchived  EventType = "spec.archived"
 	EvtBoardMoved    EventType = "board.moved"
 	EvtAgentRouted   EventType = "agent.routed" // Token Savings Meter
+	EvtWorkLogged    EventType = "work.logged"  // standup digest: trabajo hecho por apply
 )
 
 // Event is one line of .vector/local/activity.jsonl.
@@ -177,7 +178,22 @@ type AgentRoutedData struct {
 	CostUSD   float64 `json:"costUsd"`
 	SavedUSD  float64 `json:"savedUsd"`  // baselineCost - costUsd
 }
+
+// WorkLoggedData enriquece la traza con el trabajo concreto de cada /vector:apply
+// (lo que `status.changed` no captura). Aditivo: lo escribe `vector spec worklog`
+// y NO toca `state.json`. Alimenta el standup digest (/vector:standup).
+type WorkLoggedData struct {
+	Change         string   `json:"change,omitempty"`
+	FilesTouched   []string `json:"filesTouched,omitempty"`
+	TasksCompleted []string `json:"tasksCompleted,omitempty"`
+	Note           string   `json:"note,omitempty"` // texto corto del dev, máx 280 chars
+}
 ```
+
+El marcador "último standup" y el digest persistido viven en `.vector/local/standup.json`
+(personal, gitignored, escrito solo por `vector standup commit`). La ventana por defecto del
+digest cubre desde ese marcador; el marcador avanza al persistir. El digest es la proyección
+servida en `GET /api/standup`.
 
 ### Ejemplo `.vector/local/activity.jsonl`
 
@@ -187,6 +203,7 @@ type AgentRoutedData struct {
 {"v":1,"ts":"2026-06-22T14:40:00Z","type":"status.changed","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"from":"open","to":"in-progress","trigger":"apply"}}
 {"v":1,"ts":"2026-06-22T14:55:30Z","type":"agent.routed","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"task":"summarize ADRs","model":"haiku","baseline":"opus","tokensIn":18200,"tokensOut":900,"costUsd":0.02,"savedUsd":0.31}}
 {"v":1,"ts":"2026-06-22T15:04:05Z","type":"status.changed","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"from":"in-progress","to":"needs-attention","trigger":"hook","reason":"Ambiguous money-assembler DTO contract"}}
+{"v":1,"ts":"2026-06-22T15:30:00Z","type":"work.logged","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"change":"new-patient-expediente","filesTouched":["a.go","b.go"],"tasksCompleted":["DTO mapper"],"note":"money assembler wired"}}
 ```
 
 ## `board.json` (derivado, no committed)

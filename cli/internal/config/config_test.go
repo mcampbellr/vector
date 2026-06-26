@@ -3,7 +3,10 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+
+	"github.com/mariocampbell/vector/internal/state"
 )
 
 func TestResolveMigratesFromProjectStructure(t *testing.T) {
@@ -237,7 +240,112 @@ func TestWriteLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if *got != *want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round trip mismatch: got %+v want %+v", got, want)
+	}
+}
+
+func TestLoadValidatesDefaultTicketProvider(t *testing.T) {
+	root := t.TempDir()
+	cfg := Resolve(root)
+	cfg.DefaultTicketProvider = "jirra" // typo
+	cfg.TicketKeyPrefixes = []string{" mh ", ""}
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err == nil {
+		t.Fatal("expected Load to reject an invalid defaultTicketProvider")
+	}
+
+	// A valid provider loads, and prefixes normalize to upper/trimmed/non-empty.
+	cfg.DefaultTicketProvider = state.TicketJira
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.ResolvedDefaultTicketProvider() != state.TicketJira {
+		t.Errorf("ResolvedDefaultTicketProvider = %q, want jira", loaded.ResolvedDefaultTicketProvider())
+	}
+	if got := loaded.NormalizedTicketKeyPrefixes(); len(got) != 1 || got[0] != "MH" {
+		t.Errorf("NormalizedTicketKeyPrefixes = %v, want [MH]", got)
+	}
+}
+
+func TestWorktreeTicketKeys(t *testing.T) {
+	root := t.TempDir()
+	// Worktree layout: branches one or two levels under the "code" root, with
+	// grouping folders (feat/chore) in between and a single-level branch (develop).
+	for _, branch := range []string{
+		"feat/mh-1592-payments-period-checkout",
+		"chore/MH-880-cleanup",
+		"develop",                 // single-level branch, no key → not indexed
+		"feat/adr-7-architecture", // denylisted prefix → not indexed
+		"feat/rfc-3-protocol",     // denylisted prefix → not indexed
+		"feat/mh-2001",            // bare key, no slug → not indexed
+	} {
+		if err := os.MkdirAll(filepath.Join(root, "code", filepath.FromSlash(branch)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &Config{ChangesPath: "code/[branch]/openspec/changes"}
+	idx, err := cfg.WorktreeTicketKeys(root)
+	if err != nil {
+		t.Fatalf("WorktreeTicketKeys: %v", err)
+	}
+	want := map[string]string{
+		"payments-period-checkout": "MH-1592", // upper-normalized from mh-1592
+		"cleanup":                  "MH-880",
+	}
+	if !reflect.DeepEqual(idx, want) {
+		t.Fatalf("index = %v, want %v", idx, want)
+	}
+}
+
+func TestWorktreeTicketKeysDuplicateSlugOmitted(t *testing.T) {
+	root := t.TempDir()
+	// Two distinct keys claim the same slug → ambiguous, omitted.
+	for _, branch := range []string{"feat/mh-1-dashboard", "chore/eng-9-dashboard"} {
+		if err := os.MkdirAll(filepath.Join(root, "code", filepath.FromSlash(branch)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &Config{ChangesPath: "code/[branch]/openspec/changes"}
+	idx, err := cfg.WorktreeTicketKeys(root)
+	if err != nil {
+		t.Fatalf("WorktreeTicketKeys: %v", err)
+	}
+	if _, ok := idx["dashboard"]; ok {
+		t.Fatalf("ambiguous slug must be omitted, got %v", idx)
+	}
+}
+
+func TestWorktreeTicketKeysNoBranchTemplate(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "openspec", "changes", "MH-1-x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Default (non-worktree) template has no [branch] → feature inert, empty map.
+	cfg := &Config{}
+	idx, err := cfg.WorktreeTicketKeys(root)
+	if err != nil {
+		t.Fatalf("WorktreeTicketKeys: %v", err)
+	}
+	if len(idx) != 0 {
+		t.Fatalf("expected empty index without [branch], got %v", idx)
+	}
+}
+
+func TestWorktreeTicketKeysMissingRoot(t *testing.T) {
+	root := t.TempDir() // no "code" dir created
+	cfg := &Config{ChangesPath: "code/[branch]/openspec/changes"}
+	idx, err := cfg.WorktreeTicketKeys(root)
+	if err != nil {
+		t.Fatalf("a missing worktree root is not an error: %v", err)
+	}
+	if len(idx) != 0 {
+		t.Fatalf("expected empty index, got %v", idx)
 	}
 }

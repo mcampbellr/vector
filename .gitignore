@@ -8,6 +8,14 @@ cli/bin/
 *.test
 *.out
 
+# Web (board panel)
+web/node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
+# Built web assets copied into the binary embed dir for release; the committed
+# placeholder index.html is kept so the embed (and the build) stay valid.
+cli/internal/webui/dist/assets/
+
 # Local
 *.local
 .env

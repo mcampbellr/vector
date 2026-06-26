@@ -17,6 +17,11 @@
 - `needs-attention` es de primera clase (feature central): se entra desde `in-progress` o
   `review` cuando surgen preguntas; lo dispara un **hook**, no el modelo.
 - `archived` no aparece en el board activo (vista separada).
+- `review` puede llevar un **marcador derivado `needsUat`** (UAT manual pendiente): se setea
+  cuando un change entra a `review` porque solo quedan tasks de verificación en `tasks.md`
+  (lo computa `sync`, reusando `isVerificationTask`). **No es un estado nuevo** ni cambia la
+  máquina de estados — es una refinación de `review` que el board muestra como badge "UAT"
+  (ver change `review-uat-flag`).
 
 ### Máquina de estados (transiciones permitidas)
 
@@ -67,9 +72,15 @@
   contrato del frontend ni se commitea.
 - Sketch de endpoints (a detallar al especificar el panel):
   - `GET /api/board` → columnas + specs proyectados
-  - `GET /api/specs/:id` → detalle de un spec
-  - `GET /api/daily` → resumen del día (lee `activity.jsonl` + git log)
-  - `GET /api/stream` (SSE) → eventos de cambio para refrescar el board
+  - `GET /api/events` (SSE) → eventos de cambio para refrescar el board
+  - `GET /api/standup` → digest persistido del último standup (`{}` si nunca se corrió);
+    proyección read-only de `.vector/local/standup.json`
+  - `GET /api/activity?spec=<id>&since=<24h|today|7d>` → timeline proyectada de un spec
+    (eventos `status.changed` + `work.logged`); `400` `since` inválido, `404` spec inexistente,
+    `500` lectura del log; body de error `{ "error": "<msg>" }`
+  - `GET /api/specs/:id` → detalle de un spec (pendiente)
+  - El digest NL lo genera el command (`/vector:standup`) vía agente Haiku; el binario
+    **nunca** llama a un LLM (solo proyecta y sirve el digest ya persistido).
 
 ## 5. Comando → escritura en el state (mapa)
 
@@ -81,15 +92,53 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 | `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
 | `/vector:status [id] [status]` | `status` + timestamp del estado (`reviewAt`/etc) | `status.changed` (`trigger:command`) | — |
-| `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) | `openspec apply <change>` (implementa) |
+| `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) + `work.logged` (tras implementar, aditivo) | `openspec apply <change>` (implementa) |
+| `vector spec worklog <id>` (lo invoca `/vector:apply`) | — (aditivo, **no** toca `state.json`) | `work.logged{change,filesTouched,tasksCompleted,note}` | — |
+| `/vector:standup [24h\|today\|7d]` | — (escribe `.vector/local/standup.json`, no `state.json`); avanza el marcador al persistir | lee `activity.jsonl` (proyección read-only); digest NL por agente Haiku | — |
 | `/vector:close [id]` | `status:closed`, `closedAt` | `spec.closed` + `status.changed` | — |
 | `/vector:archive [id]` | `status:archived`, `archivedAt` | `spec.archived` | mover change a `archive/` |
-| `/vector:sync` | crea cards desde `openspec/changes/*` (por tasks) + specs sueltos del `spec-path` → `draft`; en bare+worktrees colapsa copias por slug (identidad = slug; `branch` = preferencia de copia canónica, no filtro); specs con frontmatter `supersededBy`/`status:superseded` se suprimen; `--reconcile` actualiza | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) | lee (read-only); no modifica OpenSpec |
+| `/vector:sync` | crea cards desde `openspec/changes/*` (por tasks) + specs sueltos del `spec-path` → `draft`; en bare+worktrees colapsa copias por slug (identidad = slug; `branch` = preferencia de copia canónica, no filtro); specs con frontmatter `supersededBy`/`status:superseded` se suprimen; auto-detecta ticket por change (`detectTicket`, `auto:true`); `--reconcile` actualiza status y reconcilia el ticket (idempotente, sin pisar manual) | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) / `spec.linked` (`auto:true`) | lee (read-only); no modifica OpenSpec |
 | `/vector:daily` | — (read-only) | — (lee hoy + git log) | — |
 | **hook** (surgen preguntas) | `status:needs-attention`, `needsAttention{reason,since,source:hook}` | `status.changed` (`trigger:hook`) | — |
 
-- `auto`: si `/vector:raw` menciona un ticket, `link` se aplica automáticamente (`auto:true`);
-  si no, el usuario lo asocia con `/vector:link`.
+- `auto`: el campo `ticket.auto` distingue **detección automática** de **link manual**.
+  - **`auto:true`** — sembrado por detección: `/vector:raw` cuando el texto crudo menciona un
+    ticket reconocible, y `vector sync` por cada change vía `detectTicket` (ver abajo). Es
+    *best-effort*: ante ambigüedad **no adivina** (deja el spec sin ticket).
+  - **`auto:false`** — link explícito vía `/vector:link` (`vector spec link`). Es autoritativo.
+  - **Precedencia**: un link `auto` **nunca** pisa uno manual; un link manual sí reemplaza
+    cualquiera. Re-linkear el mismo `provider+key+url` es **idempotente** (no re-emite `spec.linked`).
+  - **Provider**: se infiere por host de la URL (`atlassian.net`/`jira` → jira, `linear.app` →
+    linear, `github.com` → github; otro host → `other`). Una key suelta sin URL es ambigua por sí
+    sola; se resuelve con el **provider por defecto** configurado (ver `config.json` abajo) o, en
+    manual, con `--provider`. Sin ninguno, se descarta.
+  - **`detectTicket` (sync/raw)**, en orden de precedencia (la primera fuente que matchea gana):
+    1. frontmatter `ticket:` — URL completa o shorthand `<provider>:<key>` (p. ej. `ticket: jira:ACME-1`);
+    2. *scan de prosa conservador* — una única URL de tracker reconocido en los artefactos
+       (`proposal/design/tasks.md`);
+    3. **fallback de key suelta** — **solo si** `defaultTicketProvider` está configurado: reconoce una
+       key `[A-Za-z][A-Za-z0-9]*-\d+` por (a) **cue word** anclado al inicio de línea (tolerando `>` y
+       `**bold**`): `Ticket:`/`Issue:`/`Ref:`/`Tracking:` o el nombre de un provider (`Jira:`/`Linear:`/
+       `GitHub:`), tomando la **primera** key tras el cue (ignora `Epic:`/`Story:`); o (b) un **prefijo
+       de proyecto conocido** (`ticketKeyPrefixes`, p. ej. `MH`) en cualquier parte de la prosa. La
+       denylist built-in (`ADR`, `RFC`) nunca se linkea. El cue gana sobre el prefijo; conflicto de
+       keys distintas → sin link. Linkea con `provider = defaultTicketProvider`, `url:""`, `auto:true`.
+    4. **nombre del worktree por slug** (último recurso) — **solo si** `defaultTicketProvider` está
+       configurado: en layouts bare+worktree, la carpeta del branch se llama `<KEY>-<slug>` (p. ej.
+       `code/feat/MH-1592-payments`) y a menudo los artefactos del change no mencionan la key.
+       `WorktreeTicketKeys` indexa `slug→key` (raíz = prefijo literal de `changesTemplate()` antes de
+       `[branch]`; scan multinivel acotado; key universal normalizada a mayúsculas; denylist `ADR`/`RFC`;
+       slug reclamado por dos keys distintas → omitido) y matchea por **slug exacto == nombre del change**.
+       El artefacto (fuentes 1–3) **siempre gana**. Linkea con `provider = defaultTicketProvider`,
+       `url:""`, `auto:true`.
+    Múltiples tickets en conflicto, o prosa sin señal (ni URL, ni cue, ni prefijo, ni nombre de worktree) →
+    sin link.
+  - **Link manual de key suelta**: `vector spec link <id> <key>` sin `--provider` usa
+    `defaultTicketProvider` si está configurado; sin él, sigue siendo error accionable.
+  - **`url` vacío** es válido (key sin host): el board muestra la key sin enlace.
+  - **Config** (`.vector/config.json`): `defaultTicketProvider` (`jira|linear|github|other`; inválido →
+    error en `Load`) y `ticketKeyPrefixes` (`[]string`, normalizado a mayúsculas). Ambos opcionales;
+    sin `defaultTicketProvider` el fallback de key suelta queda desactivado.
 - Notas/reminders custom (prompt en el flujo) → `note.added` / `reminder.set` en activity.
 
 ## IDs

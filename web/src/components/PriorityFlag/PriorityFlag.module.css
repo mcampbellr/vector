@@ -1,0 +1,21 @@
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.urgent {
+  color: var(--priority-urgent);
+}
+.high {
+  color: var(--priority-high);
+}
+.normal {
+  color: var(--priority-normal);
+}
+.low {
+  color: var(--priority-low);
+}

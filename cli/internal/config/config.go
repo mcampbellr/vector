@@ -14,6 +14,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mariocampbell/vector/internal/state"
 )
 
 // SchemaVersion guards migrations of the on-disk config format.
@@ -58,10 +60,70 @@ type Config struct {
 	// ProposeBranch overrides which worktree /vector:propose creates a change in
 	// (bare+worktree layouts); falls back to Branch when empty.
 	ProposeBranch string `json:"proposeBranch,omitempty"`
+	// ApplyMode controls how much /vector:apply decides vs asks when selecting the
+	// next work-item: "auto" (pick and start), "ask" (propose a pick, confirm) or
+	// "always-ask" (always show candidates). Empty defaults to ApplyModeAsk.
+	ApplyMode ApplyMode `json:"applyMode,omitempty"`
 	// KitVersion records the binary/kit version that last seeded this repo's
 	// .claude artifacts, so `vector update` can report staleness. Stamped by
 	// `vector init` and `vector update`.
 	KitVersion string `json:"kitVersion,omitempty"`
+	// DefaultTicketProvider, when set (jira|linear|github|other), is the fallback
+	// provider for ambiguous bare ticket keys: keys detected by detectTicket during
+	// sync/raw, and the key passed to `vector spec link` without --provider. Empty
+	// disables that fallback (detection stays conservative — see ticket.go).
+	DefaultTicketProvider state.TicketProvider `json:"defaultTicketProvider,omitempty"`
+	// TicketKeyPrefixes lists project key prefixes (e.g. ["MH"]) that mark a bare
+	// key as a ticket with high confidence anywhere in prose, complementing the
+	// cue-word scan. Compared case-insensitively (see NormalizedTicketKeyPrefixes).
+	TicketKeyPrefixes []string `json:"ticketKeyPrefixes,omitempty"`
+}
+
+// ApplyMode controls /vector:apply autonomy (docs/apply-design.md §3).
+type ApplyMode string
+
+const (
+	ApplyModeAuto      ApplyMode = "auto"       // pick the work-item and start, no prompt
+	ApplyModeAsk       ApplyMode = "ask"        // propose a pick and confirm (default)
+	ApplyModeAlwaysAsk ApplyMode = "always-ask" // always show candidates and choose
+)
+
+// Valid reports whether m is a known apply mode.
+func (m ApplyMode) Valid() bool {
+	switch m {
+	case ApplyModeAuto, ApplyModeAsk, ApplyModeAlwaysAsk:
+		return true
+	}
+	return false
+}
+
+// ResolvedApplyMode returns the configured mode or the ApplyModeAsk default.
+func (c *Config) ResolvedApplyMode() ApplyMode {
+	if c.ApplyMode.Valid() {
+		return c.ApplyMode
+	}
+	return ApplyModeAsk
+}
+
+// ResolvedDefaultTicketProvider returns the configured default ticket provider,
+// or "" when none is set (which disables the bare-key detection fallback).
+func (c *Config) ResolvedDefaultTicketProvider() state.TicketProvider {
+	if c.DefaultTicketProvider.Valid() {
+		return c.DefaultTicketProvider
+	}
+	return ""
+}
+
+// NormalizedTicketKeyPrefixes returns the configured key prefixes trimmed and
+// upper-cased, dropping empties — the form used for case-insensitive matching.
+func (c *Config) NormalizedTicketKeyPrefixes() []string {
+	out := make([]string, 0, len(c.TicketKeyPrefixes))
+	for _, p := range c.TicketKeyPrefixes {
+		if p = strings.ToUpper(strings.TrimSpace(p)); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // DefaultChangesPath is used when no convention declares one.
@@ -113,6 +175,9 @@ func Load(repoRoot string) (*Config, error) {
 	var c Config
 	if err := json.Unmarshal(b, &c); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	if c.DefaultTicketProvider != "" && !c.DefaultTicketProvider.Valid() {
+		return nil, fmt.Errorf("invalid defaultTicketProvider %q: allowed jira,linear,github,other", c.DefaultTicketProvider)
 	}
 	return &c, nil
 }
@@ -329,6 +394,117 @@ func (c *Config) ChangesDirs(repoRoot string) ([]ChangesDir, error) {
 func isDir(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()
+}
+
+// worktreeMaxDepth bounds how many directory levels below the worktree root
+// WorktreeTicketKeys descends. Bare+worktree layouts nest a branch one or two
+// levels under the root — grouping folders (feat/chore/fix/docs) may sit in
+// between (e.g. code/feat/MH-1592-payments) — so 3 covers those without walking
+// into each worktree's own file tree (a perf and noise guard, not a magic number).
+const worktreeMaxDepth = 3
+
+// worktreeKeyRe matches a branch folder basename of the form <KEY>-<slug>,
+// capturing the universal ticket key (<project>-<number>) and the slug. A bare
+// <KEY> folder (no slug) does not match — it is intentionally not indexed.
+var worktreeKeyRe = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9]*-\d+)-(.+)$`)
+
+// worktreeKeyDenylist mirrors ticket detection's denylist: prefixes that are
+// documentation conventions (ADR, RFC), never tickets. Keys are uppercased before
+// the lookup (see worktreeBranchKey).
+var worktreeKeyDenylist = map[string]bool{"ADR": true, "RFC": true}
+
+// WorktreeTicketKeys indexes ticket keys carried by worktree folder names, for
+// detectTicket's last-resort fallback during sync. In a bare+worktree layout each
+// branch lives in a folder named <KEY>-<slug> (e.g. code/feat/MH-1592-payments) and
+// the change's own artifacts often never mention the key, so the folder name is the
+// highest-recall deterministic signal available. The worktree root is the literal
+// prefix of the changes template before [branch] (code/[branch]/openspec/changes →
+// code); without a [branch] placeholder the layout is not worktree-based and the map
+// is empty (the feature is inert — no regression on the non-worktree repos). The scan
+// is read-only and depth-bounded (worktreeMaxDepth), tolerating grouping folders
+// (feat/chore/fix/docs) and single-level branches (develop). Keys are normalized to
+// uppercase; ADR/RFC are dropped. Identity is the slug (== change name after stripping
+// the <KEY>- prefix); a slug claimed by two distinct keys is ambiguous and omitted. A
+// permission/IO error on a subtree skips only that subtree (the index keeps building);
+// an error reading the worktree root itself is propagated (a missing root is not an
+// error — it just yields an empty map).
+func (c *Config) WorktreeTicketKeys(repoRoot string) (map[string]string, error) {
+	tmpl := c.changesTemplate()
+	i := strings.Index(tmpl, branchPlaceholder)
+	if i < 0 {
+		return map[string]string{}, nil // not a worktree layout; feature inert
+	}
+	rootDir := repoRoot
+	if prefix := strings.Trim(tmpl[:i], "/"); prefix != "" {
+		rootDir = filepath.Join(repoRoot, filepath.FromSlash(prefix))
+	}
+
+	rootEntries, err := os.ReadDir(rootDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]string{}, nil // no worktree root yet → nothing to index
+		}
+		return nil, fmt.Errorf("read worktree root %q: %w", rootDir, err)
+	}
+
+	index := map[string]string{}
+	conflicted := map[string]bool{}
+	register := func(name string) {
+		key, slug, ok := worktreeBranchKey(name)
+		if !ok {
+			return
+		}
+		switch {
+		case conflicted[slug]:
+			// already ambiguous; stays omitted
+		case index[slug] == "":
+			index[slug] = key
+		case index[slug] != key:
+			delete(index, slug) // two distinct keys claim this slug → ambiguous
+			conflicted[slug] = true
+		}
+	}
+
+	var descend func(dir string, depth int)
+	descend = func(dir string, depth int) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return // permission/IO error on a subtree → skip it; the index continues
+		}
+		for _, e := range entries {
+			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			register(e.Name())
+			if depth < worktreeMaxDepth {
+				descend(filepath.Join(dir, e.Name()), depth+1)
+			}
+		}
+	}
+	for _, e := range rootEntries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		register(e.Name())
+		descend(filepath.Join(rootDir, e.Name()), 2)
+	}
+	return index, nil
+}
+
+// worktreeBranchKey parses a branch folder basename of the form <KEY>-<slug>,
+// returning the uppercased ticket key and the slug. ok is false for a bare key
+// (no slug), a non-matching name (grouping folders like feat, single-level branches
+// like develop) or a denylisted key (ADR/RFC).
+func worktreeBranchKey(name string) (key, slug string, ok bool) {
+	m := worktreeKeyRe.FindStringSubmatch(name)
+	if m == nil {
+		return "", "", false
+	}
+	key = strings.ToUpper(m[1])
+	if i := strings.IndexByte(key, '-'); i > 0 && worktreeKeyDenylist[key[:i]] {
+		return "", "", false
+	}
+	return key, m[2], true
 }
 
 // compileTemplate compiles a forward-slash path template into an anchored regex

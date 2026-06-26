@@ -1,0 +1,81 @@
+/* Design tokens — derived from docs/kanban-ui-reference.md (light theme).
+   Single source for colors, radii, spacing and status palette. */
+
+:root {
+  /* Surfaces */
+  --color-app-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f3f4f6;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+
+  /* Text */
+  --color-text: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+
+  /* Brand accent (gradient from the reference covers/avatar) */
+  --gradient-brand: linear-gradient(120deg, #f472b6 0%, #a855f7 50%, #6366f1 100%);
+  --color-accent: #6366f1;
+
+  /* Status palette: progress→amber, review→violet, todo→slate, done→green */
+  --status-draft-fg: #475569;
+  --status-draft-bg: #f1f5f9;
+  --status-open-fg: #475569;
+  --status-open-bg: #eef2f7;
+  --status-progress-fg: #b45309;
+  --status-progress-bg: #fef3c7;
+  --status-attention-fg: #b91c1c;
+  --status-attention-bg: #fee2e2;
+  --status-review-fg: #7c3aed;
+  --status-review-bg: #ede9fe;
+  --status-closed-fg: #047857;
+  --status-closed-bg: #d1fae5;
+
+  /* Priority */
+  --priority-urgent: #dc2626;
+  --priority-high: #ea580c;
+  --priority-normal: #6b7280;
+  --priority-low: #9ca3af;
+
+  /* Savings (the differentiator) */
+  --savings-fg: #047857;
+  --savings-bg: #ecfdf5;
+
+  /* Radii */
+  --radius-card: 12px;
+  --radius-pill: 6px;
+  --radius-button: 8px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Shadow */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-raised: 0 4px 12px rgba(16, 24, 40, 0.08);
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-app-bg);
+  -webkit-font-smoothing: antialiased;
+}
