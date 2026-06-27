@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useBoard } from './api/useBoard'
 import { BoardHeader } from './components/BoardHeader/BoardHeader'
 import { KanbanBoard } from './components/KanbanBoard/KanbanBoard'
@@ -11,6 +11,12 @@ type View = 'board' | 'standup'
 export function App() {
   const { board, connection, error } = useBoard()
   const [view, setView] = useState<View>('board')
+
+  // Reflect the active project in the browser tab so it's identifiable when
+  // several boards are open at once. `board.repo` is the repo directory name.
+  useEffect(() => {
+    document.title = board ? `${board.repo} · Vector board` : 'Vector board'
+  }, [board])
 
   if (!board) {
     return (
