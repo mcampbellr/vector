@@ -1,13 +1,12 @@
 import type { KeyboardEvent } from 'react'
-import { ClipboardCheck, Clock, Sparkles, Tag } from 'lucide-react'
+import { ClipboardCheck, Clock, Sparkles, Tag, Zap } from 'lucide-react'
 import type { Card } from '../../types/board'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
 import { ArtifactDot } from './ArtifactDot'
-import { RelatedChips } from './RelatedChips'
 import { CardNextCommand } from './CardNextCommand'
 import { CopyableSlug } from '../CopyableSlug/CopyableSlug'
-import { formatEstimate, formatUsd } from '../../lib/format'
+import { formatCompact, formatEstimate } from '../../lib/format'
 import styles from './SpecCard.module.css'
 
 interface SpecCardProps {
@@ -52,8 +51,6 @@ export function SpecCard({ card, onSelect }: SpecCardProps) {
 
       {card.attentionReason && <p className={styles.attention}>{card.attentionReason}</p>}
 
-      {card.relatedTo && card.relatedTo.length > 0 && <RelatedChips related={card.relatedTo} />}
-
       {card.artifacts && (
         <div className={styles.artifacts}>
           <ArtifactDot label="proposal" on={card.artifacts.proposal} />
@@ -64,6 +61,12 @@ export function SpecCard({ card, onSelect }: SpecCardProps) {
 
       <footer className={styles.meta}>
         <StatusPill status={card.status} />
+        {card.quickWin && (
+          <span className={styles.quickWin} title="Quick win" aria-label="Quick win">
+            <Zap size={12} strokeWidth={2} />
+            Quick Win
+          </span>
+        )}
         {card.status === 'review' && card.needsUat && (
           <span className={styles.uat} title="Requires manual UAT" aria-label="Requires manual UAT">
             <ClipboardCheck size={12} strokeWidth={2} />
@@ -80,7 +83,7 @@ export function SpecCard({ card, onSelect }: SpecCardProps) {
         {card.routes > 0 && (
           <span className={styles.savings} title={`${card.routes} cheap-agent routes`}>
             <Sparkles size={12} strokeWidth={2} />
-            {formatUsd(card.savedUsd)} saved
+            {formatCompact(card.tokensIn + card.tokensOut)} tok
           </span>
         )}
       </footer>

@@ -5,6 +5,7 @@ import { useSpecSummary } from '../../api/useSpecSummary'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
 import { nextCommandFor } from '../SpecCard/nextCommandFor'
+import { RelatedChips } from '../SpecCard/RelatedChips'
 import { SpecTimeline } from '../SpecTimeline'
 import { CopyableCommand } from './CopyableCommand'
 import { UsefulCommands } from './UsefulCommands'
@@ -78,6 +79,13 @@ export function SpecDetailsDrawer({ card, onClose }: SpecDetailsDrawerProps) {
         </div>
 
         {card.attentionReason && <p className={styles.attention}>{card.attentionReason}</p>}
+
+        {card.relatedTo && card.relatedTo.length > 0 && (
+          <section className={styles.section}>
+            <h3 className={styles.sectionTitle}>Related</h3>
+            <RelatedChips related={card.relatedTo} />
+          </section>
+        )}
 
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Summary</h3>
