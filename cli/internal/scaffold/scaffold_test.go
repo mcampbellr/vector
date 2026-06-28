@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -187,6 +188,71 @@ func TestAssetsMatchKit(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk assets: %v", err)
+	}
+}
+
+// TestSharedFilesExist verifies that go generate produced assets/agents/_shared/ with
+// the three expected doctrine files.
+func TestSharedFilesExist(t *testing.T) {
+	expected := []string{
+		"assets/agents/_shared/citation-discipline.md",
+		"assets/agents/_shared/prose-rules.md",
+		"assets/agents/_shared/refiner-base.md",
+	}
+	for _, embPath := range expected {
+		if _, err := assets.ReadFile(embPath); err != nil {
+			t.Errorf("expected embedded file %s to exist: %v", embPath, err)
+		}
+	}
+}
+
+// TestSharedDoctrineNotInlined guards against re-insertion of extracted doctrine text
+// back into the modified agents. Each agent must reference _shared/ instead of inlining
+// the canonical strings.
+func TestSharedDoctrineNotInlined(t *testing.T) {
+	type agentCheck struct {
+		path          string   // relative to assets/agents/
+		bannedStrings []string // must not appear in the file
+	}
+	checks := []agentCheck{
+		{
+			path:          "assets/agents/vector-spec-refiner.md",
+			bannedStrings: []string{"Cite, don't guess", "Preserve the user's language", "Be terse"},
+		},
+		{
+			path:          "assets/agents/vector-bug-refiner.md",
+			bannedStrings: []string{"Cite, don't guess", "Preserve the user's language", "Be terse"},
+		},
+		{
+			path:          "assets/agents/vector-spec-validator.md",
+			bannedStrings: []string{"Cite, don't hand-wave"},
+		},
+		{
+			path:          "assets/agents/vector-comment-evaluator.md",
+			bannedStrings: []string{"Cite, don't hand-wave"},
+		},
+		{
+			path:          "assets/agents/vector-summary-writer.md",
+			bannedStrings: []string{"Never invent work", "Prose quality"},
+		},
+		{
+			path:          "assets/agents/vector-standup-writer.md",
+			bannedStrings: []string{"Never invent work", "Prose quality"},
+		},
+	}
+
+	for _, check := range checks {
+		data, err := assets.ReadFile(check.path)
+		if err != nil {
+			t.Errorf("read embedded %s: %v", check.path, err)
+			continue
+		}
+		content := string(data)
+		for _, banned := range check.bannedStrings {
+			if strings.Contains(content, banned) {
+				t.Errorf("%s still contains inline doctrine %q — extract to _shared/ and re-run go generate", check.path, banned)
+			}
+		}
 	}
 }
 
