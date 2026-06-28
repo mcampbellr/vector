@@ -151,6 +151,12 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
       --tokens-in <validator-in> --tokens-out <validator-out>
     ```
 
+    **Precision**: omit `--precision` (defaults to `estimated`) unless the harness exposed the
+    exact token counts (e.g. via a tool-result metadata field or environment variable). If the
+    harness did provide real counts, pass `--precision actual` — this marks the meter as exact
+    and removes the "Estimated" badge on the board. Never pass `--precision actual` for numbers
+    you derived yourself; an honest estimate is more trustworthy than a false claim of precision.
+
     Use the actual subagent token usage when you have it; otherwise pass your best estimate
     of each subagent's input/output size (the meter is an estimate by design — never invent
     precise-looking numbers, round to the nearest thousand). Skip a route you did not run

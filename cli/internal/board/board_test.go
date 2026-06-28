@@ -44,9 +44,15 @@ func (f fakeSource) ReadSpecArtifact(specID, artifact string) ([]byte, error) {
 
 func routedEvent(t *testing.T, specID, model, baseline string, saved, cost float64) state.Event {
 	t.Helper()
+	return routedEventWithPrecision(t, specID, model, baseline, saved, cost, "")
+}
+
+func routedEventWithPrecision(t *testing.T, specID, model, baseline string, saved, cost float64, precision string) state.Event {
+	t.Helper()
 	data, err := json.Marshal(state.AgentRoutedData{
 		Task: "summarize", Model: model, Baseline: baseline,
 		TokensIn: 1000, TokensOut: 100, CostUSD: cost, SavedUSD: saved,
+		Precision: precision,
 	})
 	if err != nil {
 		t.Fatalf("marshal routed data: %v", err)
@@ -195,4 +201,62 @@ func almostEqual(a, b float64) bool {
 		d = -d
 	}
 	return d < 1e-9
+}
+
+// TestRollupSavings_AllActual: every event has precision "actual" → rollup is "actual".
+func TestRollupSavings_AllActual(t *testing.T) {
+	events := []state.Event{
+		routedEventWithPrecision(t, "a", "haiku", "opus", 0.10, 0.01, "actual"),
+		routedEventWithPrecision(t, "b", "haiku", "opus", 0.20, 0.02, "actual"),
+	}
+	s, _ := rollupSavings(events)
+	if s.Precision != "actual" {
+		t.Errorf("Precision = %q, want \"actual\"", s.Precision)
+	}
+}
+
+// TestRollupSavings_AllEstimated: every event has precision "estimated" → rollup is "estimated".
+func TestRollupSavings_AllEstimated(t *testing.T) {
+	events := []state.Event{
+		routedEventWithPrecision(t, "a", "haiku", "opus", 0.10, 0.01, "estimated"),
+		routedEventWithPrecision(t, "b", "haiku", "opus", 0.20, 0.02, "estimated"),
+	}
+	s, _ := rollupSavings(events)
+	if s.Precision != "estimated" {
+		t.Errorf("Precision = %q, want \"estimated\"", s.Precision)
+	}
+}
+
+// TestRollupSavings_Mixed: one "actual" + one "estimated" → worst-case "estimated".
+func TestRollupSavings_Mixed(t *testing.T) {
+	events := []state.Event{
+		routedEventWithPrecision(t, "a", "haiku", "opus", 0.10, 0.01, "actual"),
+		routedEventWithPrecision(t, "b", "haiku", "opus", 0.20, 0.02, "estimated"),
+	}
+	s, _ := rollupSavings(events)
+	if s.Precision != "estimated" {
+		t.Errorf("Precision = %q, want \"estimated\" (worst-case)", s.Precision)
+	}
+}
+
+// TestRollupSavings_OldEvents: events with empty Precision field (pre-feature) → "estimated".
+func TestRollupSavings_OldEvents(t *testing.T) {
+	events := []state.Event{
+		routedEvent(t, "a", "haiku", "opus", 0.10, 0.01), // no Precision field
+	}
+	s, _ := rollupSavings(events)
+	if s.Precision != "estimated" {
+		t.Errorf("Precision = %q, want \"estimated\" (old event with absent field)", s.Precision)
+	}
+}
+
+// TestRollupSavings_Empty: no routed events → precision is "" (no badge).
+func TestRollupSavings_Empty(t *testing.T) {
+	s, _ := rollupSavings(nil)
+	if s.Precision != "" {
+		t.Errorf("Precision = %q, want \"\" (empty meter has no precision)", s.Precision)
+	}
+	if s.Routes != 0 {
+		t.Errorf("Routes = %d, want 0", s.Routes)
+	}
 }

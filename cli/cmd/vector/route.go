@@ -21,6 +21,7 @@ func runSpecRoute(args []string) error {
 	task := fs.String("task", "", "short label for the routed task")
 	tokensIn := fs.Int("tokens-in", 0, "input tokens consumed")
 	tokensOut := fs.Int("tokens-out", 0, "output tokens produced")
+	precision := fs.String("precision", "", "data quality: actual|estimated (default: estimated)")
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
 	if err := fs.Parse(rest); err != nil {
@@ -37,7 +38,7 @@ func runSpecRoute(args []string) error {
 	if err != nil {
 		return err
 	}
-	data, err := store.RouteAgent(id, *task, *model, *baseline, *tokensIn, *tokensOut, resolveActor(), time.Now())
+	data, err := store.RouteAgent(id, *task, *model, *baseline, *tokensIn, *tokensOut, *precision, resolveActor(), time.Now())
 	if err != nil {
 		return err
 	}
@@ -50,6 +51,7 @@ func runSpecRoute(args []string) error {
 			"tokensOut": fmt.Sprintf("%d", data.TokensOut),
 			"costUsd":   fmt.Sprintf("%.6f", data.CostUSD),
 			"savedUsd":  fmt.Sprintf("%.6f", data.SavedUSD),
+			"precision": data.Precision,
 		})
 	}
 	label := data.Task

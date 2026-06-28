@@ -104,4 +104,10 @@ type AgentRoutedData struct {
 	TokensOut int     `json:"tokensOut"`
 	CostUSD   float64 `json:"costUsd"`
 	SavedUSD  float64 `json:"savedUsd"`
+	// Precision is the data quality of the token counts:
+	//   "actual"    = token counts reported by the harness (exact measurement).
+	//   "estimated" = self-reported by the orchestrating command (default).
+	// Absent in events written before this field was introduced; the board
+	// rollup treats "" as "estimated" for backward compatibility.
+	Precision string `json:"precision,omitempty"`
 }
