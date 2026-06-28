@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -140,6 +141,52 @@ func TestCommandPathsNonEmpty(t *testing.T) {
 	}
 	if len(paths) == 0 {
 		t.Fatal("no embedded commands — go generate vendoring is broken")
+	}
+}
+
+// TestAssetsMatchKit verifies that every file embedded in assets/ is byte-for-byte
+// identical to its counterpart in kit/. If this test fails, run:
+//
+//	go generate ./internal/scaffold   (from cli/)
+//
+// then recommit assets/ before merging.
+func TestAssetsMatchKit(t *testing.T) {
+	t.Helper()
+
+	// Walking from cli/internal/scaffold/, kit/ is three levels up.
+	kitRoot := filepath.Join("..", "..", "..", "kit")
+
+	err := fs.WalkDir(assets, embedRoot, func(embPath string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		// embPath is like "assets/agents/vector-bug-refiner.md"
+		// strip the "assets/" prefix to get the kit-relative subpath
+		rel := embPath[len(embedRoot)+1:] // e.g. "agents/vector-bug-refiner.md"
+
+		embBytes, err := assets.ReadFile(embPath)
+		if err != nil {
+			t.Errorf("read embedded %s: %v", embPath, err)
+			return nil
+		}
+
+		kitPath := filepath.Join(kitRoot, filepath.FromSlash(rel))
+		kitBytes, err := os.ReadFile(kitPath)
+		if err != nil {
+			t.Errorf("read kit file %s: %v — does kit/ have this file?", kitPath, err)
+			return nil
+		}
+
+		if string(embBytes) != string(kitBytes) {
+			t.Errorf("assets/%s differs from kit/%s — run `go generate ./internal/scaffold` from cli/", rel, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk assets: %v", err)
 	}
 }
 

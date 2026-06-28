@@ -31,3 +31,7 @@ docs/.obsidian/workspace.json
 docs/.obsidian/workspace-mobile.json
 docs/.obsidian/workspace.json.bak
 docs/.obsidian/cache
+
+# Kit assets seeded by `vector update` — edit in kit/, not here.
+.claude/agents/
+.claude/commands/vector/

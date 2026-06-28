@@ -59,6 +59,33 @@ status traqueado como señal. Config `applyMode` en `.vector/config.json`:
   change y va task por task; en `ask` confirma el change y luego corre.
 - Si `/vector:apply <id>` recibe un id explícito, salta la selección (override del modo).
 
+### 3b. Tier del modelo de implementación (`applyModel`)
+
+Además de cuánto decide el LLM, es configurable **con qué modelo** implementa. El campo
+`applyModel` en `.vector/config.json` controla el tier usado en el paso de implementación (§4
+del command):
+
+| Valor | Comportamiento |
+|---|---|
+| `""` ó `"opus"` | implementa inline en el modelo de la sesión (Opus) — **comportamiento actual, default** |
+| `"sonnet"` | siempre delega la implementación al subagente `vector-apply-impl` (model: Sonnet) |
+| `"conditional"` | evalúa cinco señales mecánicas contra los artefactos del change y enruta a Sonnet solo si el cambio es mecánico (≤ 5 archivos, sin tocar contratos API, tipos de dominio, dependencias ni decisiones abiertas); caso contrario implementa en Opus |
+
+**Diseño:**
+- **Opt-in**: `vector init`/`update` nunca escribe el campo. Los configs sin `applyModel`
+  cargan sin error y se comportan exactamente como antes (Opus inline).
+- **Default conservador**: `ResolvedApplyModel()` retorna `ApplyModelOpus` cuando el campo
+  está vacío o es inválido — nunca degrada silenciosamente a Sonnet.
+- **Valor resuelto siempre expuesto**: `vector spec next --json` incluye `"applyModel"` (valor
+  resuelto, nunca vacío) junto a `"applyMode"`, para que el command lo lea sin tocar el disco.
+- **Subagente delgado**: el agente `vector-apply-impl` (Sonnet) recibe solo un brief con paths
+  a artefactos; los artefactos no se cargan en el contexto del command orquestador.
+- **Fallback conservador en `conditional`**: cualquier señal ambigua → Opus. Artefactos
+  ausentes, `tasks.md` vacío o scope no cuantificable → Opus.
+
+El campo se valida en `config.Load()`: un valor desconocido (ej. `"haiku"`) retorna un error
+accionable antes de ejecutar cualquier command.
+
 ## 4. Superficie esperada (binario + command)
 
 - **Binario** (CLI-owns-writes):

@@ -39,6 +39,24 @@ Cada decisión de arquitectura se evalúa contra el costo de instalación.
   antes de compilar el binario. Documentar el orden en el pipeline de release.
 - Versionar juntos binario + assets embebidos para evitar drift entre API y frontend.
 
-> Estado: pendiente — mecanismo exacto de embed, layout del pipeline de release y script de
-> instalación se definen al iniciar la implementación. Ver nota de distribución en
-> `docs/vision.md` (§Techstack).
+### Flujo de edición single-source (kit → binario → .claude/)
+
+`kit/` es la **única fuente editable** de agentes y commands. `cli/internal/scaffold/assets/`
+es una copia generada (nunca editar a mano); `.claude/agents/` y `.claude/commands/vector/` en
+cualquier repo son copias sembradas por el binario (no rastreadas en git, no editar a mano).
+
+Flujo canónico para propagar un cambio:
+
+1. Editar el archivo en `kit/agents/<agente>.md` o `kit/commands/vector/<cmd>.md`.
+2. Correr `go generate ./internal/scaffold` desde `cli/` → actualiza `assets/`.
+3. Reinstalar el binario (`go install ./cmd/vector` o el script de la Memory).
+4. Correr `vector update` en la raíz del repo → `SeedCommands` siembra `.claude/` desde el
+   binario.
+
+`assets/` permanece rastreado en git como snapshot del último `go generate` corrido. El test
+`TestAssetsMatchKit` (en `cli/internal/scaffold/scaffold_test.go`) detecta drift entre `kit/`
+y `assets/` antes del merge. Ver comentario de paquete en `cli/internal/scaffold/scaffold.go`.
+
+> Estado: el mecanismo de embed (`//go:generate` + `embed.FS` + `SeedCommands`) ya está activo.
+> Pendiente: layout del pipeline de release y script de instalación de un paso. Ver nota de
+> distribución en `docs/vision.md` (§Techstack).

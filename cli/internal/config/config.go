@@ -65,6 +65,12 @@ type Config struct {
 	// next work-item: "auto" (pick and start), "ask" (propose a pick, confirm) or
 	// "always-ask" (always show candidates). Empty defaults to ApplyModeAsk.
 	ApplyMode ApplyMode `json:"applyMode,omitempty"`
+	// ApplyModel controls which model tier /vector:apply uses for the implementation
+	// step: "opus" (or empty) keeps the current inline behavior; "sonnet" always
+	// delegates to a Sonnet subagent; "conditional" evaluates mechanical signals and
+	// routes to Sonnet only when the change qualifies. Empty = ApplyModelOpus (no
+	// regression). Not written by vector init/update — strictly opt-in.
+	ApplyModel ApplyModel `json:"applyModel,omitempty"`
 	// Language is the prose language Vector agents write in (a BCP-47 tag like "es"
 	// or a plain name like "Spanish" — free pass-through, no allow-list). Empty =
 	// agents match the conversation language (current behavior). Set via
@@ -118,6 +124,38 @@ func (c *Config) ResolvedApplyMode() ApplyMode {
 		return c.ApplyMode
 	}
 	return ApplyModeAsk
+}
+
+// ApplyModel controls which model tier /vector:apply uses for the implementation
+// step (docs/apply-design.md §3). "opus" (or empty) keeps the current Opus-inline
+// behavior; "sonnet" always delegates to a Sonnet subagent; "conditional" evaluates
+// five mechanical signals and routes to Sonnet only when the change is mechanical.
+// The field is opt-in: vector init/update never writes it, so existing configs keep
+// the current behavior unchanged.
+type ApplyModel string
+
+const (
+	ApplyModelOpus        ApplyModel = "opus"        // default; implements inline (Opus)
+	ApplyModelSonnet      ApplyModel = "sonnet"      // always delegates to Sonnet subagent
+	ApplyModelConditional ApplyModel = "conditional" // evaluates mechanical signals first
+)
+
+// Valid reports whether m is a known apply model value.
+func (m ApplyModel) Valid() bool {
+	switch m {
+	case ApplyModelOpus, ApplyModelSonnet, ApplyModelConditional:
+		return true
+	}
+	return false
+}
+
+// ResolvedApplyModel returns the configured model tier or ApplyModelOpus when the
+// field is empty or invalid — the safe default preserves current Opus behavior.
+func (c *Config) ResolvedApplyModel() ApplyModel {
+	if c.ApplyModel.Valid() {
+		return c.ApplyModel
+	}
+	return ApplyModelOpus
 }
 
 // ResolvedLanguage returns the configured prose language trimmed of surrounding
@@ -363,6 +401,9 @@ func Load(repoRoot string) (*Config, error) {
 	}
 	if c.DefaultTicketProvider != "" && !c.DefaultTicketProvider.Valid() {
 		return nil, fmt.Errorf("invalid defaultTicketProvider %q: allowed jira,linear,github,other", c.DefaultTicketProvider)
+	}
+	if c.ApplyModel != "" && !c.ApplyModel.Valid() {
+		return nil, fmt.Errorf("invalid applyModel %q: allowed opus,sonnet,conditional", c.ApplyModel)
 	}
 	return &c, nil
 }

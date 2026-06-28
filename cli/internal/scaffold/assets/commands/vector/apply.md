@@ -75,7 +75,65 @@ exist — **not** "is the `openspec` CLI on PATH". (Lesson from propose's bootst
 
 The change name == the spec id (domain contract). Read it from the card's `openspec.change`.
 
+## 3a. Evalúa el tier del modelo
+
+Read `applyModel` from the JSON returned by `vector spec next --json` in §1 (already in
+memory). In a direct continuation (§2 `in-progress` path, where §1 was skipped), read
+`.vector/config.json` and call `vector context --json` to obtain the value; if unavailable,
+default to `"opus"`.
+
+**Dispatch by `applyModel` value:**
+
+| Value | Action |
+|---|---|
+| `""` or `"opus"` | Tier = **Opus**. Continue to §4 and implement inline (current behavior, no change). |
+| `"sonnet"` | Tier = **Sonnet**. Skip §4 — delegate immediately to `vector-apply-impl`. |
+| `"conditional"` | Evaluate the five mechanical signals below. Route to Sonnet if **all five** are mechanical; route to Opus if any is architectural or ambiguous. |
+
+**Five mechanical signals (for `conditional` only):**
+
+| Dimension | Mechanical | Architectural / ambiguous |
+|---|---|---|
+| **File scope** | ≤ 5 distinct paths/file names mentioned in `proposal.md`/`tasks.md`/`design.md` | > 5 files, or scope not quantifiable from artefacts |
+| **API/HTTP contracts** | No changes to endpoints, response bodies, or routes | Adds, modifies, or removes endpoints |
+| **Domain types** | Does not touch `SpecState`, `Config`, event types, or state machine | Modifies domain structures or state machine |
+| **Dependencies** | No new imports or external libraries | Adds a lib or external dependency |
+| **Open decisions** | `design.md` has no pending alternatives or trade-offs | `design.md` contains open decisions or listed alternatives |
+
+**Fallback rule:** any signal that is ambiguous (artefacts absent, `tasks.md` empty or not
+found, scope unreadable) counts as **architectural** — default to Opus. Conservative routing
+is always safer than a false downgrade.
+
+**When tier = Sonnet**, dispatch to `vector-apply-impl` as a **fresh agent** (not a fork) with
+the structured brief below. Do not implement inline; do not load the artefact contents into
+your own context. The change paths are already available from §3.
+
+```
+spec_id: <id>
+proposal: <abs_path>/openspec/changes/<id>/proposal.md
+design:   <abs_path>/openspec/changes/<id>/design.md
+tasks:    <abs_path>/openspec/changes/<id>/tasks.md
+repo_root: <abs_path>
+build_cmd: <BUILD_CMD from §0, or "">
+test_cmd:  <TEST_CMD from §0, or "">
+mode: delegate | native
+openspec_change: <id>   # only in delegate mode
+```
+
+In native mode without `tasks.md`, omit the `tasks` field and include instead:
+`spec_doc: <abs_path>/.vector/specs/<id>/spec.md`
+
+Await the agent's JSON result (shape: `files_changed`, `tasks_completed`, `tasks_pending`,
+`build_passed`, `test_passed`, `blocked`, `note`). Consume this JSON in §5 and §6a in place
+of your own run's artifacts. If `"blocked": true`, treat the `note` as the blocker reason for
+§6b. If both `build_passed` and `test_passed` are false and `files_changed` is empty, the
+agent encountered a non-recoverable error — surface `note` to the user and stop.
+
 ## 4. Implement
+
+> **If the tier was assigned to Sonnet in §3a, skip this section: the implementation has
+> already been delegated to the `vector-apply-impl` subagent.** Proceed directly to §5,
+> consuming the agent's JSON result.
 
 Follow the change's `proposal.md`/`design.md`/`tasks.md` (or the spec doc in native mode).
 Check off `tasks.md` items as you complete them so progress is visible. Respect the repo's own
@@ -207,6 +265,9 @@ uncommitted changes, and the next step.
 ## Notes
 
 - `applyMode` lives in `.vector/config.json` (`auto` | `ask` | `always-ask`); default `ask`.
+- `applyModel` lives in `.vector/config.json` (`opus` | `sonnet` | `conditional`); default `opus`
+  (opt-in — `vector init`/`update` never writes this field). Set it manually to opt into token
+  routing. The resolved value is always exposed by `vector spec next --json` as `"applyModel"`.
 - An explicit `/vector:apply <id>` overrides selection but still respects the state machine.
 - The binary enforces the state machine: illegal transitions error out — do not work around them
   by editing `.vector/` by hand.

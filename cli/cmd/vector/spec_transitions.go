@@ -296,15 +296,19 @@ func runSpecNext(args []string) error {
 		return err
 	}
 	// applyMode steers how /vector:apply uses this pick; default ask when unset.
+	// applyModel controls which model tier /vector:apply uses for implementation;
+	// default opus (current behavior) when unset.
 	mode := config.ApplyModeAsk
+	applyModel := config.ApplyModelOpus
 	if cfg, cerr := config.Load(root); cerr == nil {
 		mode = cfg.ResolvedApplyMode()
+		applyModel = cfg.ResolvedApplyModel()
 	}
 
 	pick := state.SelectNext(specs)
 	if pick == nil {
 		if *jsonOut {
-			return printJSON(map[string]string{"id": "", "applyMode": string(mode), "note": "nothing actionable"})
+			return printJSON(map[string]string{"id": "", "applyMode": string(mode), "applyModel": string(applyModel), "note": "nothing actionable"})
 		}
 		fmt.Println("no actionable spec (only draft/closed/archived remain)")
 		return nil
@@ -312,10 +316,10 @@ func runSpecNext(args []string) error {
 	if *jsonOut {
 		return printJSON(map[string]string{
 			"id": pick.ID, "status": string(pick.Status), "priority": string(pick.Priority),
-			"title": pick.Title, "applyMode": string(mode),
+			"title": pick.Title, "applyMode": string(mode), "applyModel": string(applyModel),
 		})
 	}
-	fmt.Printf("next: %s  (%s · %s)  [applyMode: %s]\n  %s\n", pick.ID, pick.Status, pick.Priority, mode, pick.Title)
+	fmt.Printf("next: %s  (%s · %s)  [applyMode: %s]  [applyModel: %s]\n  %s\n", pick.ID, pick.Status, pick.Priority, mode, applyModel, pick.Title)
 	return nil
 }
 

@@ -561,3 +561,85 @@ func TestBuildCmdsOmitEmptyInJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyModelValid(t *testing.T) {
+	tests := []struct {
+		model ApplyModel
+		want  bool
+	}{
+		{ApplyModelOpus, true},
+		{ApplyModelSonnet, true},
+		{ApplyModelConditional, true},
+		{"", false},
+		{"haiku", false},
+		{"SONNET", false},
+		{"auto", false},
+	}
+	for _, tc := range tests {
+		if got := tc.model.Valid(); got != tc.want {
+			t.Errorf("ApplyModel(%q).Valid() = %v, want %v", tc.model, got, tc.want)
+		}
+	}
+}
+
+func TestResolvedApplyModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		model ApplyModel
+		want  ApplyModel
+	}{
+		{"empty defaults to opus", "", ApplyModelOpus},
+		{"explicit opus", ApplyModelOpus, ApplyModelOpus},
+		{"sonnet", ApplyModelSonnet, ApplyModelSonnet},
+		{"conditional", ApplyModelConditional, ApplyModelConditional},
+		{"invalid falls back to opus", "haiku", ApplyModelOpus},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{ApplyModel: tc.model}
+			if got := c.ResolvedApplyModel(); got != tc.want {
+				t.Errorf("ResolvedApplyModel() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidApplyModel(t *testing.T) {
+	root := t.TempDir()
+	// Write a config with an invalid applyModel value directly (bypassing Write,
+	// which accepts any string in the struct; Load must reject it).
+	raw := `{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specFilename":"spec.md","specStore":"vector","source":"default","applyModel":"haiku"}`
+	if err := os.MkdirAll(filepath.Dir(Path(root)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(root), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err == nil {
+		t.Fatal("expected Load to reject applyModel=haiku")
+	} else if !strings.Contains(err.Error(), "applyModel") {
+		t.Errorf("error message should mention applyModel: %v", err)
+	}
+}
+
+func TestLoadLegacyConfigWithoutApplyModel(t *testing.T) {
+	root := t.TempDir()
+	// A legacy config without the applyModel field must load cleanly with ApplyModel == "".
+	legacy := `{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specFilename":"spec.md","specStore":"vector","source":"default"}`
+	if err := os.MkdirAll(filepath.Dir(Path(root)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(root), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load legacy: %v", err)
+	}
+	if loaded.ApplyModel != "" {
+		t.Errorf("legacy config ApplyModel = %q, want empty", loaded.ApplyModel)
+	}
+	if got := loaded.ResolvedApplyModel(); got != ApplyModelOpus {
+		t.Errorf("ResolvedApplyModel() on legacy = %q, want %q", got, ApplyModelOpus)
+	}
+}

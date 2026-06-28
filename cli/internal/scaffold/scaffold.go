@@ -3,11 +3,27 @@
 // repo. The artifacts are embedded into the binary so the global `vector` binary
 // can seed any repo without needing kit/ on disk.
 //
-// The embedded assets under assets/ are a vendored copy of kit/{commands,agents,
-// vector}/, kept in sync via `go generate`. Everything under assets/ mirrors into
-// the target repo's .claude/ directory (assets/commands/vector/raw.md ->
-// .claude/commands/vector/raw.md, assets/agents/x.md -> .claude/agents/x.md), so
-// only files meant to live under .claude/ belong in assets/.
+// # Single-source flow
+//
+// kit/ is the only editable source. assets/ is a generated vendored copy; never
+// edit it directly. .claude/agents/ and .claude/commands/vector/ in any repo
+// (including the Vector repo itself) are seeded copies managed by the binary.
+//
+// To propagate a change to an agent or command:
+//
+//  1. Edit the file in kit/agents/ or kit/commands/vector/.
+//  2. Run `go generate ./internal/scaffold` from cli/ to update assets/.
+//  3. Reinstall the binary: `go install ./cmd/vector` (or the Memory script).
+//  4. Run `vector update` in the repo root to reseed .claude/ from the binary.
+//
+// assets/ stays tracked in git as the snapshot of the last `go generate` run.
+// TestAssetsMatchKit guards that assets/ never drifts from kit/ without a matching
+// go generate.
+//
+// The embedded assets under assets/ mirror into the target repo's .claude/
+// directory (assets/commands/vector/raw.md -> .claude/commands/vector/raw.md,
+// assets/agents/x.md -> .claude/agents/x.md), so only files meant to live
+// under .claude/ belong in assets/.
 package scaffold
 
 //go:generate sh -c "rm -rf assets && mkdir -p assets && cp -R ../../../kit/commands ../../../kit/agents ../../../kit/vector assets/"
