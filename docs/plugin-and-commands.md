@@ -51,8 +51,12 @@ tags: [vector, spec, capture]
 
 ## Decisión: los slash commands bajo el namespace `vector`
 
-`/vector:raw` · `/vector:link` · `/vector:status` · `/vector:daily` · `/vector:apply` ·
-`/vector:close` · `/vector:archive`
+`/vector:raw` · `/vector:bug` · `/vector:link` · `/vector:status` · `/vector:daily` ·
+`/vector:apply` · `/vector:close` · `/vector:archive` · `/vector:comment`
+
+`/vector:bug` es la contraparte bug-framed de `/vector:raw`: refina un reporte (Haiku), deduce
+la **causa raíz** vía `git blame`/`git log` (mapeando commits sospechosos a una spec de Vector
+o a un ticket) y registra el bug como card `draft` con relaciones `relatedTo[]` persistidas.
 
 `init` queda **fuera** de los slash commands: es el subcomando de terminal `vector init` que
 bootstrapea el repo y siembra los de arriba (ver §Distribución).
@@ -67,12 +71,14 @@ kit/                              # fuente versionada en el repo Vector
 └── commands/
     └── vector/                   # el subdirectorio = namespace del colon
         ├── raw.md                # → /vector:raw  (template ≈ /idea)
+        ├── bug.md                # → /vector:bug  (raw bug-framed + traza de causa)
         ├── link.md
         ├── status.md
         ├── daily.md
         ├── apply.md
         ├── close.md
-        └── archive.md
+        ├── archive.md
+        └── comment.md            # → /vector:comment  (evaluar comentario de PR)
 ```
 
 `kit/commands/vector/` es la **fuente distribuible**: el binario la embebe (`embed.FS`) y

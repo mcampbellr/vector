@@ -31,7 +31,27 @@ vector spec status <id> <status> [--reason "<why>"] --json
 surfaced on the card). The binary logs `status.changed` (`trigger:command`). An illegal move
 errors out — surface the error; do not edit `.vector/` by hand.
 
-## 3. Report
+## 3. Summarize what was done (post-action)
+
+Generate the per-spec "what was done" summary the board's details drawer shows. The binary
+projects and persists; **you never write the summary yourself.** The path taken depends on
+whether the activity window contains real work. Note: the close/archive safeguard that
+preserves a prior summary when there is no new work does **not** apply here — for a plain
+status transition the template is always committed.
+
+1. `vector spec summarize <id> --json` → `{ id, title, status, hasWork, templateSummary?, ... }`.
+2. **If `hasWork == false`** (no `work.logged` events — typical for a status change):
+   - If `templateSummary` is non-empty: pipe `{"summary":"<templateSummary>"}` directly to
+     `vector spec summarize <id> commit --action status --summary-file -`.
+     Log: `"summary: template (no work logged)"`. Skip spawning the agent.
+   - If `templateSummary` is empty (defensive edge case): log
+     `"no templateSummary received, skipping summary"` and continue without writing.
+3. **If `hasWork == true`**: pass the full JSON to the `vector-summary-writer` subagent
+   (Haiku); it returns `{ "summary": "<2–3 sentences>" }`. Pipe its JSON to
+   `vector spec summarize <id> commit --action status --summary-file -`. Empty/invalid prose
+   → nothing is written (not a gate); note it and move on. Log: `"summary: generated (Haiku)"`.
+
+## 4. Report
 
 Report the id and the transition (e.g. `in-progress → needs-attention`, with the reason). If the
 target is a dedicated step, point at it instead: `closed` → prefer `/vector:close`; `open` from a

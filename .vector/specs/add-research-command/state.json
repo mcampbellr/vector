@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "add-research-command",
+  "title": "Comando /vector:research para investigar viabilidad",
+  "status": "draft",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-research-command/spec.md",
+  "createdAt": "2026-06-27T20:11:01.853347Z",
+  "updatedAt": "2026-06-27T20:11:01.853347Z"
+}

@@ -37,6 +37,8 @@ func main() {
 		err = runInit(os.Args[2:])
 	case "update":
 		err = runUpdate(os.Args[2:])
+	case "context":
+		err = runContext(os.Args[2:])
 	case "sync":
 		err = runSync(os.Args[2:])
 	case "serve":
@@ -45,6 +47,8 @@ func main() {
 		err = runStandup(os.Args[2:])
 	case "spec":
 		err = runSpec(os.Args[2:])
+	case "detect-ticket":
+		err = runDetectTicket(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("vector", version)
 	case "help", "-h", "--help":
@@ -70,6 +74,7 @@ func runInit(args []string) error {
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	force := fs.Bool("force", false, "overwrite existing /vector:* command files")
 	dryRun := fs.Bool("dry-run", false, "show what would be written without writing")
+	language := fs.String("language", "", "prose language for Vector agents (e.g. es, Spanish); empty = conversation language")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -107,6 +112,28 @@ func runInit(args []string) error {
 			return fmt.Errorf("init state: %w", err)
 		}
 		if !cfgExisted || *force {
+			// Set the prose language from --language; on a --force re-init without the
+			// flag, preserve any language already configured (Resolve drops it).
+			if lang := strings.TrimSpace(*language); lang != "" {
+				cfg.Language = lang
+			} else if *force {
+				if existing, lerr := config.Load(root); lerr == nil {
+					cfg.Language = existing.ResolvedLanguage()
+				}
+			}
+			// Detect and persist build/lint/test commands when uncached (or --force).
+			if cfg.BuildCmd == "" || cfg.LintCmd == "" || cfg.TestCmd == "" || *force {
+				detBuild, detLint, detTest := config.DetectBuildCmds(root)
+				if cfg.BuildCmd == "" || *force {
+					cfg.BuildCmd = detBuild
+				}
+				if cfg.LintCmd == "" || *force {
+					cfg.LintCmd = detLint
+				}
+				if cfg.TestCmd == "" || *force {
+					cfg.TestCmd = detTest
+				}
+			}
 			cfg.KitVersion = version
 			if err := config.Write(root, cfg); err != nil {
 				return fmt.Errorf("write config: %w", err)
@@ -133,6 +160,9 @@ func runInit(args []string) error {
 		fmt.Printf("  %-12s %s\n", r.Action, r.Path)
 	}
 	fmt.Printf("  %-12s .vector/config.json (specPath: %s, source: %s)\n", cfgAction, cfg.SpecPath, cfg.Source)
+	if lang := cfg.ResolvedLanguage(); lang != "" {
+		fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
+	}
 	if *dryRun {
 		fmt.Println("\n(dry run — nothing written; a real init also creates the .vector/ state skeleton)")
 		return nil
@@ -151,6 +181,7 @@ func runUpdate(args []string) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
+	language := fs.String("language", "", "set/change the prose language for Vector agents (e.g. es, Spanish); unset = leave as-is")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -175,6 +206,25 @@ func runUpdate(args []string) error {
 	results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: true, DryRun: *dryRun})
 	if err != nil {
 		return fmt.Errorf("re-seed vector kit: %w", err)
+	}
+	// A provided --language sets/changes the prose language; absent, it is left
+	// as-is (update never clears a configured language).
+	if lang := strings.TrimSpace(*language); lang != "" {
+		cfg.Language = lang
+	}
+	// Detect and persist build/lint/test commands when any are uncached.
+	// update never clears existing detected commands; it only fills gaps.
+	if cfg.BuildCmd == "" || cfg.LintCmd == "" || cfg.TestCmd == "" {
+		detBuild, detLint, detTest := config.DetectBuildCmds(root)
+		if cfg.BuildCmd == "" {
+			cfg.BuildCmd = detBuild
+		}
+		if cfg.LintCmd == "" {
+			cfg.LintCmd = detLint
+		}
+		if cfg.TestCmd == "" {
+			cfg.TestCmd = detTest
+		}
 	}
 	if !*dryRun {
 		cfg.KitVersion = version
@@ -202,6 +252,9 @@ func runUpdate(args []string) error {
 	fmt.Printf("  kit %s -> %s\n", prev, version)
 	for _, r := range results {
 		fmt.Printf("  %-12s %s\n", r.Action, r.Path)
+	}
+	if lang := cfg.ResolvedLanguage(); lang != "" {
+		fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
 	}
 	if *dryRun {
 		fmt.Println("\n(dry run — nothing written)")
@@ -332,12 +385,18 @@ func runSync(args []string) error {
 		case existing.OpenSpec == nil: // user-authored (e.g. a /vector:raw draft) — never touch
 			results = append(results, syncResult{c.Name, string(existing.Status), "skipped (not sync-owned)"})
 		case *reconcile:
+			// Terminal cards (closed/archived) are never reconciled back to a
+			// tasks-derived status; mirror ReconcileStatus's guard in the preview.
+			effective := status
+			if existing.Status.IsTerminal() {
+				effective = existing.Status
+			}
 			if *dryRun {
 				action := "unchanged"
-				if existing.Status != status {
+				if existing.Status != effective {
 					action = "would update"
 				}
-				results = append(results, syncResult{c.Name, string(status), action})
+				results = append(results, syncResult{c.Name, string(effective), action})
 				break
 			}
 			changed, err := store.ReconcileStatus(c.Name, status, openSpec, needsUAT, actor, now)
@@ -534,7 +593,7 @@ func humanizeSlug(slug string) string {
 
 func runSpec(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vector spec <create|list|propose|apply|link|status|close|archive|next|worklog> ...")
+		return fmt.Errorf("usage: vector spec <create|list|propose|apply|link|relate|status|close|archive|next|worklog|summarize|route> ...")
 	}
 	switch args[0] {
 	case "create":
@@ -547,6 +606,8 @@ func runSpec(args []string) error {
 		return runSpecApply(args[1:])
 	case "link":
 		return runSpecLink(args[1:])
+	case "relate":
+		return runSpecRelate(args[1:])
 	case "status":
 		return runSpecStatus(args[1:])
 	case "close":
@@ -557,6 +618,10 @@ func runSpec(args []string) error {
 		return runSpecNext(args[1:])
 	case "worklog":
 		return runSpecWorklog(args[1:])
+	case "summarize":
+		return runSpecSummarize(args[1:])
+	case "route":
+		return runSpecRoute(args[1:])
 	default:
 		return fmt.Errorf("unknown spec subcommand %q", args[0])
 	}
@@ -681,6 +746,7 @@ func runSpecCreate(args []string) error {
 	status := fs.String("status", "draft", "draft|open|in-progress|needs-attention|review|closed|archived")
 	bodyFile := fs.String("body-file", "", "path to the spec doc body, or - for stdin")
 	ticketJSON := fs.String("ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
+	relatedJSON := fs.String("related", "", "seed cause→bug relations as JSON [{\"kind\":\"spec\",\"ref\":\"id\",\"source\":\"blame\"}]")
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
 	if err := fs.Parse(args); err != nil {
@@ -718,6 +784,20 @@ func runSpecCreate(args []string) error {
 	if err != nil {
 		return err
 	}
+
+	// Resolve seed relations. An invalid --related (malformed JSON, bad enum, or a
+	// kind:spec ref that does not exist) degrades to a relation-less card rather
+	// than aborting a valid card — mirrors the --ticket fallback. The warning goes
+	// to stderr so --json stdout stays clean for tooling.
+	related, relErr := parseRelatedFlag(*relatedJSON)
+	if relErr == nil {
+		relErr = verifyRelatedExist(store, related)
+	}
+	if relErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: ignoring --related (%v); creating card without relations\n", relErr)
+		related = nil
+	}
+
 	spec, err := store.CreateSpec(state.CreateSpecParams{
 		Title:          *title,
 		ID:             specID,
@@ -726,6 +806,7 @@ func runSpecCreate(args []string) error {
 		Status:         state.Status(*status),
 		Body:           body,
 		Ticket:         ticket,
+		RelatedTo:      related,
 		Actor:          resolveActor(),
 		Now:            time.Now(),
 		SpecDocAbsPath: docAbs,
@@ -736,20 +817,48 @@ func runSpecCreate(args []string) error {
 	}
 
 	if *jsonOut {
-		return printJSON(map[string]string{
-			"id":      spec.ID,
-			"status":  string(spec.Status),
-			"state":   store.StatePath(spec.ID),
-			"specDoc": spec.SpecDoc,
+		return printJSONValue(map[string]any{
+			"id":        spec.ID,
+			"status":    string(spec.Status),
+			"state":     store.StatePath(spec.ID),
+			"specDoc":   spec.SpecDoc,
+			"relatedTo": spec.RelatedTo,
 		})
 	}
 	fmt.Printf("created spec %q (status: %s)\n  spec doc: %s\n", spec.ID, spec.Status, spec.SpecDoc)
+	if len(spec.RelatedTo) > 0 {
+		fmt.Printf("  related: %s\n", formatRelations(spec.RelatedTo))
+	}
 	return nil
+}
+
+// verifyRelatedExist checks that every kind:spec relation points to a spec that
+// already exists, so /vector:bug never records a relation to a missing card. The
+// store re-checks this under its lock; this pre-check lets create degrade cleanly.
+func verifyRelatedExist(store *state.Store, items []state.RelatedItem) error {
+	for _, item := range items {
+		if item.Kind == state.RelatedSpec {
+			if _, err := store.ReadSpec(item.Ref); err != nil {
+				return fmt.Errorf("related spec %q does not exist", item.Ref)
+			}
+		}
+	}
+	return nil
+}
+
+// formatRelations renders relations as "kind:ref (source)" for human output.
+func formatRelations(items []state.RelatedItem) string {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		parts = append(parts, fmt.Sprintf("%s:%s (%s)", item.Kind, item.Ref, item.Source))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func runSpecList(args []string) error {
 	fs := flag.NewFlagSet("spec list", flag.ContinueOnError)
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	jsonOut := fs.Bool("json", false, "emit specs as a JSON array for tooling (cause resolution)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -764,6 +873,27 @@ func runSpecList(args []string) error {
 	specs, err := store.ListSpecs()
 	if err != nil {
 		return err
+	}
+	if *jsonOut {
+		// A robust contract for cause deduction: id/title/status/priority + the
+		// OpenSpec change name (commits map to it) and any existing relations.
+		out := make([]map[string]any, 0, len(specs))
+		for _, s := range specs {
+			entry := map[string]any{
+				"id":       s.ID,
+				"title":    s.Title,
+				"status":   string(s.Status),
+				"priority": string(s.Priority),
+			}
+			if s.OpenSpec != nil {
+				entry["change"] = s.OpenSpec.Change
+			}
+			if len(s.RelatedTo) > 0 {
+				entry["relatedTo"] = s.RelatedTo
+			}
+			out = append(out, entry)
+		}
+		return printJSONValue(out)
 	}
 	if len(specs) == 0 {
 		fmt.Println("no specs")
@@ -822,6 +952,12 @@ func resolveActor() string {
 }
 
 func printJSON(v map[string]string) error {
+	return printJSONValue(v)
+}
+
+// printJSONValue marshals any value as indented JSON to stdout — used where the
+// result is richer than a flat string map (e.g. spec list/relate with relations).
+func printJSONValue(v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal json result: %w", err)
@@ -830,26 +966,125 @@ func printJSON(v map[string]string) error {
 	return nil
 }
 
+// DetectTicketResponse is the JSON output of `vector detect-ticket`. It bundles
+// the detected ticket (nil when absent or ambiguous) with the repo's configured
+// language and ticket defaults, so callers (e.g. /vector:raw) can resolve both
+// ticket and language from a single binary invocation.
+type DetectTicketResponse struct {
+	Ticket                *state.Ticket        `json:"ticket"`
+	Language              string               `json:"language"`
+	DefaultTicketProvider state.TicketProvider `json:"defaultTicketProvider"`
+	TicketKeyPrefixes     []string             `json:"ticketKeyPrefixes"`
+}
+
+// runDetectTicket implements `vector detect-ticket`: reads text from stdin or
+// --text-file, loads the repo config (absent config → empty defaults, not an
+// error), runs detectTicketFromText, and emits a DetectTicketResponse as JSON.
+func runDetectTicket(args []string) error {
+	fs := flag.NewFlagSet("detect-ticket", flag.ContinueOnError)
+	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	textFile := fs.String("text-file", "-", "path to text file to analyze, or - for stdin")
+	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	root, err := resolveRepoRoot(*repoRoot)
+	if err != nil {
+		return err
+	}
+
+	// Config absent (before vector init) → empty defaults, not an error.
+	// Config present but corrupted (bad provider) → propagate.
+	cfg, cfgErr := config.Load(root)
+	if cfgErr != nil {
+		if !errors.Is(cfgErr, os.ErrNotExist) {
+			return cfgErr
+		}
+		cfg = &config.Config{}
+	}
+
+	// Read the input text.
+	var text string
+	switch *textFile {
+	case "-":
+		b, ioErr := io.ReadAll(os.Stdin)
+		if ioErr != nil {
+			return fmt.Errorf("read stdin: %w", ioErr)
+		}
+		text = string(b)
+	default:
+		b, ioErr := os.ReadFile(*textFile)
+		if ioErr != nil {
+			return fmt.Errorf("read text file: %w", ioErr)
+		}
+		text = string(b)
+	}
+
+	ticket := detectTicketFromText(text, cfg.ResolvedDefaultTicketProvider(), cfg.NormalizedTicketKeyPrefixes())
+
+	prefixes := cfg.NormalizedTicketKeyPrefixes()
+	if prefixes == nil {
+		prefixes = []string{}
+	}
+
+	resp := DetectTicketResponse{
+		Ticket:                ticket,
+		Language:              cfg.ResolvedLanguage(),
+		DefaultTicketProvider: cfg.ResolvedDefaultTicketProvider(),
+		TicketKeyPrefixes:     prefixes,
+	}
+
+	if *jsonOut {
+		b, marshalErr := json.MarshalIndent(resp, "", "  ")
+		if marshalErr != nil {
+			return fmt.Errorf("marshal json result: %w", marshalErr)
+		}
+		fmt.Println(string(b))
+		return nil
+	}
+
+	// Human-readable summary.
+	if resp.Ticket != nil {
+		fmt.Printf("ticket: %s:%s", resp.Ticket.Provider, resp.Ticket.Key)
+		if resp.Ticket.URL != "" {
+			fmt.Printf(" (%s)", resp.Ticket.URL)
+		}
+		fmt.Println()
+	} else {
+		fmt.Println("ticket: none")
+	}
+	if resp.Language != "" {
+		fmt.Printf("language: %s\n", resp.Language)
+	}
+	return nil
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `vector — developer-focused spec/kanban companion for Claude Code
 
 usage:
-  vector init [--repo-root path] [--force] [--dry-run] [--json]
-  vector update [--repo-root path] [--dry-run] [--json]
+  vector init [--repo-root path] [--force] [--language lang] [--dry-run] [--json]
+  vector update [--repo-root path] [--language lang] [--dry-run] [--json]
+  vector context [--repo-root path] [--json]   print repo setup context (example path, language, build/lint/test commands)
   vector sync [--repo-root path] [--reconcile] [--dry-run] [--json]
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector standup [--since 24h|today|7d] [--json]
   vector standup commit --digest-file -|path
-  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--json]
+  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
   vector spec link <id> <ref> [--provider jira|linear|github|other] [--json]
+  vector spec relate <id> --kind spec|ticket --ref <ref> [--source blame|manual] [--json]
   vector spec status <id> <status> [--reason ...] [--json]
   vector spec close <id> [--json]
   vector spec archive <id> [--json]
   vector spec next [--json]
   vector spec worklog <id> [--files a.go,b.go] [--tasks "DTO mapper"] [--note "..."] [--json]
-  vector spec list
+  vector spec summarize <id> [--json]
+  vector spec summarize commit <id> --action <name> --summary-file -|path [--json]
+  vector spec list [--json]
+  vector detect-ticket [--repo-root path] [--text-file -|path] [--json]
   vector version
 `)
 }

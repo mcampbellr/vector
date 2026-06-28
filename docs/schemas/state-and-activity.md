@@ -66,9 +66,10 @@ type SpecState struct {
 	Labels        []string `json:"labels,omitempty"`
 	EstimateMin   int      `json:"estimateMinutes,omitempty"`
 
-	Ticket   *Ticket    `json:"ticket,omitempty"`
-	OpenSpec *OpenSpec  `json:"openspec,omitempty"`      // nil until /vector:apply
-	Flag     *Attention `json:"needsAttention,omitempty"`// set iff Status == needs-attention
+	Ticket    *Ticket       `json:"ticket,omitempty"`
+	RelatedTo []RelatedItem `json:"relatedTo,omitempty"`     // cause→bug trace (/vector:bug)
+	OpenSpec  *OpenSpec     `json:"openspec,omitempty"`      // nil until /vector:apply
+	Flag      *Attention    `json:"needsAttention,omitempty"`// set iff Status == needs-attention
 
 	// RFC3339 UTC. These timestamps give cycle-time analytics without a history
 	// array — full transition history = git log of this file + activity.jsonl.
@@ -85,6 +86,15 @@ type Ticket struct {
 	Key      string         `json:"key"`   // e.g. MH-1438
 	URL      string         `json:"url"`
 	Auto     bool           `json:"auto"`  // true if auto-detected from /vector:raw text
+}
+
+// RelatedItem traza la causa de un bug a la obra previa que lo originó
+// (`/vector:bug`). Optional + omitempty → specs sin relaciones serializan idéntico
+// (backward-compatible). Relacionar NO cambia el status (es metadata, como Ticket).
+type RelatedItem struct {
+	Kind   RelatedKind   `json:"kind"`   // "spec" | "ticket" (commit/pr fuera de V1)
+	Ref    string        `json:"ref"`    // spec id (kind=spec) o provider:key (kind=ticket)
+	Source RelatedSource `json:"source"` // "blame" (deducido por git) | "manual"
 }
 
 type OpenSpec struct {
@@ -138,6 +148,7 @@ type EventType string
 const (
 	EvtSpecCreated   EventType = "spec.created"
 	EvtSpecLinked    EventType = "spec.linked"
+	EvtSpecRelated   EventType = "spec.related" // cause→bug trace (/vector:bug)
 	EvtStatusChanged EventType = "status.changed"
 	EvtNoteAdded     EventType = "note.added"
 	EvtReminderSet   EventType = "reminder.set"
@@ -166,6 +177,7 @@ type StatusChangedData struct{ From, To Status; Trigger, Reason string } // Trig
 type NoteAddedData     struct{ Text string; Pinned bool }
 type ReminderSetData   struct{ Text string; DueAt *time.Time }
 type BoardMovedData    struct{ From, To string }
+type SpecRelatedData   struct{ Kind RelatedKind; Ref string; Source RelatedSource } // espejo de RelatedItem; aditivo para timeline/standup
 
 // AgentRoutedData is the commercialization wedge: every cheap-agent route logs
 // what it would have cost on the baseline model.
@@ -200,6 +212,7 @@ servida en `GET /api/standup`.
 ```jsonl
 {"v":1,"ts":"2026-06-22T14:00:00Z","type":"spec.created","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"title":"New patient expediente","source":"raw","template":"idea"}}
 {"v":1,"ts":"2026-06-22T14:01:10Z","type":"spec.linked","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"provider":"jira","key":"MH-1438","auto":true}}
+{"v":1,"ts":"2026-06-22T14:02:00Z","type":"spec.related","specId":"fix-expediente-save-loop","repo":"cdr","actor":"mariocampbell","data":{"kind":"spec","ref":"new-patient-expediente","source":"blame"}}
 {"v":1,"ts":"2026-06-22T14:40:00Z","type":"status.changed","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"from":"open","to":"in-progress","trigger":"apply"}}
 {"v":1,"ts":"2026-06-22T14:55:30Z","type":"agent.routed","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"task":"summarize ADRs","model":"haiku","baseline":"opus","tokensIn":18200,"tokensOut":900,"costUsd":0.02,"savedUsd":0.31}}
 {"v":1,"ts":"2026-06-22T15:04:05Z","type":"status.changed","specId":"new-patient-expediente","repo":"cdr","actor":"mariocampbell","data":{"from":"in-progress","to":"needs-attention","trigger":"hook","reason":"Ambiguous money-assembler DTO contract"}}

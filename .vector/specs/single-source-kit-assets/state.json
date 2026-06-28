@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "single-source-kit-assets",
+  "title": "Fuente única para los assets del kit",
+  "status": "open",
+  "priority": "high",
+  "repo": "",
+  "specDoc": ".vector/specs/single-source-kit-assets/spec.md",
+  "openspec": {
+    "change": "single-source-kit-assets",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T23:54:59.259851Z",
+  "updatedAt": "2026-06-28T00:52:18.533984Z"
+}

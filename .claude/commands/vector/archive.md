@@ -27,7 +27,25 @@ vector spec archive <id> --json
 The binary transitions the card to `archived`, stamps `archivedAt`, and logs `spec.archived` +
 `status.changed`. Archived cards live in a separate view, not the active columns.
 
-## 3. Report
+## 3. Summarize what was done (post-action)
+
+Generate the per-spec "what was done" summary the board's details drawer shows. The binary
+projects and persists; **you never write the summary yourself.** The path taken depends on
+whether the activity window contains real work:
+
+1. `vector spec summarize <id> --json` → `{ id, title, status, hasWork, templateSummary?, ... }`.
+2. **If `hasWork == false`** (no `work.logged` events — typical for archive):
+   - If `templateSummary` is non-empty: pipe `{"summary":"<templateSummary>"}` directly to
+     `vector spec summarize <id> commit --action archive --summary-file -`.
+     Log: `"summary: template (no work logged)"`. Skip spawning the agent.
+   - If `templateSummary` is empty (defensive edge case): log
+     `"no templateSummary received, skipping summary"` and continue without writing.
+3. **If `hasWork == true`**: pass the full JSON to the `vector-summary-writer` subagent
+   (Haiku); it returns `{ "summary": "<2–3 sentences>" }`. Pipe its JSON to
+   `vector spec summarize <id> commit --action archive --summary-file -`. Empty/invalid prose
+   → nothing is written (not a gate); note it and move on. Log: `"summary: generated (Haiku)"`.
+
+## 4. Report
 
 Report the id and the transition (`closed → archived`). If the spec maps to an OpenSpec change,
 note that archiving the **Vector card** is separate from archiving the **OpenSpec change**

@@ -1,12 +1,13 @@
-import type { Column } from '../../types/board'
+import type { Card, Column } from '../../types/board'
 import { SpecCard } from '../SpecCard/SpecCard'
 import styles from './BoardColumn.module.css'
 
 interface BoardColumnProps {
   column: Column
+  onSelectCard: (card: Card) => void
 }
 
-export function BoardColumn({ column }: BoardColumnProps) {
+export function BoardColumn({ column, onSelectCard }: BoardColumnProps) {
   const cards = column.cards ?? []
   return (
     <section className={styles.column}>
@@ -18,7 +19,7 @@ export function BoardColumn({ column }: BoardColumnProps) {
         {cards.length === 0 ? (
           <p className={styles.empty}>No specs</p>
         ) : (
-          cards.map((card) => <SpecCard key={card.id} card={card} />)
+          cards.map((card) => <SpecCard key={card.id} card={card} onSelect={onSelectCard} />)
         )}
       </div>
     </section>

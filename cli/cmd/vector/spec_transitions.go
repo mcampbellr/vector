@@ -137,6 +137,60 @@ func runSpecLink(args []string) error {
 	return nil
 }
 
+// runSpecRelate adds one cause→bug relation to a spec (/vector:bug records the
+// prior work that caused a bug). It is metadata only — like link, it never changes
+// the spec's lifecycle status. The relation is idempotent on {kind,ref}; a
+// duplicate is a no-op. A kind:spec ref must point to an existing spec, else the op
+// is rejected (no implicit card creation).
+func runSpecRelate(args []string) error {
+	id, rest := leadingID(args)
+	fs := flag.NewFlagSet("spec relate", flag.ContinueOnError)
+	idFlag := fs.String("id", "", "spec id to relate (or pass it as the first argument)")
+	kind := fs.String("kind", "", "relation kind: spec|ticket")
+	ref := fs.String("ref", "", "the cause ref: a Vector spec id (kind=spec) or provider:key (kind=ticket)")
+	source := fs.String("source", "manual", "how the relation was found: blame|manual")
+	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	if id == "" {
+		id = *idFlag
+	}
+	if id == "" {
+		return fmt.Errorf("usage: vector spec relate <id> --kind spec|ticket --ref <ref> [--source blame|manual]")
+	}
+
+	item, err := parseRelateFlags(*kind, *ref, *source)
+	if err != nil {
+		return err
+	}
+
+	store, err := openStore(*repoRoot)
+	if err != nil {
+		return err
+	}
+	changed, err := store.RelateSpec(id, item, resolveActor(), time.Now())
+	if err != nil {
+		return err
+	}
+	if *jsonOut {
+		return printJSONValue(map[string]any{
+			"id":      id,
+			"kind":    string(item.Kind),
+			"ref":     item.Ref,
+			"source":  string(item.Source),
+			"changed": changed,
+		})
+	}
+	if !changed {
+		fmt.Printf("spec %q already related to %s:%s (no change)\n", id, item.Kind, item.Ref)
+		return nil
+	}
+	fmt.Printf("related spec %q → %s:%s (%s)\n", id, item.Kind, item.Ref, item.Source)
+	return nil
+}
+
 // runSpecStatus is the generic transition command (/vector:status): it moves a
 // spec to a target status if the move is legal. Dedicated transitions (open,
 // closed, archived) are routed to propose/close/archive by SetStatus.

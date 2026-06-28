@@ -69,6 +69,107 @@ type CreateSpecParams struct {
 	// is persisted on state.json and also emits a spec.linked event alongside
 	// spec.created. Auto-detected seeds carry Auto:true.
 	Ticket *Ticket
+
+	// RelatedTo seeds cause→bug relations at creation time (used by /vector:bug).
+	// Each item is normalized and validated; an invalid item fails CreateSpec, so
+	// the caller that wants degrade semantics validates/filters before calling.
+	// Each persisted relation also emits a spec.related event.
+	RelatedTo []RelatedItem
+}
+
+// normalizeRelated lowercases the kind/source, trims the ref, and defaults an
+// empty source to manual. It does not validate (see validateRelated).
+func normalizeRelated(item RelatedItem) RelatedItem {
+	item.Kind = RelatedKind(strings.ToLower(strings.TrimSpace(string(item.Kind))))
+	item.Ref = strings.TrimSpace(item.Ref)
+	item.Source = RelatedSource(strings.ToLower(strings.TrimSpace(string(item.Source))))
+	if item.Source == "" {
+		item.Source = RelatedManual
+	}
+	return item
+}
+
+// validateRelated checks a normalized relation's structure and, for a spec
+// relation, that the referenced spec exists. The caller holds s.mu.
+func (s *Store) validateRelated(item RelatedItem) error {
+	if !item.Kind.Valid() {
+		return fmt.Errorf("invalid relation kind %q: allowed spec,ticket", item.Kind)
+	}
+	if item.Ref == "" {
+		return errors.New("relation requires a non-empty ref")
+	}
+	if !item.Source.Valid() {
+		return fmt.Errorf("invalid relation source %q: allowed blame,manual", item.Source)
+	}
+	if item.Kind == RelatedSpec {
+		if _, err := os.Stat(s.statePath(item.Ref)); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("related spec %q does not exist", item.Ref)
+			}
+			return fmt.Errorf("stat related spec %q: %w", item.Ref, err)
+		}
+	}
+	return nil
+}
+
+// containsRelation reports whether items already holds a relation with the same
+// kind and ref (idempotency is keyed on {kind,ref}, ignoring source).
+func containsRelation(items []RelatedItem, item RelatedItem) bool {
+	for _, existing := range items {
+		if existing.Kind == item.Kind && existing.Ref == item.Ref {
+			return true
+		}
+	}
+	return false
+}
+
+// RelateSpec adds one cause→bug relation to a spec: lock → read → validate →
+// idempotency on {kind,ref} → atomic write + spec.related event. A duplicate
+// relation is a no-op returning (false, nil). The spec's lifecycle status is
+// untouched — relating is metadata, not a transition.
+func (s *Store) RelateSpec(id string, item RelatedItem, actor string, now time.Time) (bool, error) {
+	item = normalizeRelated(item)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.validateRelated(item); err != nil {
+		return false, err
+	}
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return false, err
+	}
+	if containsRelation(spec.RelatedTo, item) {
+		return false, nil
+	}
+
+	now = now.UTC()
+	spec.RelatedTo = append(spec.RelatedTo, item)
+	spec.UpdatedAt = now
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return false, err
+	}
+	if err := s.appendRelatedEvent(spec.ID, spec.Repo, item, now, actor); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// appendRelatedEvent appends a spec.related event. The caller holds s.mu.
+func (s *Store) appendRelatedEvent(specID, repo string, item RelatedItem, now time.Time, actor string) error {
+	data, err := json.Marshal(SpecRelatedData{Kind: item.Kind, Ref: item.Ref, Source: item.Source})
+	if err != nil {
+		return fmt.Errorf("marshal spec.related data: %w", err)
+	}
+	return s.appendEvent(Event{
+		V:      EventVersion,
+		TS:     now,
+		Type:   EvtSpecRelated,
+		SpecID: specID,
+		Repo:   repo,
+		Actor:  actor,
+		Data:   data,
+	})
 }
 
 // CreateSpec writes a new spec's state.json (status open) and spec.md, and
@@ -110,6 +211,20 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		return nil, fmt.Errorf("stat spec %q: %w", id, err)
 	}
 
+	// Normalize, validate and de-duplicate seed relations before constructing the
+	// spec so an invalid relation fails the create (the CLI degrades by filtering
+	// invalid relations before calling, per the --related contract).
+	related := make([]RelatedItem, 0, len(p.RelatedTo))
+	for _, item := range p.RelatedTo {
+		item = normalizeRelated(item)
+		if err := s.validateRelated(item); err != nil {
+			return nil, err
+		}
+		if !containsRelation(related, item) {
+			related = append(related, item)
+		}
+	}
+
 	// Resolve where the spec doc lives: the caller's path (repo convention or an
 	// OpenSpec change), or the .vector fallback when neither is given.
 	docAbs, docRel := p.SpecDocAbsPath, p.SpecDocRel
@@ -130,8 +245,12 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		OpenSpec:      p.OpenSpec,
 		NeedsUAT:      p.NeedsUAT && status == StatusReview,
 		Ticket:        p.Ticket,
+		RelatedTo:     related,
 		CreatedAt:     now,
 		UpdatedAt:     now,
+	}
+	if len(spec.RelatedTo) == 0 {
+		spec.RelatedTo = nil // keep omitempty byte-compatibility for relation-less specs
 	}
 	setStatusTimestamp(spec, status, now)
 
@@ -175,6 +294,11 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 	}
 	if spec.Ticket != nil {
 		if err := s.appendLinkedEvent(spec, now, p.Actor); err != nil {
+			return nil, err
+		}
+	}
+	for _, item := range spec.RelatedTo {
+		if err := s.appendRelatedEvent(spec.ID, spec.Repo, item, now, p.Actor); err != nil {
 			return nil, err
 		}
 	}
@@ -258,6 +382,14 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ne
 	spec, err := s.ReadSpec(id)
 	if err != nil {
 		return false, err
+	}
+	// closed/archived are terminal lifecycle states a human set deliberately after
+	// review. A tasks.md-derived status (open/in-progress/review) must never pull a
+	// card back out of them, so keep the existing status and only refresh the
+	// OpenSpec provenance below. Without this guard, re-running sync --reconcile
+	// regresses every closed card to review (all tasks done → review).
+	if spec.Status.IsTerminal() {
+		status = spec.Status
 	}
 	// NeedsUAT is a refinement of review; it never persists outside it.
 	wantUAT := needsUAT && status == StatusReview

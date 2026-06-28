@@ -21,8 +21,9 @@ standup marker.
 
 Run `vector standup --json` (append `--since <window>` if the user passed `24h`/`today`/`7d`).
 It returns `{since, perSpec[], totals}` projected from the activity log since the marker (or
-the window). An invalid window errors with `invalid --since: use 24h, today or 7d` — surface it
-and stop.
+the window), plus an optional top-level `language` field (the repo's configured prose language;
+absent when none is set). An invalid window errors with `invalid --since: use 24h, today or 7d`
+— surface it and stop.
 
 If `perSpec` is empty, tell the user "no activity since last standup" and stop — there is
 nothing to digest (the marker only advances on a real commit in step 3, so nothing is lost).
@@ -31,7 +32,9 @@ nothing to digest (the marker only advances on a real commit in step 3, so nothi
 
 Pass the **exact JSON** from step 1 to the `vector-standup-writer` subagent (model: Haiku). Do
 not re-read the activity log yourself or summarize before handing it off — the agent's whole job
-is the prose. It returns:
+is the prose. If step 1's JSON carried a non-empty `language`, prepend the directive
+`Write the prose in: <language>` to the agent prompt (above the pasted JSON); if `language` is
+absent or empty, add no directive and the agent falls back to the conversation language. It returns:
 
 ```json
 { "global": "<1–3 paragraphs>", "perSpec": [ { "id": "...", "summary": "<1–2 sentences>" } ] }

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "add-spec-summary-drawer",
+  "title": "Post-action spec summaries and details drawer",
+  "status": "review",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-spec-summary-drawer/spec.md",
+  "openspec": {
+    "change": "add-spec-summary-drawer",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-26T19:57:10.834344Z",
+  "startedAt": "2026-06-26T20:04:08.379665Z",
+  "reviewAt": "2026-06-26T20:19:36.634678Z",
+  "updatedAt": "2026-06-26T20:19:36.634678Z"
+}

@@ -25,6 +25,17 @@ export interface Artifacts {
   tasks: boolean
 }
 
+export type RelatedKind = 'spec' | 'ticket'
+export type RelatedSource = 'blame' | 'manual'
+
+/** A cause→bug relation shown read-only on the card; mirrors Go board.RelatedItem.
+ *  `ref` is a Vector spec id (kind 'spec') or a provider:key (kind 'ticket'). */
+export interface RelatedItem {
+  kind: RelatedKind
+  ref: string
+  source: RelatedSource
+}
+
 export interface Card {
   id: string
   title: string
@@ -36,13 +47,27 @@ export interface Card {
   labels?: string[]
   estimateMinutes?: number
   ticket?: Ticket
+  relatedTo?: RelatedItem[]
   hasOpenSpec: boolean
+  /** repo-relative path to the authored spec doc; mirrors Go Card.SpecDoc. */
+  specDoc?: string
   artifacts?: Artifacts
   attentionReason?: string
   needsUat?: boolean
   savedUsd: number
   routes: number
   updatedAt: string
+}
+
+/** GET /api/summary?spec=<id> — a spec's persisted post-action summary. `{}`
+ *  (all fields absent) when none has been generated yet. Mirrors
+ *  internal/state.SpecSummary. */
+export interface SpecSummary {
+  schemaVersion?: number
+  id?: string
+  summary?: string
+  action?: string
+  generatedAt?: string
 }
 
 export interface Column {

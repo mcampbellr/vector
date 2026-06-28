@@ -22,6 +22,9 @@ var (
 	linearKeyRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9]*-\d+`)
 	ghIssueRe   = regexp.MustCompile(`github\.com/([^/\s]+)/([^/\s]+)/(?:issues|pull)/(\d+)`)
 	ticketURLRe = regexp.MustCompile(`https?://[^\s)\]>"']+`)
+	// shorthandRe matches a <provider>:<key> shorthand in free text for tier 2 of
+	// detectTicketFromText. The set of providers must be kept in sync with splitShorthand.
+	shorthandRe = regexp.MustCompile(`\b(jira|linear|github|other):([^\s)\]>"',]+)`)
 )
 
 // inferProvider identifies the tracker behind a ref by URL host: jira (Atlassian),
@@ -151,6 +154,56 @@ func detectTicket(change openspec.Change, root string, defaultProvider state.Tic
 		return &state.Ticket{Provider: defaultProvider, Key: branchKey, URL: "", Auto: true}
 	}
 	return nil
+}
+
+// ticketFromShorthands scans free text for <provider>:<key> shorthands (tier 2
+// of detectTicketFromText). Accumulates unique (provider, key) candidates; returns
+// the single candidate when exactly one distinct pair appears, nil on ambiguity or
+// no match. The caller is responsible for setting Auto on the returned ticket.
+func ticketFromShorthands(content string) *state.Ticket {
+	type candidate struct {
+		provider state.TicketProvider
+		key      string
+	}
+	seen := map[candidate]bool{}
+	for _, m := range shorthandRe.FindAllStringSubmatch(content, -1) {
+		provider, key, ok := splitShorthand(m[0])
+		if !ok {
+			continue
+		}
+		seen[candidate{provider, key}] = true
+	}
+	if len(seen) != 1 {
+		return nil // ambiguous (2+) or no match (0)
+	}
+	for c := range seen {
+		return &state.Ticket{Provider: c.provider, Key: c.key}
+	}
+	return nil // unreachable
+}
+
+// detectTicketFromText applies a three-layer detection cascade to free text:
+//
+//  1. ticketFromProse — a recognized-tracker URL (jira/linear/github); Other filtered.
+//  2. ticketFromShorthands — a <provider>:<key> shorthand.
+//  3. ticketFromContext — bare key with cue-word or configured prefix; gated on
+//     defaultProvider being set.
+//
+// Returns the first tier that resolves, or nil when none does. Auto is set to
+// true on tiers 1 and 2; ticketFromContext already returns Auto:true for tier 3+4.
+func detectTicketFromText(text string, defaultProvider state.TicketProvider, keyPrefixes []string) *state.Ticket {
+	if t := ticketFromProse(text); t != nil {
+		t.Auto = true
+		return t
+	}
+	if t := ticketFromShorthands(text); t != nil {
+		t.Auto = true
+		return t
+	}
+	if defaultProvider == "" {
+		return nil // bare-key fallback is opt-in via defaultTicketProvider
+	}
+	return ticketFromContext(text, defaultProvider, keyPrefixes)
 }
 
 var (
@@ -311,6 +364,64 @@ func parseTicketFlag(raw string) (*state.Ticket, error) {
 		return nil, errors.New("--ticket requires a non-empty key")
 	}
 	return &t, nil
+}
+
+// parseRelatedFlag decodes the --related JSON (an array of {kind,ref,source})
+// passed by /vector:bug when it deduces a bug's cause. An empty flag yields
+// (nil, nil) — no relations. Each item is normalized (lowercased kind/source,
+// trimmed ref, source defaulting to manual) and structurally validated; the
+// referenced spec's existence is checked later by the store. A single invalid
+// item fails the whole flag so the caller can degrade (create without relations).
+func parseRelatedFlag(raw string) ([]state.RelatedItem, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var items []state.RelatedItem
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil, fmt.Errorf("parse --related JSON: %w", err)
+	}
+	out := make([]state.RelatedItem, 0, len(items))
+	for _, item := range items {
+		normalized, err := normalizeRelation(item)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, normalized)
+	}
+	return out, nil
+}
+
+// parseRelateFlags builds a single RelatedItem from the kind/ref/source flags of
+// `vector spec relate`, applying the same normalization and validation.
+func parseRelateFlags(kind, ref, source string) (state.RelatedItem, error) {
+	return normalizeRelation(state.RelatedItem{
+		Kind:   state.RelatedKind(kind),
+		Ref:    ref,
+		Source: state.RelatedSource(source),
+	})
+}
+
+// normalizeRelation lowercases the kind/source, trims the ref, defaults an empty
+// source to manual, and structurally validates the result (kind ∈ {spec,ticket},
+// ref non-empty, source ∈ {blame,manual}). Existence of a referenced spec is the
+// store's responsibility, not this parser's.
+func normalizeRelation(item state.RelatedItem) (state.RelatedItem, error) {
+	item.Kind = state.RelatedKind(strings.ToLower(strings.TrimSpace(string(item.Kind))))
+	item.Ref = strings.TrimSpace(item.Ref)
+	item.Source = state.RelatedSource(strings.ToLower(strings.TrimSpace(string(item.Source))))
+	if item.Source == "" {
+		item.Source = state.RelatedManual
+	}
+	if !item.Kind.Valid() {
+		return state.RelatedItem{}, fmt.Errorf("invalid relation kind %q: allowed spec,ticket", item.Kind)
+	}
+	if item.Ref == "" {
+		return state.RelatedItem{}, errors.New("relation requires a non-empty ref")
+	}
+	if !item.Source.Valid() {
+		return state.RelatedItem{}, fmt.Errorf("invalid relation source %q: allowed blame,manual", item.Source)
+	}
+	return item, nil
 }
 
 // refHost returns the lowercased host of a URL ref, or "" when ref is not a URL.

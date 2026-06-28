@@ -34,6 +34,13 @@ func (s Status) Valid() bool {
 	return false
 }
 
+// IsTerminal reports whether s is a terminal lifecycle state (closed or archived)
+// — a deliberate post-review human decision that a tasks.md-derived status must
+// never pull a card back out of (see ReconcileStatus and sync --reconcile).
+func (s Status) IsTerminal() bool {
+	return s == StatusClosed || s == StatusArchived
+}
+
 // Priority drives intra-column ordering on the board.
 type Priority string
 
@@ -48,6 +55,43 @@ const (
 func (p Priority) Valid() bool {
 	switch p {
 	case PriorityUrgent, PriorityHigh, PriorityNormal, PriorityLow:
+		return true
+	}
+	return false
+}
+
+// RelatedKind is the kind of entity a relation points to. V1 records the cause of
+// a bug as either a prior Vector spec or an external ticket; a commit/PR kind is a
+// deliberate future addition, out of V1 (see design.md).
+type RelatedKind string
+
+const (
+	RelatedSpec   RelatedKind = "spec"
+	RelatedTicket RelatedKind = "ticket"
+)
+
+// Valid reports whether k is a known related kind.
+func (k RelatedKind) Valid() bool {
+	switch k {
+	case RelatedSpec, RelatedTicket:
+		return true
+	}
+	return false
+}
+
+// RelatedSource records how a relation was established: deduced from git blame/log
+// (an inference signal) or entered/confirmed by the user.
+type RelatedSource string
+
+const (
+	RelatedBlame  RelatedSource = "blame"
+	RelatedManual RelatedSource = "manual"
+)
+
+// Valid reports whether s is a known related source.
+func (s RelatedSource) Valid() bool {
+	switch s {
+	case RelatedBlame, RelatedManual:
 		return true
 	}
 	return false
@@ -98,6 +142,11 @@ type SpecState struct {
 	OpenSpec *OpenSpec  `json:"openspec,omitempty"`
 	Flag     *Attention `json:"needsAttention,omitempty"`
 
+	// RelatedTo records the prior work that caused this spec (used by /vector:bug
+	// to trace a bug to its root cause). Optional and omitempty, so specs without
+	// relations read/serialize byte-identically. Relating never changes status.
+	RelatedTo []RelatedItem `json:"relatedTo,omitempty"`
+
 	// RFC3339 UTC. These cover cycle-time analytics without a transition history
 	// array — full history is reconstructable from git log of this file plus the
 	// activity log.
@@ -107,6 +156,15 @@ type SpecState struct {
 	ClosedAt   *time.Time `json:"closedAt,omitempty"`
 	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
+}
+
+// RelatedItem is one cause→bug relation persisted on a spec. Ref is a Vector spec
+// id when Kind is RelatedSpec, or a provider:key (e.g. jira:ACME-12) when Kind is
+// RelatedTicket. Source distinguishes a git-deduced relation from a manual one.
+type RelatedItem struct {
+	Kind   RelatedKind   `json:"kind"`
+	Ref    string        `json:"ref"`
+	Source RelatedSource `json:"source"`
 }
 
 // Ticket links a spec to an external tracker.

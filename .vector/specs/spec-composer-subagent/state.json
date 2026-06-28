@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "spec-composer-subagent",
+  "title": "Subagente vector-spec-composer (composición en Sonnet)",
+  "status": "review",
+  "priority": "urgent",
+  "repo": "",
+  "specDoc": ".vector/specs/spec-composer-subagent/spec.md",
+  "openspec": {
+    "change": "spec-composer-subagent",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T23:54:59.130593Z",
+  "startedAt": "2026-06-28T00:54:20.623908Z",
+  "reviewAt": "2026-06-28T01:03:48.036955Z",
+  "updatedAt": "2026-06-28T01:03:48.036955Z"
+}

@@ -57,6 +57,11 @@ func TestProjectFiltersBySinceAndGroupsBySpec(t *testing.T) {
 	if len(alpha.Work) != 1 || alpha.Work[0].Note != "wired" {
 		t.Errorf("alpha work = %+v, want one work entry", alpha.Work)
 	}
+	// Project is store-free: the ticket is filled by the caller's enrichProjection,
+	// never by the pure projection.
+	if alpha.Ticket != nil {
+		t.Errorf("alpha ticket = %+v, want nil (Project must stay store-free)", alpha.Ticket)
+	}
 	if proj.Totals.ByStatus["review"] != 1 || proj.Totals.ByStatus["in-progress"] != 1 {
 		t.Errorf("byStatus = %+v, want review:1 in-progress:1", proj.Totals.ByStatus)
 	}

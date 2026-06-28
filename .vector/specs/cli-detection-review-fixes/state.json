@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "cli-detection-review-fixes",
+  "title": "Corregir 3 hallazgos LOW del code review de vector-context-cached-setup",
+  "status": "draft",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/cli-detection-review-fixes/spec.md",
+  "createdAt": "2026-06-28T02:11:40.46662Z",
+  "updatedAt": "2026-06-28T02:11:40.46662Z"
+}

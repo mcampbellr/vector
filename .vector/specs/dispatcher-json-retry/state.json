@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "dispatcher-json-retry",
+  "title": "Retry de JSON malformado en el dispatcher",
+  "status": "open",
+  "priority": "low",
+  "repo": "",
+  "specDoc": ".vector/specs/dispatcher-json-retry/spec.md",
+  "openspec": {
+    "change": "dispatcher-json-retry",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T23:54:59.389849Z",
+  "updatedAt": "2026-06-28T00:52:18.704988Z"
+}

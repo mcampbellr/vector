@@ -20,6 +20,13 @@ Cada decisión de arquitectura se evalúa contra el costo de instalación.
   `kit/commands/vector/*.md` (el subdirectorio da el namespace con colon). El binario **embebe**
   esos commands (`embed.FS`, junto con los assets de `web/`), de modo que el binario global basta
   para sembrarlos sin necesidad de `kit/` en la máquina del usuario.
+- **Todos los agentes del kit se embeben, salvo los de OpenSpec**: cualquier agente que Vector
+  distribuya (`kit/agents/*.md` — refiners, validators, writers, evaluators, etc.) **debe**
+  vendorizarse (`//go:generate` → `assets/`) y embeberse (`//go:embed all:assets`) en el binario,
+  de modo que `vector init`/`update` lo siembren sin depender de skills globales del usuario. La
+  **única excepción** son los agentes propios de **OpenSpec** (tooling externo `opsx:*`): esos
+  pertenecen a OpenSpec, no a Vector, y no se embeben. Regla: un agente del kit que un command
+  `/vector:*` invoque nunca debe asumir que existe en `~/.claude/` del usuario.
 - **Instalación per-proyecto (modelo OpenSpec)**: el binario `vector` es global en el `PATH`; el
   subcomando de terminal **`vector init`** escribe los commands embebidos en
   `<repo>/.claude/commands/vector/` del repo del usuario (bootstrap + detección + consentimiento),

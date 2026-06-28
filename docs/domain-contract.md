@@ -89,8 +89,10 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 | Comando | Escribe en `state.json` | Evento en `activity.jsonl` | Efecto OpenSpec |
 |---------|--------------------------|-----------------------------|------------------|
 | `/vector:raw [text]` | crea `<id>/state.json` (`status:draft`, `createdAt`, `specDoc` puntero) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | — (change se crea en propose) |
+| `/vector:bug [report] {scope}` | crea `fix-<id>/state.json` (`status:draft`, prefijo `fix-`) + spec doc bug-framed; siembra `relatedTo[{kind,ref,source}]` (causa deducida por git, idempotente; `--related` inválido **degrada** a card sin relaciones) | `spec.created` + un `spec.related` por relación | — (change se crea en propose) |
 | `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
+| `vector spec relate <id>` (lo invoca `/vector:bug`) | añade un `relatedTo{kind,ref,source}` (idempotente en `{kind,ref}`; **no** cambia `status`) | `spec.related` | — |
 | `/vector:status [id] [status]` | `status` + timestamp del estado (`reviewAt`/etc) | `status.changed` (`trigger:command`) | — |
 | `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) + `work.logged` (tras implementar, aditivo) | `openspec apply <change>` (implementa) |
 | `vector spec worklog <id>` (lo invoca `/vector:apply`) | — (aditivo, **no** toca `state.json`) | `work.logged{change,filesTouched,tasksCompleted,note}` | — |

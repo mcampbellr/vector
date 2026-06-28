@@ -1,0 +1,50 @@
+.body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.command {
+  flex: 1;
+  font-family: ui-monospace, 'SFMono-Regular', 'Fira Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 3px var(--space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+  padding: 0;
+}
+
+.copyBtn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: #eef2ff;
+}
+
+.copyBtn.copied {
+  color: #047857;
+  border-color: #047857;
+  background: #d1fae5;
+}

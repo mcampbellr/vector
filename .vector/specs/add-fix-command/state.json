@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "add-fix-command",
+  "title": "Comando /vector:fix (corregir specs ya especificados)",
+  "status": "draft",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-fix-command/spec.md",
+  "createdAt": "2026-06-27T18:42:40.799997Z",
+  "updatedAt": "2026-06-27T18:42:40.799997Z"
+}

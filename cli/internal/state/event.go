@@ -14,6 +14,7 @@ type EventType string
 const (
 	EvtSpecCreated   EventType = "spec.created"
 	EvtSpecLinked    EventType = "spec.linked"
+	EvtSpecRelated   EventType = "spec.related" // cause→bug relation recorded on a spec
 	EvtStatusChanged EventType = "status.changed"
 	EvtNoteAdded     EventType = "note.added"
 	EvtReminderSet   EventType = "reminder.set"
@@ -75,6 +76,14 @@ type WorkLoggedData struct {
 	FilesTouched   []string `json:"filesTouched,omitempty"`
 	TasksCompleted []string `json:"tasksCompleted,omitempty"`
 	Note           string   `json:"note,omitempty"`
+}
+
+// SpecRelatedData is the payload for EvtSpecRelated: a cause→bug relation added to
+// a spec. Mirrors RelatedItem; purely additive for the timeline/standup.
+type SpecRelatedData struct {
+	Kind   RelatedKind   `json:"kind"`
+	Ref    string        `json:"ref"`
+	Source RelatedSource `json:"source"`
 }
 
 // SpecLinkedData is the payload for EvtSpecLinked.

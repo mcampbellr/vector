@@ -261,6 +261,183 @@ func TestTicketFromContext(t *testing.T) {
 	}
 }
 
+func TestTicketFromShorthands(t *testing.T) {
+	cases := []struct {
+		name         string
+		content      string
+		wantNil      bool
+		wantProvider state.TicketProvider
+		wantKey      string
+	}{
+		{
+			name:         "single jira shorthand",
+			content:      "fix jira:ACME-12 before release",
+			wantProvider: state.TicketJira, wantKey: "ACME-12",
+		},
+		{
+			name:         "single linear shorthand",
+			content:      "see linear:ENG-7 for context",
+			wantProvider: state.TicketLinear, wantKey: "ENG-7",
+		},
+		{
+			name:         "duplicate identical shorthand returns one",
+			content:      "jira:ACME-12 and also jira:ACME-12 again",
+			wantProvider: state.TicketJira, wantKey: "ACME-12",
+		},
+		{
+			name:    "two distinct shorthands same provider is nil",
+			content: "jira:ACME-12 and jira:ACME-99",
+			wantNil: true,
+		},
+		{
+			name:    "two distinct providers is nil",
+			content: "jira:ACME-12 and linear:ENG-7",
+			wantNil: true,
+		},
+		{
+			name:    "no shorthands is nil",
+			content: "just a plain text without any tracker refs",
+			wantNil: true,
+		},
+		{
+			name:    "unknown provider does not match",
+			content: "bitbucket:ACME-12 is not a known provider",
+			wantNil: true,
+		},
+		{
+			name:         "github shorthand",
+			content:      "closes github:owner/repo#123",
+			wantProvider: state.TicketGitHub, wantKey: "owner/repo#123",
+		},
+		{
+			name:         "other shorthand",
+			content:      "tracked at other:TASK-1",
+			wantProvider: state.TicketOther, wantKey: "TASK-1",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ticketFromShorthands(tc.content)
+			if tc.wantNil {
+				if got != nil {
+					t.Fatalf("expected nil, got %+v", got)
+				}
+				return
+			}
+			if got == nil || got.Provider != tc.wantProvider || got.Key != tc.wantKey {
+				t.Fatalf("ticketFromShorthands(%q) = %+v, want {%q %q}", tc.content, got, tc.wantProvider, tc.wantKey)
+			}
+			if got.Auto {
+				t.Errorf("ticketFromShorthands must not set Auto (caller's responsibility); got Auto=true")
+			}
+		})
+	}
+}
+
+func TestDetectTicketFromText(t *testing.T) {
+	cases := []struct {
+		name            string
+		text            string
+		defaultProvider state.TicketProvider
+		keyPrefixes     []string
+		wantNil         bool
+		wantProvider    state.TicketProvider
+		wantKey         string
+		wantAuto        bool
+	}{
+		// Tier 1: URL of recognized tracker.
+		{
+			name:         "tier1 jira URL",
+			text:         "implements https://acme.atlassian.net/browse/ACME-12",
+			wantProvider: state.TicketJira, wantKey: "ACME-12", wantAuto: true,
+		},
+		{
+			name:         "tier1 linear URL",
+			text:         "see https://linear.app/acme/issue/ENG-7/title for context",
+			wantProvider: state.TicketLinear, wantKey: "ENG-7", wantAuto: true,
+		},
+		{
+			name:    "tier1 unknown host skipped",
+			text:    "see https://example.com/tickets/42 for context",
+			wantNil: true,
+		},
+		{
+			name:    "tier1 two distinct URLs is nil",
+			text:    "https://github.com/acme/api/issues/1 and https://linear.app/acme/issue/ENG-3/x",
+			wantNil: true,
+		},
+		// Tier 2: shorthand.
+		{
+			name:         "tier2 shorthand",
+			text:         "fix jira:ACME-12 now",
+			wantProvider: state.TicketJira, wantKey: "ACME-12", wantAuto: true,
+		},
+		// Tier 1 wins over tier 2 when both present.
+		{
+			name:         "tier1 wins over tier2",
+			text:         "jira:ENG-1 see https://acme.atlassian.net/browse/ACME-12 for details",
+			wantProvider: state.TicketJira, wantKey: "ACME-12", wantAuto: true,
+		},
+		// Tier 3: cue-word bare key with defaultProvider.
+		{
+			name:            "tier3 cue-word with defaultProvider",
+			text:            "Ticket: MH-1592 implements the thing",
+			defaultProvider: state.TicketJira,
+			wantProvider:    state.TicketJira, wantKey: "MH-1592", wantAuto: true,
+		},
+		{
+			name:    "tier3 cue-word without defaultProvider is nil",
+			text:    "Ticket: MH-1592 implements the thing",
+			wantNil: true,
+		},
+		// Tier 4: configured prefix.
+		{
+			name:            "tier4 prefix configured",
+			text:            "see MH-880 in the payment path",
+			defaultProvider: state.TicketJira,
+			keyPrefixes:     []string{"MH"},
+			wantProvider:    state.TicketJira, wantKey: "MH-880", wantAuto: true,
+		},
+		// Denylist.
+		{
+			name:            "ADR denylist under cue",
+			text:            "Ref: ADR-007 governs this",
+			defaultProvider: state.TicketJira,
+			wantNil:         true,
+		},
+		{
+			name:            "RFC denylist under cue",
+			text:            "Ref: RFC-3 is the standard",
+			defaultProvider: state.TicketJira,
+			wantNil:         true,
+		},
+		// Empty text.
+		{
+			name:    "empty text is nil",
+			text:    "",
+			wantNil: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := detectTicketFromText(tc.text, tc.defaultProvider, tc.keyPrefixes)
+			if tc.wantNil {
+				if got != nil {
+					t.Fatalf("expected nil, got %+v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("detectTicketFromText = nil, want {%q %q auto=%v}", tc.wantProvider, tc.wantKey, tc.wantAuto)
+			}
+			if got.Provider != tc.wantProvider || got.Key != tc.wantKey || got.Auto != tc.wantAuto {
+				t.Errorf("detectTicketFromText = %+v, want provider=%q key=%q auto=%v",
+					got, tc.wantProvider, tc.wantKey, tc.wantAuto)
+			}
+		})
+	}
+}
+
 func TestRunSpecLink(t *testing.T) {
 	root := t.TempDir()
 	store, err := state.Open(root)

@@ -2,7 +2,7 @@
 // handlers in internal/board/server.go (GET /api/standup, GET /api/activity).
 // Hand-mirrored until the API gains a typegen step (standards/typescript-react.md).
 
-import type { Status } from './board'
+import type { Status, Ticket } from './board'
 
 /** One spec's line in the persisted standup digest. */
 export interface StandupSpecDigest {
@@ -11,6 +11,7 @@ export interface StandupSpecDigest {
   status: Status | ''
   summary: string
   changeCount: number
+  ticket?: Ticket
 }
 
 export interface StandupTotals {

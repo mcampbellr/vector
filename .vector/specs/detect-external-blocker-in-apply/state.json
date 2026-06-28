@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "detect-external-blocker-in-apply",
+  "title": "Detectar bloqueo de dependencia externa en /vector:apply",
+  "status": "review",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/detect-external-blocker-in-apply/spec.md",
+  "openspec": {
+    "change": "detect-external-blocker-in-apply",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-26T20:10:50.402714Z",
+  "startedAt": "2026-06-27T07:35:55.132862Z",
+  "reviewAt": "2026-06-27T07:38:21.367142Z",
+  "updatedAt": "2026-06-27T07:38:21.367142Z"
+}

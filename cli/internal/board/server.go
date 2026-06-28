@@ -2,7 +2,9 @@ package board
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"sync"
 	"time"
@@ -33,6 +35,8 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/standup", s.handleStandup)
 	mux.HandleFunc("/api/activity", s.handleActivity)
+	mux.HandleFunc("/api/summary", s.handleSummary)
+	mux.HandleFunc("/api/file", s.handleFile)
 	if static != nil {
 		mux.Handle("/", static)
 	}
@@ -128,6 +132,75 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(b)
+}
+
+// handleSummary serves a spec's persisted post-action summary (GET
+// /api/summary?spec=<id>). Read-only: 400 on a missing spec param, {} (200) when
+// no summary has been generated yet, 500 on a read error. It does not 404 on an
+// unknown spec — an absent summary and an unknown spec both surface as {}.
+func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
+	specID := r.URL.Query().Get("spec")
+	if specID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing spec query parameter")
+		return
+	}
+	summary, err := s.src.ReadSummary(specID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not read summary")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if summary == nil {
+		w.Write([]byte("{}"))
+		return
+	}
+	b, err := json.Marshal(summary)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "could not encode summary")
+		return
+	}
+	w.Write(b)
+}
+
+// handleFile serves a spec's source document as raw Markdown (GET
+// /api/file?spec=<id>&artifact=<key>). The client sends a spec id and an
+// artifact enum — never a path — so traversal is removed by design; path
+// resolution + I/O live in state.ReadSpecArtifact. Mapping: missing spec or
+// unknown/missing artifact → 400; absent spec/artifact/file → 404; read error →
+// 500; success → raw bytes as text/markdown (no JSON envelope).
+func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
+	specID := r.URL.Query().Get("spec")
+	if specID == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing spec query parameter")
+		return
+	}
+	artifact := r.URL.Query().Get("artifact")
+	if !validArtifact(artifact) {
+		writeJSONError(w, http.StatusBadRequest, "missing or unknown artifact query parameter")
+		return
+	}
+	b, err := s.src.ReadSpecArtifact(specID, artifact)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("artifact %q for spec %q not found", artifact, specID))
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "could not read artifact")
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(b)
+}
+
+// validArtifact gates the artifact query parameter to the known enum.
+func validArtifact(artifact string) bool {
+	switch artifact {
+	case "spec", "proposal", "design", "tasks":
+		return true
+	}
+	return false
 }
 
 // writeJSONError writes a {"error": msg} body with the given status, matching the

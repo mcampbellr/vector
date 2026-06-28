@@ -8,11 +8,18 @@
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
+  text-align: left;
 }
 
 .card:hover {
   box-shadow: var(--shadow-raised);
   transform: translateY(-1px);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .head {
@@ -51,6 +58,26 @@
   background: var(--status-attention-bg);
   padding: 6px 8px;
   border-radius: 8px;
+}
+
+.related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.relation {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
 }
 
 .artifacts {

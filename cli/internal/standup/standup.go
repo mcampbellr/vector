@@ -43,6 +43,10 @@ type Projection struct {
 	Since   time.Time      `json:"since"`
 	PerSpec []SpecActivity `json:"perSpec"`
 	Totals  Totals         `json:"totals"`
+	// Language is the repo's configured prose language (config.language), supplied
+	// by the caller (runStandup), not the projection builder — so this package
+	// never imports config. Empty = the agent matches the conversation language.
+	Language string `json:"language,omitempty"`
 }
 
 // SpecActivity is one spec's activity within the window.
@@ -52,8 +56,13 @@ type SpecActivity struct {
 	LastStatus  string                    `json:"lastStatus,omitempty"`
 	LastChanged time.Time                 `json:"lastChanged"`
 	ChangeCount int                       `json:"changeCount"`
+	Ticket      *state.Ticket             `json:"ticket,omitempty"`
 	Work        []state.WorkLoggedData    `json:"work,omitempty"`
 	Transitions []state.StatusChangedData `json:"transitions,omitempty"`
+	// PriorSummary is the spec's last persisted post-action summary, supplied by
+	// the caller (enrichProjection) as context for the digest agent. Project stays
+	// store-free, so Project never sets it.
+	PriorSummary string `json:"priorSummary,omitempty"`
 }
 
 // Totals are the period-wide counters.

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "add-spec-file-viewer",
+  "title": "Spec artifact file viewer in the details drawer",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-spec-file-viewer/spec.md",
+  "openspec": {
+    "change": "add-spec-file-viewer",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T02:35:30.031971Z",
+  "startedAt": "2026-06-27T07:21:49.246119Z",
+  "reviewAt": "2026-06-27T07:28:14.573573Z",
+  "closedAt": "2026-06-27T07:32:24.617132Z",
+  "updatedAt": "2026-06-27T07:32:24.617132Z"
+}

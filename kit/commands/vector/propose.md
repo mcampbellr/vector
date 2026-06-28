@@ -64,7 +64,23 @@ state (CLI-owns-writes).
    It transitions `draft → open`, records `openspec{change,artifacts}`, and logs
    `spec.proposed` + `status.changed`. Parse the JSON.
 
-7. **Report**: the id, `draft → open`, the change directory, the artifacts created, the mode
+7. **Summarize what was done (post-action).** Generate the per-spec "what was done" summary the
+   board's details drawer shows. The binary projects and persists; **you never write the summary
+   yourself.** Note: `propose` never logs `work.logged` events, so `hasWork` will always be
+   `false` and the binary will always provide a `templateSummary` — the agent spawn is skipped.
+   - `vector spec summarize <id> --json` → `{ id, title, status, hasWork, templateSummary?, ... }`.
+   - **`hasWork` will be `false`** for propose (no `work.logged` in the transition).
+     - If `templateSummary` is non-empty: pipe `{"summary":"<templateSummary>"}` directly to
+       `vector spec summarize <id> commit --action propose --summary-file -`.
+       Log: `"summary: template (no work logged)"`. Skip spawning the agent.
+     - If `templateSummary` is empty (defensive edge case): log
+       `"no templateSummary received, skipping summary"` and continue without writing.
+   - If `hasWork` is unexpectedly `true`: pass the full JSON to the `vector-summary-writer`
+     subagent (Haiku); it returns `{ "summary": "<2–3 sentences>" }`. Pipe its JSON to
+     `vector spec summarize <id> commit --action propose --summary-file -`. Empty/invalid prose
+     → nothing is written (not a gate); note it and move on. Log: `"summary: generated (Haiku)"`.
+
+8. **Report**: the id, `draft → open`, the change directory, the artifacts created, the mode
    (delegate/native), and the next step: **`/vector:apply <id>`** to implement.
 
 ## Notes

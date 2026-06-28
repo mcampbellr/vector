@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "add-copyable-slug-display",
+  "title": "Copyable slug on card face and drawer",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-copyable-slug-display/spec.md",
+  "openspec": {
+    "change": "add-copyable-slug-display",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T19:51:55.748201Z",
+  "startedAt": "2026-06-27T20:04:18.363269Z",
+  "reviewAt": "2026-06-27T20:06:21.8826Z",
+  "closedAt": "2026-06-27T20:12:24.159213Z",
+  "updatedAt": "2026-06-27T20:12:24.159213Z"
+}

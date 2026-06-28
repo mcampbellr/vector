@@ -2,6 +2,7 @@ package board
 
 import (
 	"encoding/json"
+	"io/fs"
 	"testing"
 	"time"
 
@@ -9,9 +10,12 @@ import (
 )
 
 type fakeSource struct {
-	specs   []*state.SpecState
-	events  []state.Event
-	standup *state.StandupDigest
+	specs     []*state.SpecState
+	events    []state.Event
+	standup   *state.StandupDigest
+	summaries map[string]state.SpecSummary
+	artifacts map[string][]byte // key: "<spec>/<artifact>"
+	artifErr  error             // when set, ReadSpecArtifact returns it
 }
 
 func (f fakeSource) ListSpecs() ([]*state.SpecState, error) { return f.specs, nil }
@@ -21,6 +25,21 @@ func (f fakeSource) ReadStandup() (*state.StandupDigest, error) {
 		return &state.StandupDigest{}, nil
 	}
 	return f.standup, nil
+}
+func (f fakeSource) ReadSummary(id string) (*state.SpecSummary, error) {
+	if sum, ok := f.summaries[id]; ok {
+		return &sum, nil
+	}
+	return nil, nil
+}
+func (f fakeSource) ReadSpecArtifact(specID, artifact string) ([]byte, error) {
+	if f.artifErr != nil {
+		return nil, f.artifErr
+	}
+	if b, ok := f.artifacts[specID+"/"+artifact]; ok {
+		return b, nil
+	}
+	return nil, fs.ErrNotExist
 }
 
 func routedEvent(t *testing.T, specID, model, baseline string, saved, cost float64) state.Event {
@@ -114,6 +133,49 @@ func TestBuildRollsUpTokenSavings(t *testing.T) {
 	if !almostEqual(card.SavedUSD, 0.41) {
 		t.Errorf("card savedUsd = %v, want 0.41", card.SavedUSD)
 	}
+}
+
+func TestBuildProjectsRelatedTo(t *testing.T) {
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	src := fakeSource{specs: []*state.SpecState{{
+		ID: "fix-loop", Title: "Fix loop", Status: state.StatusOpen, Priority: state.PriorityNormal, UpdatedAt: now,
+		RelatedTo: []state.RelatedItem{
+			{Kind: state.RelatedSpec, Ref: "add-login", Source: state.RelatedBlame},
+			{Kind: state.RelatedTicket, Ref: "jira:ACME-7", Source: state.RelatedManual},
+		},
+	}}}
+
+	b, err := Build(src, "demo", now)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	card := columnByStatus(t, b, "open").Cards[0]
+	if len(card.RelatedTo) != 2 {
+		t.Fatalf("card relatedTo len = %d, want 2: %+v", len(card.RelatedTo), card.RelatedTo)
+	}
+	if card.RelatedTo[0].Kind != "spec" || card.RelatedTo[0].Ref != "add-login" || card.RelatedTo[0].Source != "blame" {
+		t.Errorf("unexpected first relation projection: %+v", card.RelatedTo[0])
+	}
+
+	// A relation-less spec must omit relatedTo from the JSON contract.
+	plain := fakeSource{specs: []*state.SpecState{{ID: "p", Title: "P", Status: state.StatusOpen, Priority: state.PriorityNormal, UpdatedAt: now}}}
+	pb, _ := Build(plain, "demo", now)
+	raw, err := json.Marshal(columnByStatus(t, pb, "open").Cards[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsField(raw, "relatedTo") {
+		t.Errorf("relatedTo present for a relation-less card: %s", raw)
+	}
+}
+
+func containsField(b []byte, field string) bool {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		return false
+	}
+	_, ok := m[field]
+	return ok
 }
 
 func columnByStatus(t *testing.T, b *Board, status string) Column {

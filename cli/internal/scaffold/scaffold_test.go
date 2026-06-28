@@ -6,7 +6,12 @@ import (
 	"testing"
 )
 
-const rawCommand = ".claude/commands/vector/raw.md"
+const (
+	rawCommand        = ".claude/commands/vector/raw.md"
+	bugCommand        = ".claude/commands/vector/bug.md"
+	bugRefiner        = ".claude/agents/vector-bug-refiner.md"
+	specComposerAgent = ".claude/agents/vector-spec-composer.md"
+)
 
 func TestSeedCommandsCreatesUnderClaude(t *testing.T) {
 	root := t.TempDir()
@@ -87,6 +92,44 @@ func TestSeedCommandsDryRunWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, rawCommand)); !os.IsNotExist(err) {
 		t.Fatalf("dry-run wrote a file (stat err = %v)", err)
+	}
+}
+
+// TestSeedCommandsSeedsBugCommandAndRefiner guards that `vector init` writes the
+// /vector:bug command and its Haiku refiner agent — both must be vendored
+// (go generate) and embedded so the command never assumes a global skill exists.
+func TestSeedCommandsSeedsBugCommandAndRefiner(t *testing.T) {
+	root := t.TempDir()
+
+	results, err := SeedCommands(root, SeedOptions{})
+	if err != nil {
+		t.Fatalf("SeedCommands: %v", err)
+	}
+	for _, rel := range []string{bugCommand, bugRefiner} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Fatalf("expected %s to be seeded: %v", rel, err)
+		}
+		if got := actionFor(results, rel); got != ActionCreated {
+			t.Fatalf("%s action = %q, want %q", rel, got, ActionCreated)
+		}
+	}
+}
+
+// TestSeedCommandsSeedsSpecComposerAgent guards that `vector init` writes the
+// vector-spec-composer agent — it must be vendored (go generate) and embedded so the
+// command never assumes a global agent exists in ~/.claude/agents/.
+func TestSeedCommandsSeedsSpecComposerAgent(t *testing.T) {
+	root := t.TempDir()
+
+	results, err := SeedCommands(root, SeedOptions{})
+	if err != nil {
+		t.Fatalf("SeedCommands: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, specComposerAgent)); err != nil {
+		t.Fatalf("expected %s to be seeded: %v", specComposerAgent, err)
+	}
+	if got := actionFor(results, specComposerAgent); got != ActionCreated {
+		t.Fatalf("%s action = %q, want %q", specComposerAgent, got, ActionCreated)
 	}
 }
 

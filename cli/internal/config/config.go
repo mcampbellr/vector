@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mariocampbell/vector/internal/state"
 )
@@ -64,6 +65,12 @@ type Config struct {
 	// next work-item: "auto" (pick and start), "ask" (propose a pick, confirm) or
 	// "always-ask" (always show candidates). Empty defaults to ApplyModeAsk.
 	ApplyMode ApplyMode `json:"applyMode,omitempty"`
+	// Language is the prose language Vector agents write in (a BCP-47 tag like "es"
+	// or a plain name like "Spanish" — free pass-through, no allow-list). Empty =
+	// agents match the conversation language (current behavior). Set via
+	// `vector init --language` / `vector update --language`. Additive and
+	// backward-compatible: a legacy config without the field loads as "".
+	Language string `json:"language,omitempty"`
 	// KitVersion records the binary/kit version that last seeded this repo's
 	// .claude artifacts, so `vector update` can report staleness. Stamped by
 	// `vector init` and `vector update`.
@@ -77,6 +84,14 @@ type Config struct {
 	// key as a ticket with high confidence anywhere in prose, complementing the
 	// cue-word scan. Compared case-insensitively (see NormalizedTicketKeyPrefixes).
 	TicketKeyPrefixes []string `json:"ticketKeyPrefixes,omitempty"`
+	// BuildCmd, LintCmd, TestCmd cache the repo's detected build, lint, and test
+	// commands (set by `vector init`/`vector update` via DetectBuildCmds). Empty
+	// when no manifest was recognized or detection was not run; `vector context`
+	// re-detects at runtime without persisting when these are empty. Additive and
+	// backward-compatible: a legacy config without these fields loads them as "".
+	BuildCmd string `json:"buildCmd,omitempty"`
+	LintCmd  string `json:"lintCmd,omitempty"`
+	TestCmd  string `json:"testCmd,omitempty"`
 }
 
 // ApplyMode controls /vector:apply autonomy (docs/apply-design.md §3).
@@ -103,6 +118,176 @@ func (c *Config) ResolvedApplyMode() ApplyMode {
 		return c.ApplyMode
 	}
 	return ApplyModeAsk
+}
+
+// ResolvedLanguage returns the configured prose language trimmed of surrounding
+// whitespace, or "" when none is set (agents fall back to the conversation language).
+func (c *Config) ResolvedLanguage() string {
+	return strings.TrimSpace(c.Language)
+}
+
+// ResolvedBuildCmds returns the configured build, lint, and test commands.
+// All three may be empty if DetectBuildCmds found nothing or was not run
+// during init/update. Empty means "not configured" — callers may fall back to
+// DetectBuildCmds or ask the user.
+func (c *Config) ResolvedBuildCmds() (build, lint, test string) {
+	return c.BuildCmd, c.LintCmd, c.TestCmd
+}
+
+// makefileTargets records which standard targets a Makefile declares.
+type makefileTargets struct{ build, lint, test bool }
+
+// nodeScripts holds the npm/yarn/pnpm run-script commands for the three
+// standard lifecycle operations (empty string = script absent in package.json).
+type nodeScripts struct{ build, lint, test string }
+
+// DetectBuildCmds infers build, lint, and test commands from the repo's manifest
+// files concurrently. Returns empty strings when no command can be inferred with
+// confidence. Priority per field: an explicit Makefile target wins; absent that,
+// go.mod (Go), package.json scripts (Node), or pyproject.toml/setup.py (Python)
+// contribute. A repo may mix sources (e.g. Makefile without a lint target +
+// go.mod contributes golangci-lint run). Goroutines that fail return empty values
+// without propagating errors to the caller.
+func DetectBuildCmds(repoRoot string) (build, lint, test string) {
+	var (
+		mk   makefileTargets
+		isGo bool
+		node nodeScripts
+		isPy bool
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		mk = parseMakefile(repoRoot)
+	}()
+	go func() {
+		defer wg.Done()
+		_, err := os.Stat(filepath.Join(repoRoot, "go.mod"))
+		isGo = err == nil
+	}()
+	go func() {
+		defer wg.Done()
+		node = parsePackageJSON(repoRoot)
+	}()
+	go func() {
+		defer wg.Done()
+		_, e1 := os.Stat(filepath.Join(repoRoot, "pyproject.toml"))
+		_, e2 := os.Stat(filepath.Join(repoRoot, "setup.py"))
+		isPy = e1 == nil || e2 == nil
+	}()
+	wg.Wait()
+
+	// Build command: Makefile target wins; then language-specific manifest.
+	switch {
+	case mk.build:
+		build = "make build"
+	case isGo:
+		build = "go build ./..."
+	case node.build != "":
+		build = node.build
+	case isPy:
+		build = "python -m build"
+	}
+
+	// Lint command.
+	switch {
+	case mk.lint:
+		lint = "make lint"
+	case isGo:
+		lint = "golangci-lint run"
+	case node.lint != "":
+		lint = node.lint
+	}
+
+	// Test command.
+	switch {
+	case mk.test:
+		test = "make test"
+	case isGo:
+		test = "go test ./..."
+	case node.test != "":
+		test = node.test
+	case isPy:
+		test = "pytest"
+	}
+
+	return
+}
+
+// parseMakefile reads the root Makefile (if present) and reports which of the
+// three standard targets (build, lint, test) it declares. A target line starts
+// with its name followed by a colon with no leading whitespace. Errors silently
+// return all-false so callers keep building from other sources.
+func parseMakefile(repoRoot string) (mt makefileTargets) {
+	b, err := os.ReadFile(filepath.Join(repoRoot, "Makefile"))
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "\t") || strings.HasPrefix(line, " ") {
+			continue // recipe line, not a target declaration
+		}
+		name, _, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(name) {
+		case "build":
+			mt.build = true
+		case "lint":
+			mt.lint = true
+		case "test":
+			mt.test = true
+		}
+	}
+	return
+}
+
+// detectNodeRunner identifies the package manager in use by looking for
+// lock-file markers. Defaults to "npm" when none is found.
+func detectNodeRunner(repoRoot string) string {
+	for _, candidate := range []struct{ file, runner string }{
+		{"pnpm-lock.yaml", "pnpm"},
+		{"yarn.lock", "yarn"},
+		{"package-lock.json", "npm"},
+	} {
+		if _, err := os.Stat(filepath.Join(repoRoot, candidate.file)); err == nil {
+			return candidate.runner
+		}
+	}
+	return "npm"
+}
+
+// parsePackageJSON reads package.json (if present) and returns run-script
+// commands for the three standard lifecycle scripts. Scripts not present in
+// package.json produce an empty string. Errors silently return empty nodeScripts.
+func parsePackageJSON(repoRoot string) (ns nodeScripts) {
+	b, err := os.ReadFile(filepath.Join(repoRoot, "package.json"))
+	if err != nil {
+		return
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if err := json.Unmarshal(b, &pkg); err != nil {
+		return
+	}
+	if len(pkg.Scripts) == 0 {
+		return
+	}
+	runner := detectNodeRunner(repoRoot)
+	if _, ok := pkg.Scripts["build"]; ok {
+		ns.build = runner + " run build"
+	}
+	if _, ok := pkg.Scripts["lint"]; ok {
+		ns.lint = runner + " run lint"
+	}
+	if _, ok := pkg.Scripts["test"]; ok {
+		ns.test = runner + " run test"
+	}
+	return
 }
 
 // ResolvedDefaultTicketProvider returns the configured default ticket provider,

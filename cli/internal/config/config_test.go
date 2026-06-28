@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mariocampbell/vector/internal/state"
@@ -274,6 +275,61 @@ func TestLoadValidatesDefaultTicketProvider(t *testing.T) {
 	}
 }
 
+func TestLanguageRoundTripAndResolve(t *testing.T) {
+	root := t.TempDir()
+	cfg := Resolve(root)
+	cfg.Language = "  es-MX  "
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Language != "  es-MX  " {
+		t.Errorf("Language not round-tripped: got %q", loaded.Language)
+	}
+	if got := loaded.ResolvedLanguage(); got != "es-MX" {
+		t.Errorf("ResolvedLanguage() = %q, want trimmed es-MX", got)
+	}
+
+	// Omitted when empty: the field carries omitempty, so a language-less config
+	// must not serialize a "language" key.
+	cfg.Language = ""
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "language") {
+		t.Errorf("empty Language should be omitted from JSON, got: %s", b)
+	}
+}
+
+func TestLoadLegacyConfigWithoutLanguage(t *testing.T) {
+	root := t.TempDir()
+	// A legacy config predating the field deserializes cleanly with Language == "".
+	legacy := `{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specFilename":"spec.md","specStore":"vector","source":"default"}`
+	if err := os.MkdirAll(filepath.Dir(Path(root)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(root), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load legacy: %v", err)
+	}
+	if loaded.Language != "" || loaded.ResolvedLanguage() != "" {
+		t.Errorf("legacy config Language = %q, want empty", loaded.Language)
+	}
+	if loaded.SchemaVersion != 1 {
+		t.Errorf("SchemaVersion = %d, want 1 (no migration)", loaded.SchemaVersion)
+	}
+}
+
 func TestWorktreeTicketKeys(t *testing.T) {
 	root := t.TempDir()
 	// Worktree layout: branches one or two levels under the "code" root, with
@@ -347,5 +403,161 @@ func TestWorktreeTicketKeysMissingRoot(t *testing.T) {
 	}
 	if len(idx) != 0 {
 		t.Fatalf("expected empty index, got %v", idx)
+	}
+}
+
+// TestDetectBuildCmds verifies manifest-based command inference across Go,
+// Node, Makefile, Python, and edge-case scenarios.
+func TestDetectBuildCmds(t *testing.T) {
+	tests := []struct {
+		name      string
+		setup     func(root string)
+		wantBuild string
+		wantLint  string
+		wantTest  string
+	}{
+		{
+			name: "go_mod_only",
+			setup: func(root string) {
+				if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/m\n\ngo 1.22\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantBuild: "go build ./...",
+			wantLint:  "golangci-lint run",
+			wantTest:  "go test ./...",
+		},
+		{
+			name: "package_json_with_scripts",
+			setup: func(root string) {
+				pkg := `{"name":"app","scripts":{"build":"tsc","lint":"eslint .","test":"jest"}}`
+				if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(pkg), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				// npm fallback (no lock file)
+			},
+			wantBuild: "npm run build",
+			wantLint:  "npm run lint",
+			wantTest:  "npm run test",
+		},
+		{
+			name: "package_json_with_pnpm_lock",
+			setup: func(root string) {
+				pkg := `{"scripts":{"build":"vite build","test":"vitest"}}`
+				if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(pkg), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, "pnpm-lock.yaml"), []byte(""), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantBuild: "pnpm run build",
+			wantLint:  "",
+			wantTest:  "pnpm run test",
+		},
+		{
+			name: "makefile_with_all_targets",
+			setup: func(root string) {
+				makefile := ".PHONY: build lint test\nbuild:\n\tgo build ./...\nlint:\n\tgolangci-lint run\ntest:\n\tgo test ./...\n"
+				if err := os.WriteFile(filepath.Join(root, "Makefile"), []byte(makefile), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				// also go.mod — Makefile must win
+				if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/m\n\ngo 1.22\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantBuild: "make build",
+			wantLint:  "make lint",
+			wantTest:  "make test",
+		},
+		{
+			name: "makefile_partial_and_go_fills_gap",
+			setup: func(root string) {
+				// Makefile has build+test but no lint; go.mod supplies golangci-lint.
+				makefile := ".PHONY: build test\nbuild:\n\tgo build ./...\ntest:\n\tgo test ./...\n"
+				if err := os.WriteFile(filepath.Join(root, "Makefile"), []byte(makefile), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/m\n\ngo 1.22\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantBuild: "make build",
+			wantLint:  "golangci-lint run",
+			wantTest:  "make test",
+		},
+		{
+			name:      "no_manifests_returns_empty",
+			setup:     func(root string) { /* nothing */ },
+			wantBuild: "",
+			wantLint:  "",
+			wantTest:  "",
+		},
+		{
+			name: "package_json_without_scripts_field",
+			setup: func(root string) {
+				if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"name":"app"}`), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantBuild: "",
+			wantLint:  "",
+			wantTest:  "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			tc.setup(root)
+			gotBuild, gotLint, gotTest := DetectBuildCmds(root)
+			if gotBuild != tc.wantBuild {
+				t.Errorf("build = %q, want %q", gotBuild, tc.wantBuild)
+			}
+			if gotLint != tc.wantLint {
+				t.Errorf("lint = %q, want %q", gotLint, tc.wantLint)
+			}
+			if gotTest != tc.wantTest {
+				t.Errorf("test = %q, want %q", gotTest, tc.wantTest)
+			}
+		})
+	}
+}
+
+func TestResolvedBuildCmdsRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	cfg := Resolve(root)
+	cfg.BuildCmd = "go build ./..."
+	cfg.LintCmd = "golangci-lint run"
+	cfg.TestCmd = "go test ./..."
+	if err := Write(root, cfg); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	gotBuild, gotLint, gotTest := loaded.ResolvedBuildCmds()
+	if gotBuild != "go build ./..." || gotLint != "golangci-lint run" || gotTest != "go test ./..." {
+		t.Errorf("round trip mismatch: build=%q lint=%q test=%q", gotBuild, gotLint, gotTest)
+	}
+}
+
+func TestBuildCmdsOmitEmptyInJSON(t *testing.T) {
+	root := t.TempDir()
+	cfg := Resolve(root)
+	// No build commands set — they must be omitted from the JSON.
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"buildCmd", "lintCmd", "testCmd"} {
+		if strings.Contains(string(b), key) {
+			t.Errorf("empty %s should be omitted from JSON, got: %s", key, b)
+		}
 	}
 }

@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -137,6 +138,108 @@ func TestHandleActivityUnknownSpec(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `not found`) {
 		t.Errorf("expected not-found error body, got: %s", rec.Body.String())
+	}
+}
+
+func TestHandleSummaryReturnsPersisted(t *testing.T) {
+	src := fakeSource{summaries: map[string]state.SpecSummary{
+		"alpha": {SchemaVersion: 1, ID: "alpha", Summary: "applied the change", Action: "apply"},
+	}}
+	rec := getJSON(t, src, "/api/summary?spec=alpha")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"summary":"applied the change"`) || !strings.Contains(body, `"action":"apply"`) {
+		t.Errorf("unexpected summary body: %s", body)
+	}
+}
+
+func TestHandleSummaryEmptyWhenAbsent(t *testing.T) {
+	src := fakeSource{}
+	rec := getJSON(t, src, "/api/summary?spec=ghost")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != "{}" {
+		t.Errorf("body = %q, want {}", got)
+	}
+}
+
+func TestHandleSummaryMissingParam(t *testing.T) {
+	src := fakeSource{}
+	rec := getJSON(t, src, "/api/summary")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "missing spec") {
+		t.Errorf("expected missing-spec error body, got: %s", rec.Body.String())
+	}
+}
+
+func TestHandleFileServesMarkdown(t *testing.T) {
+	src := fakeSource{
+		specs:     []*state.SpecState{{ID: "alpha", Status: state.StatusOpen}},
+		artifacts: map[string][]byte{"alpha/proposal": []byte("# Proposal\n\nbody")},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/file?spec=alpha&artifact=proposal", nil)
+	rec := httptest.NewRecorder()
+	NewServer(src, "demo").Routes(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/markdown; charset=utf-8" {
+		t.Errorf("content-type = %q, want text/markdown; charset=utf-8", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("cache-control = %q, want no-store", cc)
+	}
+	if body := rec.Body.String(); body != "# Proposal\n\nbody" {
+		t.Errorf("body = %q, want the raw markdown", body)
+	}
+}
+
+func TestHandleFileBadParams(t *testing.T) {
+	src := fakeSource{specs: []*state.SpecState{{ID: "alpha", Status: state.StatusOpen}}}
+	for _, path := range []string{
+		"/api/file?artifact=proposal",           // missing spec
+		"/api/file?spec=alpha",                  // missing artifact
+		"/api/file?spec=alpha&artifact=secrets", // unknown artifact
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		NewServer(src, "demo").Routes(nil).ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", path, rec.Code)
+		}
+	}
+}
+
+func TestHandleFileNotFound(t *testing.T) {
+	src := fakeSource{specs: []*state.SpecState{{ID: "alpha", Status: state.StatusOpen}}}
+	// No artifacts registered → fakeSource returns fs.ErrNotExist.
+	req := httptest.NewRequest(http.MethodGet, "/api/file?spec=ghost&artifact=design", nil)
+	rec := httptest.NewRecorder()
+	NewServer(src, "demo").Routes(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "not found") {
+		t.Errorf("expected not-found error body, got: %s", rec.Body.String())
+	}
+}
+
+func TestHandleFileReadError(t *testing.T) {
+	src := fakeSource{
+		specs:    []*state.SpecState{{ID: "alpha", Status: state.StatusOpen}},
+		artifErr: errors.New("disk on fire"),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/file?spec=alpha&artifact=tasks", nil)
+	rec := httptest.NewRecorder()
+	NewServer(src, "demo").Routes(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
 	}
 }
 

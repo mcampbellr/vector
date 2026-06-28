@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mariocampbell/vector/internal/config"
 	"github.com/mariocampbell/vector/internal/standup"
 	"github.com/mariocampbell/vector/internal/state"
 )
@@ -43,6 +44,15 @@ func runStandup(args []string) error {
 	}
 	proj := standup.Project(events, from)
 	enrichProjection(store, &proj)
+	// Surface the repo's configured prose language to the digest agent. Resolved
+	// here (not in enrichProjection) so the standup package never imports config.
+	// A config error is non-fatal: the projection must not fail over a dispensable
+	// field — empty language just means the agent falls back to the conversation.
+	if root, rerr := resolveRepoRoot(*repoRoot); rerr == nil {
+		if cfg, cerr := config.Load(root); cerr == nil {
+			proj.Language = cfg.ResolvedLanguage()
+		}
+	}
 
 	if *jsonOut {
 		b, err := json.MarshalIndent(proj, "", "  ")
@@ -99,6 +109,16 @@ func enrichProjection(store *state.Store, proj *standup.Projection) {
 		}
 		if sa.LastStatus == "" {
 			sa.LastStatus = string(spec.Status)
+		}
+		// Surface the spec's linked external ticket (nil for unlinked specs) so
+		// the standup digest can name it next to the slug. Additive; the join
+		// key stays sa.ID.
+		sa.Ticket = spec.Ticket
+		// Carry the spec's last post-action summary as context for the digest
+		// agent (additive; absent when no summary was ever generated). The
+		// projection stays store-free, so this enrichment lives here.
+		if sum, err := store.ReadSummary(sa.ID); err == nil && sum != nil {
+			sa.PriorSummary = sum.Summary
 		}
 	}
 }
@@ -167,6 +187,7 @@ func runStandupCommit(args []string) error {
 			Status:      sa.LastStatus,
 			Summary:     summaries[sa.ID],
 			ChangeCount: sa.ChangeCount,
+			Ticket:      sa.Ticket,
 		})
 	}
 	digest := state.StandupDigest{

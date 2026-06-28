@@ -1,40 +1,12 @@
-.root {
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--color-border);
-  margin-top: var(--space-1);
-}
-
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) 0 var(--space-1);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  font-family: inherit;
-  line-height: 1;
-  transition: color 0.1s ease;
-}
-
-.toggle:hover {
-  color: var(--color-text-secondary);
-}
-
-.body {
+.row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding-bottom: var(--space-2);
 }
 
-.command {
+.slug {
   flex: 1;
+  min-width: 0;
   font-family: ui-monospace, 'SFMono-Regular', 'Fira Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   color: var(--color-text-secondary);

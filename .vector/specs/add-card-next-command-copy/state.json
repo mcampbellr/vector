@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "add-card-next-command-copy",
+  "title": "Copyable next command on the card face",
+  "status": "archived",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-card-next-command-copy/spec.md",
+  "openspec": {
+    "change": "add-card-next-command-copy",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T18:30:43.963489Z",
+  "startedAt": "2026-06-27T19:08:14.545295Z",
+  "reviewAt": "2026-06-27T19:09:56.950904Z",
+  "closedAt": "2026-06-27T19:10:59.622168Z",
+  "archivedAt": "2026-06-27T19:41:39.503359Z",
+  "updatedAt": "2026-06-27T19:41:39.503359Z"
+}

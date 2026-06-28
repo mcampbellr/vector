@@ -28,7 +28,25 @@ The binary transitions the card to `closed`, stamps `closedAt`, and logs `spec.c
 `status.changed`. It enforces the state machine — an illegal move errors out; do not work around
 it by editing `.vector/` by hand.
 
-## 3. Report
+## 3. Summarize what was done (post-action)
+
+Generate the per-spec "what was done" summary the board's details drawer shows. The binary
+projects and persists; **you never write the summary yourself.** The path taken depends on
+whether the activity window contains real work:
+
+1. `vector spec summarize <id> --json` → `{ id, title, status, hasWork, templateSummary?, ... }`.
+2. **If `hasWork == false`** (no `work.logged` events — typical for close without new apply):
+   - If `templateSummary` is non-empty: pipe `{"summary":"<templateSummary>"}` directly to
+     `vector spec summarize <id> commit --action close --summary-file -`.
+     Log: `"summary: template (no work logged)"`. Skip spawning the agent.
+   - If `templateSummary` is empty (defensive edge case): log
+     `"no templateSummary received, skipping summary"` and continue without writing.
+3. **If `hasWork == true`**: pass the full JSON to the `vector-summary-writer` subagent
+   (Haiku); it returns `{ "summary": "<2–3 sentences>" }`. Pipe its JSON to
+   `vector spec summarize <id> commit --action close --summary-file -`. Empty/invalid prose
+   → nothing is written (not a gate); note it and move on. Log: `"summary: generated (Haiku)"`.
+
+## 4. Report
 
 Report the id and the transition (e.g. `review → closed`). If the spec maps to an OpenSpec
 change (`openspec.change`), note that closing the **Vector card** is separate from archiving the

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "apply-humanizer-to-standup-prose",
+  "title": "Humanizar la prosa del standup writer",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/apply-humanizer-to-standup-prose/spec.md",
+  "openspec": {
+    "change": "apply-humanizer-to-standup-prose",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-26T16:25:27.316331Z",
+  "startedAt": "2026-06-26T17:21:04.270994Z",
+  "reviewAt": "2026-06-26T17:22:34.998017Z",
+  "closedAt": "2026-06-26T17:24:31.154563Z",
+  "updatedAt": "2026-06-26T17:24:31.154563Z"
+}

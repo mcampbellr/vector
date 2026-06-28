@@ -1,20 +1,43 @@
+import type { KeyboardEvent } from 'react'
 import { ClipboardCheck, Clock, Sparkles, Tag } from 'lucide-react'
 import type { Card } from '../../types/board'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
 import { ArtifactDot } from './ArtifactDot'
-import { NextCommand } from './NextCommand'
-import { SpecTimeline } from '../SpecTimeline'
+import { RelatedChips } from './RelatedChips'
+import { CardNextCommand } from './CardNextCommand'
+import { CopyableSlug } from '../CopyableSlug/CopyableSlug'
 import { formatEstimate, formatUsd } from '../../lib/format'
 import styles from './SpecCard.module.css'
 
 interface SpecCardProps {
   card: Card
+  onSelect: (card: Card) => void
 }
 
-export function SpecCard({ card }: SpecCardProps) {
+// SpecCard is the board face for a spec: metadata (title, slug, ticket,
+// artifacts, status, priority, estimate, savings) plus a quick-copy next
+// command. The
+// activity timeline, AI summary and useful commands remain in the details
+// drawer, opened by clicking the card — keeping the face uncluttered
+// (spec-details-drawer).
+export function SpecCard({ card, onSelect }: SpecCardProps) {
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onSelect(card)
+    }
+  }
+
   return (
-    <article className={styles.card}>
+    <article
+      className={styles.card}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open details for ${card.title}`}
+      onClick={() => onSelect(card)}
+      onKeyDown={handleKeyDown}
+    >
       <header className={styles.head}>
         <h3 className={styles.title}>{card.title}</h3>
         {card.ticket && (
@@ -25,7 +48,11 @@ export function SpecCard({ card }: SpecCardProps) {
         )}
       </header>
 
+      <CopyableSlug slug={card.id} />
+
       {card.attentionReason && <p className={styles.attention}>{card.attentionReason}</p>}
+
+      {card.relatedTo && card.relatedTo.length > 0 && <RelatedChips related={card.relatedTo} />}
 
       {card.artifacts && (
         <div className={styles.artifacts}>
@@ -58,9 +85,7 @@ export function SpecCard({ card }: SpecCardProps) {
         )}
       </footer>
 
-      <NextCommand status={card.status} id={card.id} />
-
-      <SpecTimeline specId={card.id} />
+      <CardNextCommand status={card.status} id={card.id} />
     </article>
   )
 }

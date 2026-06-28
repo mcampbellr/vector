@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "shared-agent-doctrine-snippets",
+  "title": "Doctrinas compartidas de agentes (_shared)",
+  "status": "open",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/shared-agent-doctrine-snippets/spec.md",
+  "openspec": {
+    "change": "shared-agent-doctrine-snippets",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T23:54:59.290479Z",
+  "updatedAt": "2026-06-28T00:52:18.57754Z"
+}

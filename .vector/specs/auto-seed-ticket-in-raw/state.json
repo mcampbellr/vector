@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "auto-seed-ticket-in-raw",
+  "title": "Auto-sembrar el ticket detectado en /vector:raw",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/auto-seed-ticket-in-raw/spec.md",
+  "openspec": {
+    "change": "auto-seed-ticket-in-raw",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-26T15:58:39.078322Z",
+  "startedAt": "2026-06-26T16:07:29.868801Z",
+  "reviewAt": "2026-06-26T16:10:08.549396Z",
+  "closedAt": "2026-06-26T16:17:13.399997Z",
+  "updatedAt": "2026-06-26T16:17:13.399997Z"
+}

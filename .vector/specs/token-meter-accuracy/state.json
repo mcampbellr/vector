@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "token-meter-accuracy",
+  "title": "Exactitud del token meter (provenance)",
+  "status": "open",
+  "priority": "low",
+  "repo": "",
+  "specDoc": ".vector/specs/token-meter-accuracy/spec.md",
+  "openspec": {
+    "change": "token-meter-accuracy",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T23:54:59.355635Z",
+  "updatedAt": "2026-06-28T00:52:18.664229Z"
+}

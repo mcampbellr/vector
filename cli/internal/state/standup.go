@@ -29,11 +29,12 @@ type StandupDigest struct {
 
 // StandupSpecDigest is one spec's line in the persisted digest.
 type StandupSpecDigest struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	Summary     string `json:"summary"`
-	ChangeCount int    `json:"changeCount"`
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Status      string  `json:"status"`
+	Summary     string  `json:"summary"`
+	ChangeCount int     `json:"changeCount"`
+	Ticket      *Ticket `json:"ticket,omitempty"`
 }
 
 // StandupTotals are the period-wide counters baked into the digest.
@@ -102,4 +103,64 @@ func (s *Store) WorkLog(id string, data WorkLoggedData, actor string, now time.T
 		Actor:  actor,
 		Data:   payload,
 	})
+}
+
+// RouteAgent records an agent.routed event: trivial work that a cheap model
+// handled instead of the baseline. cost/saved are derived from the model price
+// table (LookupModelPrice) so callers supply only the models and token counts;
+// the binary owns the economics. specID is optional — pass "" for a route not
+// tied to a spec (it still rolls into the global Token Savings Meter). Returns
+// the economics it recorded.
+func (s *Store) RouteAgent(specID, task, model, baseline string, tokensIn, tokensOut int, actor string, now time.Time) (AgentRoutedData, error) {
+	if tokensIn < 0 || tokensOut < 0 {
+		return AgentRoutedData{}, fmt.Errorf("token counts must be non-negative (in=%d out=%d)", tokensIn, tokensOut)
+	}
+	modelPrice, ok := LookupModelPrice(model)
+	if !ok {
+		return AgentRoutedData{}, fmt.Errorf("unknown model %q (known: haiku, sonnet, opus, fable, or a claude-* id)", model)
+	}
+	basePrice, ok := LookupModelPrice(baseline)
+	if !ok {
+		return AgentRoutedData{}, fmt.Errorf("unknown baseline model %q (known: haiku, sonnet, opus, fable, or a claude-* id)", baseline)
+	}
+
+	cost := modelPrice.CostUSD(tokensIn, tokensOut)
+	data := AgentRoutedData{
+		Task:      task,
+		Model:     model,
+		Baseline:  baseline,
+		TokensIn:  tokensIn,
+		TokensOut: tokensOut,
+		CostUSD:   cost,
+		SavedUSD:  basePrice.CostUSD(tokensIn, tokensOut) - cost,
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var repo string
+	if specID != "" {
+		spec, err := s.ReadSpec(specID)
+		if err != nil {
+			return AgentRoutedData{}, err
+		}
+		repo = spec.Repo
+	}
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return AgentRoutedData{}, fmt.Errorf("marshal agent.routed data: %w", err)
+	}
+	if err := s.appendEvent(Event{
+		V:      EventVersion,
+		TS:     now.UTC(),
+		Type:   EvtAgentRouted,
+		SpecID: specID,
+		Repo:   repo,
+		Actor:  actor,
+		Data:   payload,
+	}); err != nil {
+		return AgentRoutedData{}, err
+	}
+	return data, nil
 }

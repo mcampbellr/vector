@@ -23,6 +23,8 @@ cli/internal/webui/dist/assets/
 # Vector state: config + per-spec state.json are committed; the local activity
 # log is not (per docs/schemas/state-and-activity.md).
 .vector/local/
+# Transient scratch (e.g. spec docs composed by /vector:raw before registration).
+.vector/tmp/
 
 # Obsidian (volatile UI state — keep app.json/core-plugins.json/graph.json)
 docs/.obsidian/workspace.json

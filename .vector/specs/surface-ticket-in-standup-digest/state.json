@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "surface-ticket-in-standup-digest",
+  "title": "Surface external ticket in standup digest",
+  "status": "review",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/surface-ticket-in-standup-digest/spec.md",
+  "openspec": {
+    "change": "surface-ticket-in-standup-digest",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-26T15:42:39.872269Z",
+  "startedAt": "2026-06-26T16:22:28.318265Z",
+  "reviewAt": "2026-06-26T16:27:05.118711Z",
+  "updatedAt": "2026-06-26T16:27:05.118711Z"
+}

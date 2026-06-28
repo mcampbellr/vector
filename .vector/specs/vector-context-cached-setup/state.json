@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "vector-context-cached-setup",
+  "title": "Subcomando vector context (setup cacheado)",
+  "status": "review",
+  "priority": "high",
+  "repo": "",
+  "specDoc": ".vector/specs/vector-context-cached-setup/spec.md",
+  "openspec": {
+    "change": "vector-context-cached-setup",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-27T23:54:59.198104Z",
+  "startedAt": "2026-06-28T01:36:44.853386Z",
+  "reviewAt": "2026-06-28T01:50:25.860327Z",
+  "updatedAt": "2026-06-28T01:50:25.860327Z"
+}

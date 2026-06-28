@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -163,6 +164,31 @@ func TestReconcileStatus(t *testing.T) {
 	onDisk, _ := store.ReadSpec("add-auth")
 	if onDisk.Status != StatusReview {
 		t.Errorf("Status = %q, want review", onDisk.Status)
+	}
+}
+
+func TestReconcileStatusKeepsTerminalStates(t *testing.T) {
+	for _, terminal := range []Status{StatusClosed, StatusArchived} {
+		t.Run(string(terminal), func(t *testing.T) {
+			store, _ := Open(t.TempDir())
+			os := &OpenSpec{Change: "add-auth", Artifacts: ArtifactSet{Tasks: true}}
+			if _, err := store.CreateSpec(CreateSpecParams{ID: "add-auth", Title: "Add auth", Status: terminal, OpenSpec: os, SpecDocRel: "x", Now: fixedNow()}); err != nil {
+				t.Fatal(err)
+			}
+			// tasks.md all done → derived status review, but a terminal card must
+			// not be pulled back. changed=false, status unchanged.
+			changed, err := store.ReconcileStatus("add-auth", StatusReview, os, false, "t", fixedNow())
+			if err != nil {
+				t.Fatalf("ReconcileStatus: %v", err)
+			}
+			if changed {
+				t.Errorf("expected changed=false reconciling a %s card", terminal)
+			}
+			onDisk, _ := store.ReadSpec("add-auth")
+			if onDisk.Status != terminal {
+				t.Errorf("Status = %q, want %q (terminal preserved)", onDisk.Status, terminal)
+			}
+		})
 	}
 }
 
@@ -357,6 +383,157 @@ func TestLinkSpecValidates(t *testing.T) {
 	}
 	if _, err := store.LinkSpec("missing", Ticket{Provider: TicketJira, Key: "X-1"}, "t", fixedNow()); err == nil {
 		t.Error("expected error linking a nonexistent spec")
+	}
+}
+
+func TestCreateSpecWithRelated(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	// A kind:spec relation requires the referenced spec to already exist.
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-login", Title: "Add login", Now: fixedNow()}); err != nil {
+		t.Fatalf("seed cause spec: %v", err)
+	}
+
+	spec, err := store.CreateSpec(CreateSpecParams{
+		ID:    "fix-login-loop",
+		Title: "Fix login loop",
+		Actor: "tester",
+		Now:   fixedNow(),
+		RelatedTo: []RelatedItem{
+			{Kind: RelatedSpec, Ref: "add-login", Source: RelatedBlame},
+			{Kind: RelatedTicket, Ref: "jira:ACME-7"},                   // source defaults to manual
+			{Kind: RelatedSpec, Ref: "add-login", Source: RelatedBlame}, // duplicate, deduped
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateSpec: %v", err)
+	}
+	if len(spec.RelatedTo) != 2 {
+		t.Fatalf("relatedTo len = %d, want 2 (deduped): %+v", len(spec.RelatedTo), spec.RelatedTo)
+	}
+	if spec.RelatedTo[1].Source != RelatedManual {
+		t.Errorf("empty source not defaulted to manual: %+v", spec.RelatedTo[1])
+	}
+	onDisk, _ := store.ReadSpec("fix-login-loop")
+	if len(onDisk.RelatedTo) != 2 {
+		t.Fatalf("relatedTo not persisted on disk: %+v", onDisk.RelatedTo)
+	}
+
+	// One spec.related event per persisted relation, after spec.created.
+	events := readEvents(t, filepath.Join(root, ".vector", "local", "activity.jsonl"))
+	related := 0
+	for _, e := range events {
+		if e.Type == EvtSpecRelated {
+			related++
+		}
+	}
+	if related != 2 {
+		t.Errorf("spec.related event count = %d, want 2", related)
+	}
+}
+
+func TestCreateSpecRejectsInvalidRelated(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	cases := []struct {
+		name string
+		item RelatedItem
+	}{
+		{"bad kind", RelatedItem{Kind: "commit", Ref: "x", Source: RelatedManual}},
+		{"empty ref", RelatedItem{Kind: RelatedSpec, Ref: "  ", Source: RelatedManual}},
+		{"bad source", RelatedItem{Kind: RelatedTicket, Ref: "jira:X-1", Source: "robot"}},
+		{"missing spec", RelatedItem{Kind: RelatedSpec, Ref: "ghost", Source: RelatedBlame}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := store.CreateSpec(CreateSpecParams{ID: "fix-" + Slug(tc.name), Title: tc.name, Now: fixedNow(), RelatedTo: []RelatedItem{tc.item}})
+			if err == nil {
+				t.Fatalf("expected error creating spec with invalid relation %+v", tc.item)
+			}
+		})
+	}
+}
+
+func TestRelateSpec(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "fix-bug", Title: "Fix bug", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// First relate writes and emits spec.related.
+	changed, err := store.RelateSpec("fix-bug", RelatedItem{Kind: RelatedTicket, Ref: "jira:ACME-1"}, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("RelateSpec: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true on first relate")
+	}
+	onDisk, _ := store.ReadSpec("fix-bug")
+	if len(onDisk.RelatedTo) != 1 || onDisk.RelatedTo[0].Source != RelatedManual {
+		t.Fatalf("relation not persisted with defaulted source: %+v", onDisk.RelatedTo)
+	}
+
+	// Idempotent on {kind,ref}: a duplicate is a no-op regardless of source.
+	changed, err = store.RelateSpec("fix-bug", RelatedItem{Kind: RelatedTicket, Ref: "jira:ACME-1", Source: RelatedBlame}, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("RelateSpec idempotent: %v", err)
+	}
+	if changed {
+		t.Fatal("expected changed=false re-relating same {kind,ref}")
+	}
+
+	// A distinct relation appends.
+	if _, err := store.RelateSpec("fix-bug", RelatedItem{Kind: RelatedTicket, Ref: "jira:ACME-2"}, "tester", fixedNow()); err != nil {
+		t.Fatalf("RelateSpec second: %v", err)
+	}
+	onDisk, _ = store.ReadSpec("fix-bug")
+	if len(onDisk.RelatedTo) != 2 {
+		t.Fatalf("relatedTo len = %d, want 2", len(onDisk.RelatedTo))
+	}
+
+	// Relating never changes lifecycle status.
+	if onDisk.Status != StatusDraft {
+		t.Errorf("status changed by relate: %s", onDisk.Status)
+	}
+
+	events := readEvents(t, filepath.Join(root, ".vector", "local", "activity.jsonl"))
+	related := 0
+	for _, e := range events {
+		if e.Type == EvtSpecRelated {
+			related++
+		}
+	}
+	if related != 2 {
+		t.Errorf("spec.related event count = %d, want 2 (idempotent emits nothing)", related)
+	}
+}
+
+func TestRelateSpecRejectsMissingSpec(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	if _, err := store.RelateSpec("ghost", RelatedItem{Kind: RelatedTicket, Ref: "jira:X-1"}, "t", fixedNow()); err == nil {
+		t.Error("expected error relating a nonexistent spec")
+	}
+}
+
+// TestSpecWithoutRelatedSerializesClean guards backward compatibility: a spec with
+// no relations omits relatedTo entirely (omitempty), so existing state.json files
+// read and round-trip byte-identically.
+func TestSpecWithoutRelatedSerializesClean(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	spec, err := store.CreateSpec(CreateSpecParams{ID: "plain", Title: "Plain", Now: fixedNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.RelatedTo != nil {
+		t.Errorf("relation-less spec has non-nil RelatedTo: %+v", spec.RelatedTo)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".vector", "specs", "plain", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "relatedTo") {
+		t.Errorf("relatedTo present in state.json for a relation-less spec:\n%s", raw)
 	}
 }
 

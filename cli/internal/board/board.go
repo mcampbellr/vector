@@ -38,23 +38,25 @@ type Column struct {
 // Card is a spec projected for display. Token economics churn per run and are
 // personal, so SavedUSD is derived from the activity log, not stored on state.
 type Card struct {
-	ID              string     `json:"id"`
-	Title           string     `json:"title"`
-	Status          string     `json:"status"`
-	Priority        string     `json:"priority"`
-	Repo            string     `json:"repo,omitempty"`
-	Stage           string     `json:"stage,omitempty"`
-	Assignee        string     `json:"assignee,omitempty"`
-	Labels          []string   `json:"labels,omitempty"`
-	EstimateMin     int        `json:"estimateMinutes,omitempty"`
-	Ticket          *Ticket    `json:"ticket,omitempty"`
-	HasOpenSpec     bool       `json:"hasOpenSpec"`
-	Artifacts       *Artifacts `json:"artifacts,omitempty"`
-	AttentionReason string     `json:"attentionReason,omitempty"`
-	NeedsUAT        bool       `json:"needsUat,omitempty"` // review awaiting manual UAT
-	SavedUSD        float64    `json:"savedUsd"`
-	Routes          int        `json:"routes"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
+	ID              string        `json:"id"`
+	Title           string        `json:"title"`
+	Status          string        `json:"status"`
+	Priority        string        `json:"priority"`
+	Repo            string        `json:"repo,omitempty"`
+	Stage           string        `json:"stage,omitempty"`
+	Assignee        string        `json:"assignee,omitempty"`
+	Labels          []string      `json:"labels,omitempty"`
+	EstimateMin     int           `json:"estimateMinutes,omitempty"`
+	Ticket          *Ticket       `json:"ticket,omitempty"`
+	RelatedTo       []RelatedItem `json:"relatedTo,omitempty"`
+	HasOpenSpec     bool          `json:"hasOpenSpec"`
+	SpecDoc         string        `json:"specDoc,omitempty"` // repo-relative path to the authored spec doc
+	Artifacts       *Artifacts    `json:"artifacts,omitempty"`
+	AttentionReason string        `json:"attentionReason,omitempty"`
+	NeedsUAT        bool          `json:"needsUat,omitempty"` // review awaiting manual UAT
+	SavedUSD        float64       `json:"savedUsd"`
+	Routes          int           `json:"routes"`
+	UpdatedAt       time.Time     `json:"updatedAt"`
 }
 
 // Ticket mirrors the linked tracker (subset of state.Ticket for display).
@@ -62,6 +64,14 @@ type Ticket struct {
 	Provider string `json:"provider"`
 	Key      string `json:"key"`
 	URL      string `json:"url"`
+}
+
+// RelatedItem mirrors a cause→bug relation (subset of state.RelatedItem) for
+// read-only display on the card. The board carries it; there is no write endpoint.
+type RelatedItem struct {
+	Kind   string `json:"kind"`
+	Ref    string `json:"ref"`
+	Source string `json:"source"`
 }
 
 // Artifacts mirrors which OpenSpec artifacts a card's change has.
@@ -126,11 +136,16 @@ var priorityRank = map[state.Priority]int{
 
 // Source is what the server reads from — satisfied by *state.Store. Build uses
 // ListSpecs + ReadEvents; the standup/activity handlers also read the persisted
-// digest via ReadStandup.
+// digest via ReadStandup, and the summary handler the persisted per-spec summary
+// via ReadSummary.
 type Source interface {
 	ListSpecs() ([]*state.SpecState, error)
 	ReadEvents() ([]state.Event, error)
 	ReadStandup() (*state.StandupDigest, error)
+	ReadSummary(id string) (*state.SpecSummary, error)
+	// ReadSpecArtifact serves a spec's source document (spec.md or an OpenSpec
+	// artifact) read-only by id + artifact key (see /api/file).
+	ReadSpecArtifact(specID, artifact string) ([]byte, error)
 }
 
 // Build projects the store into a Board. repo labels the board (the repo name).
@@ -197,6 +212,7 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 		Labels:      spec.Labels,
 		EstimateMin: spec.EstimateMin,
 		HasOpenSpec: spec.OpenSpec != nil,
+		SpecDoc:     spec.SpecDoc,
 		NeedsUAT:    spec.NeedsUAT,
 		SavedUSD:    econ.savedUSD,
 		Routes:      econ.routes,
@@ -204,6 +220,9 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 	}
 	if spec.Ticket != nil {
 		card.Ticket = &Ticket{Provider: string(spec.Ticket.Provider), Key: spec.Ticket.Key, URL: spec.Ticket.URL}
+	}
+	for _, rel := range spec.RelatedTo {
+		card.RelatedTo = append(card.RelatedTo, RelatedItem{Kind: string(rel.Kind), Ref: rel.Ref, Source: string(rel.Source)})
 	}
 	if spec.OpenSpec != nil {
 		card.Artifacts = &Artifacts{

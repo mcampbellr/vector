@@ -1,3 +1,4 @@
+import { Tag } from 'lucide-react'
 import type { StandupSpecDigest } from '../../types/standup'
 import type { Status } from '../../types/board'
 import { StatusPill } from '../StatusPill/StatusPill'
@@ -20,7 +21,15 @@ export function StandupSpecRow({ spec }: StandupSpecRowProps) {
       <header className={styles.specHead}>
         <div className={styles.specHeading}>
           <h3 className={styles.specTitle}>{spec.title || spec.id}</h3>
-          <span className={styles.specId}>{spec.id}</span>
+          <div className={styles.specIdRow}>
+            <span className={styles.specId}>{spec.id}</span>
+            {spec.ticket && (
+              <span className={styles.ticket} title={spec.ticket.url}>
+                <Tag size={11} strokeWidth={2} />
+                {spec.ticket.key}
+              </span>
+            )}
+          </div>
         </div>
         <div className={styles.specMeta}>
           {isStatus(spec.status) && <StatusPill status={spec.status} />}

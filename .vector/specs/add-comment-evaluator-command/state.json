@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "add-comment-evaluator-command",
+  "title": "Comando /vector:comment para evaluar comentarios de PR",
+  "status": "review",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-comment-evaluator-command/spec.md",
+  "openspec": {
+    "change": "add-comment-evaluator-command",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-26T04:23:07.196972Z",
+  "startedAt": "2026-06-26T21:21:23.470013Z",
+  "reviewAt": "2026-06-26T21:24:58.305363Z",
+  "updatedAt": "2026-06-26T21:24:58.305363Z"
+}

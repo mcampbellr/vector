@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "add-token-breakdown-tab",
+  "title": "Token breakdown tab: per-spec token usage",
+  "status": "draft",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-token-breakdown-tab/spec.md",
+  "createdAt": "2026-06-27T20:07:08.881138Z",
+  "updatedAt": "2026-06-27T20:07:08.881138Z"
+}

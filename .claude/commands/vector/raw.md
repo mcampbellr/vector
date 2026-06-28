@@ -37,12 +37,38 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    `vector init` first (or tell the user to), so the spec lands in the repo's convention
    instead of the `.vector/` fallback. Note the resolved `specPath` for the report.
 
-3. **Find an example spec** (for tone/depth). Glob the configured `specPath` directory and
-   common locations (`docs/specs/**`, `openspec/changes/*/spec.md`, `specs/**`). If one
-   exists, hold its path as `SPEC_EXAMPLE_PATH`; else `no example yet`.
+3. **Get repo context** — fetch the setup context from the binary in one call:
 
-4. **Detect the spec language** from the example / existing specs. Default English. State it
-   in one line.
+   ```bash
+   CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
+   ```
+
+   > Token routing: one zero-token binary call replaces a manual glob of specPath and
+   > ad-hoc language detection — the binary reads config.json, globs the spec store,
+   > and detects manifests in parallel, returning the result as structured JSON.
+
+   Extract from `CONTEXT`:
+   - `SPEC_EXAMPLE_PATH` ← `CONTEXT.examplePath` (the first spec doc found, sorted lexicographically)
+   - `SPEC_LANGUAGE` ← `CONTEXT.language` (the configured prose language, if set)
+
+   **Fallback when `vector context` fails** (binary not in PATH or exits 1): emit a one-line
+   warning to stderr, then fall back to the previous behavior — glob the configured `specPath`
+   directory and common locations (`docs/specs/**`, `openspec/changes/*/spec.md`, `specs/**`)
+   to find an example spec; detect `SPEC_LANGUAGE` from that example (default English).
+
+   If `SPEC_LANGUAGE` is empty after the context call (not configured), detect it from the
+   example spec found above (default English).
+
+4. **Detect ticket and language** — pass `RAW_IDEA` to the binary to resolve both in one call:
+
+   ```bash
+   DETECT_JSON=$(echo "$RAW_IDEA" | vector detect-ticket --repo-root "$REPO_ROOT" --json)
+   ```
+
+   - **Language** (`SPEC_LANGUAGE`): use `DETECT_JSON.language` if non-empty and
+     `SPEC_LANGUAGE` was not already set in step 3; otherwise keep the value from step 3.
+
+   Hold `DETECT_JSON` — step 7 reads `DETECT_JSON.ticket` without re-invoking the binary.
 
 5. **Refine** — invoke the `vector-spec-refiner` subagent (**model: haiku**, read-only) with:
    `RAW_IDEA`, `SPEC_EXAMPLE_PATH`, and the template path `.claude/vector/spec-template.md`.
@@ -52,12 +78,34 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    batch ≤5 questions via `AskUserQuestion`. **No total cap** — keep iterating until every
    dimension has concrete content, or the user says stop (then mark `TBD — ver Open questions`).
 
-7. **Compose the spec** using the canonical template at `.claude/vector/spec-template.md` —
-   all **20 sections, in order**, replacing every `[...]` placeholder with verified content.
-   Also:
-   - Derive a concise **title** (≤ ~8 words) and a **kebab-case id** (slug of the title).
-   - **Detect a ticket** reference (e.g. `VEC-42`, a Jira/Linear/GitHub URL) — note it for `/vector:link`.
-   - **Priority** only if the idea clearly implies one; else omit (defaults to `normal`).
+7. **Resolve metadata and compose the spec**:
+
+   a. **Derive the title and id** from `BRIEF` (the refiner proposes them in
+      `## Optimized Change Title` and `## Kebab-case Change Name`). Confirm with the user
+      if step 6 left ambiguity in the name. Hold as `SPEC_TITLE` and `SPEC_ID`.
+
+   b. **Seed the ticket link** from `DETECT_JSON` resolved in step 4 — the binary already
+      applied the 4 detection tiers; do not re-invoke:
+      - `DETECT_JSON.ticket` non-null → `TICKET_JSON = DETECT_JSON.ticket`
+      - `DETECT_JSON.ticket` null → leave `TICKET_JSON` unset (no match, or ambiguous / bare
+        key without a configured `defaultTicketProvider`) — falls through to the `/vector:link`
+        hint in step 11.
+
+      > Token routing: detection is deterministic, zero-token, and already done in step 4.
+
+   c. **Priority** only if the idea clearly implies one; else omit (defaults to `normal`).
+
+   d. **Invoke `vector-spec-composer`** (**model: sonnet**, may write a file) with:
+      - `BRIEF` (full refiner output from step 5)
+      - `CLARIFICATIONS` (all Q&A pairs from step 6, in order)
+      - `TEMPLATE_PATH`: absolute path to `.claude/vector/spec-template.md`
+      - `SPEC_EXAMPLE_PATH` (from step 3, or `no example yet`)
+      - `SPEC_TITLE`, `SPEC_ID`, `SPEC_LANGUAGE`
+      - `OUTPUT_PATH`: `.vector/tmp/<SPEC_ID>/spec.md`
+
+      The subagent writes the complete spec (20 sections) to `OUTPUT_PATH` and returns a
+      confirmation with the path and the number of `TBD` markers. Hold the path as `SPEC_PATH`.
+      **The main loop does not retain the spec text in its context — only the path.**
 
 8. **Validate** — invoke the `vector-spec-validator` subagent (**model: sonnet**, read-only),
    passing the composed spec text, `SPEC_EXAMPLE_PATH`, the template path, and the 20-section
@@ -67,27 +115,53 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    - `BLOCK` → fix the required items (ask the user if a fix needs info). Re-validate. **Cap 3 cycles**;
      if still blocked, surface the report verbatim and stop without registering.
 
-9. **Register the draft card** — pipe the validated spec to the binary via stdin. The binary
-   writes the doc to the configured location and creates the card in `draft`:
+9. **Register the draft card** — pass the validated spec to the binary via file path. The binary
+   reads the doc from `SPEC_PATH` and creates the card in `draft`:
 
    ```bash
    vector spec create \
-     --title "<title>" \
-     --id "<slug>" \
+     --title "<SPEC_TITLE>" \
+     --id "<SPEC_ID>" \
      [--repo "<repo-name>"] \
      [--priority "<priority>"] \
+     [--ticket "$TICKET_JSON"] \
      --status draft \
-     --body-file - --json <<'SPEC'
-   <the full 20-section spec markdown>
-   SPEC
+     --body-file "$SPEC_PATH" --json
    ```
 
-   Parse the JSON for `id`, `status`, and `specDoc` (where the doc landed).
+   Include `--ticket` only when step 7 set `TICKET_JSON`. Parse the JSON for `id`, `status`,
+   and `specDoc` (where the doc landed). **Never block creation on linking**: if the binary
+   rejects the `--ticket` (malformed JSON / uninferable provider), re-run `vector spec create`
+   **without** `--ticket` and fall through to the `/vector:link` hint.
 
-10. **Report**: the card id, `status: draft`, the `specDoc` path, and the validator verdict.
-    If a ticket was detected, say it can be linked with `/vector:link`. Tell the user the next
-    step: **`/vector:propose`** generates the OpenSpec change (proposal/design/tasks) and moves
-    the card from `draft` to `open`.
+10. **Record the token routing** (feeds the board's Token Savings Meter). For **each**
+    cheap-agent step you ran, call the binary once so the saving the routing produced is
+    captured. You never write the JSON yourself — the binary derives cost/saved from the
+    model and the token counts and appends the `agent.routed` event:
+
+    ```bash
+    # The refiner ran on Haiku instead of the Opus baseline:
+    vector spec route <id> --model haiku  --baseline opus --task "refine spec" \
+      --tokens-in <refiner-in> --tokens-out <refiner-out>
+    # The compositor ran on Sonnet instead of the Opus baseline:
+    vector spec route <id> --model sonnet --baseline opus --task "compose spec" \
+      --tokens-in <composer-in> --tokens-out <composer-out>
+    # The validator ran on Sonnet instead of the Opus baseline:
+    vector spec route <id> --model sonnet --baseline opus --task "validate spec" \
+      --tokens-in <validator-in> --tokens-out <validator-out>
+    ```
+
+    Use the actual subagent token usage when you have it; otherwise pass your best estimate
+    of each subagent's input/output size (the meter is an estimate by design — never invent
+    precise-looking numbers, round to the nearest thousand). Skip a route you did not run
+    (e.g. if validation was not needed). `--baseline` defaults to `opus`; keep it explicit.
+
+11. **Report**: the card id, `status: draft`, the `specDoc` path, and the validator verdict.
+    For the ticket: if one was seeded, say `linked <KEY> (<provider>)`; if a reference was
+    detected but ambiguous (or a bare key without a configured `defaultTicketProvider`), say it
+    can be linked with `/vector:link`; if none was found, don't mention a ticket. Tell the user
+    the next step: **`/vector:propose`** generates the OpenSpec change (proposal/design/tasks)
+    and moves the card from `draft` to `open`.
 
 ## Notes
 
