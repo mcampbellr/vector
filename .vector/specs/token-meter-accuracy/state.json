@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "token-meter-accuracy",
   "title": "Exactitud del token meter (provenance)",
-  "status": "review",
+  "status": "closed",
   "priority": "low",
   "repo": "",
   "specDoc": ".vector/specs/token-meter-accuracy/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-27T23:54:59.355635Z",
   "startedAt": "2026-06-28T02:49:21.847531Z",
   "reviewAt": "2026-06-28T02:59:39.36574Z",
-  "updatedAt": "2026-06-28T02:59:39.36574Z"
+  "closedAt": "2026-06-28T04:09:20.098084Z",
+  "updatedAt": "2026-06-28T04:09:20.098084Z"
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "add-comment-evaluator-command",
   "title": "Comando /vector:comment para evaluar comentarios de PR",
-  "status": "review",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-comment-evaluator-command/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-26T04:23:07.196972Z",
   "startedAt": "2026-06-26T21:21:23.470013Z",
   "reviewAt": "2026-06-26T21:24:58.305363Z",
-  "updatedAt": "2026-06-26T21:24:58.305363Z"
+  "closedAt": "2026-06-28T04:09:20.119261Z",
+  "updatedAt": "2026-06-28T04:09:20.119261Z"
 }

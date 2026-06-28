@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "detect-ticket-and-language-in-binary",
   "title": "Detección de ticket y lenguaje en el binario",
-  "status": "review",
+  "status": "closed",
   "priority": "urgent",
   "repo": "",
   "specDoc": ".vector/specs/detect-ticket-and-language-in-binary/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-27T23:54:59.167166Z",
   "startedAt": "2026-06-28T01:23:16.206811Z",
   "reviewAt": "2026-06-28T01:31:41.393597Z",
-  "updatedAt": "2026-06-28T01:31:41.393597Z"
+  "closedAt": "2026-06-28T04:09:19.948863Z",
+  "updatedAt": "2026-06-28T04:09:19.948863Z"
 }

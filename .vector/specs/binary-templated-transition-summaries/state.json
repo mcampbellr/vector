@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "binary-templated-transition-summaries",
   "title": "Summaries de transición templados por el binario",
-  "status": "review",
+  "status": "closed",
   "priority": "high",
   "repo": "",
   "specDoc": ".vector/specs/binary-templated-transition-summaries/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-27T23:54:59.229129Z",
   "startedAt": "2026-06-28T02:13:11.54773Z",
   "reviewAt": "2026-06-28T02:19:54.436919Z",
-  "updatedAt": "2026-06-28T02:19:54.436919Z"
+  "closedAt": "2026-06-28T04:09:19.992883Z",
+  "updatedAt": "2026-06-28T04:09:19.992883Z"
 }

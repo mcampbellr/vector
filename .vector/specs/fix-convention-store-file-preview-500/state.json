@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "fix-convention-store-file-preview-500",
   "title": "Fix convention store file preview 500",
-  "status": "review",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": "openspec/changes/fix-convention-store-file-preview-500/proposal.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-27T18:44:52.119049Z",
   "startedAt": "2026-06-27T18:57:03.753611Z",
   "reviewAt": "2026-06-27T18:57:03.753611Z",
-  "updatedAt": "2026-06-27T18:57:03.753611Z"
+  "closedAt": "2026-06-28T04:09:20.183049Z",
+  "updatedAt": "2026-06-28T04:09:20.183049Z"
 }
