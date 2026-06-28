@@ -40,6 +40,42 @@ absent or empty, add no directive and the agent falls back to the conversation l
 { "global": "<1–3 paragraphs>", "perSpec": [ { "id": "...", "summary": "<1–2 sentences>" } ] }
 ```
 
+## 2a. Validate the digest (shape-gate)
+
+Before piping the digest to the binary, validate that the agent output is well-formed. A valid
+response meets **all** of:
+
+- Parseable as JSON.
+- `global` is a non-empty string.
+- `perSpec` is an array (may be `[]` when the projection's `perSpec` was empty).
+
+**If valid on attempt 1:** proceed to §3.
+
+**If invalid on attempt 1:** notify the user on stdout:
+
+```
+subagent returned invalid JSON — retrying (attempt 2/2)…
+```
+
+Then re-spawn the `vector-standup-writer` subagent (same Haiku tier) with the same projection
+JSON **plus** a correction directive prepended to the prompt (above the JSON):
+
+```
+The previous attempt returned malformed or invalid JSON.
+Return ONLY a valid JSON object matching exactly:
+{"global": "<string>", "perSpec": [{"id": "<string>", "summary": "<string>"}]}
+No preface, no code fences, no trailing text.
+```
+
+**If valid on attempt 2:** proceed to §3.
+
+**If invalid on attempt 2:** report to the user and abort. Do **not** pipe anything to the binary;
+the marker does not advance:
+
+```
+standup digest failed: the subagent returned invalid JSON twice; nothing was written and the marker was not advanced. Re-run /vector:standup to retry.
+```
+
 ## 3. Persist via the binary
 
 Pipe the agent's JSON to `vector standup commit --digest-file -` (pass the same `--since` you

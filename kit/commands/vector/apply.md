@@ -243,7 +243,22 @@ agent writes the prose. **You never write the summary yourself.**
    priorSummary?, events[] }` for the recent window.
 2. Pass that **exact JSON** to the `vector-summary-writer` subagent (model: Haiku). It returns
    `{ "summary": "<2–3 sentences>" }`. Do not summarize yourself — the agent's whole job is the prose.
-3. Pipe its JSON to `vector spec summarize <id> commit --action apply --summary-file -`. The binary
+3. Validate the summary (shape-gate): check that the response is parseable JSON and `summary` is a
+   non-empty string.
+   - **Valid (attempt 1):** proceed to step 4.
+   - **Invalid (attempt 1):** re-spawn `vector-summary-writer` (same Haiku tier) with the same
+     projection JSON plus a correction directive prepended to the prompt (above the JSON):
+     ```
+     The previous attempt returned malformed or invalid JSON.
+     Return ONLY a valid JSON object matching exactly:
+     {"summary": "<2–3 sentences>"}
+     No preface, no code fences, no trailing text.
+     ```
+     Check again:
+     - **Valid (attempt 2):** proceed to step 4.
+     - **Invalid (attempt 2):** skip — do **not** pipe to the binary; note in §8:
+       `summary skipped: subagent returned invalid JSON twice`. Move on.
+4. Pipe its JSON to `vector spec summarize <id> commit --action apply --summary-file -`. The binary
    validates and writes `.vector/local/summaries.json` (gitignored). Empty/invalid prose → nothing
    is written (not a gate); note it and move on.
 
@@ -261,6 +276,9 @@ uncommitted changes, and the next step.
   (what's pending + unblock path + PR ref) **instead of** "ready for review"; the next step is to
   provide the missing dependency, then `/vector:apply <id>` to resume. Form:
   `external blocker → needs-attention: <reason>`.
+- **Summary skipped** (§7 step 3 double failure) → append a brief note at the end of the report:
+  `summary skipped: subagent returned invalid JSON twice`. Apply still completes normally — this
+  is not a gate.
 
 ## Notes
 
