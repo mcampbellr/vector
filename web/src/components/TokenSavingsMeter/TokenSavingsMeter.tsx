@@ -40,6 +40,14 @@ export function TokenSavingsMeter({ savings }: TokenSavingsMeterProps) {
         <div className={styles.amount}>
           <span className={styles.saved}>{formatUsd(savings.totalSavedUsd)}</span>
           <span className={styles.savedLabel}>saved</span>
+          {savings.precision === 'estimated' && (
+            <span
+              className={styles.estimatedBadge}
+              aria-label="Token counts are estimates, not harness-reported measurements"
+            >
+              Estimated
+            </span>
+          )}
         </div>
         <div className={styles.reduction}>
           <TrendingDown size={14} strokeWidth={2.5} />

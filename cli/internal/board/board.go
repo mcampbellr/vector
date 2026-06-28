@@ -91,6 +91,11 @@ type TokenSavings struct {
 	TokensIn      int           `json:"tokensIn"`
 	TokensOut     int           `json:"tokensOut"`
 	ByModel       []ModelRollup `json:"byModel"`
+	// Precision is the worst-case data quality of the rolled-up savings:
+	//   "actual"    — every contributing event was harness-reported (exact).
+	//   "estimated" — at least one event was self-reported by the command.
+	//   ""          — no routes recorded (meter empty; no badge shown).
+	Precision string `json:"precision,omitempty"`
 }
 
 // ModelRollup breaks savings down by the cheap model that handled the work.
@@ -254,11 +259,14 @@ type specEconomics struct {
 }
 
 // rollupSavings folds agent.routed events into the board-wide Token Savings
-// Meter and a per-spec map for card badges.
+// Meter and a per-spec map for card badges. Precision uses worst-case semantics:
+// the rollup is "estimated" if any event is not "actual"; "actual" only when
+// every event carries exact harness-reported counts; "" when no routes exist.
 func rollupSavings(events []state.Event) (TokenSavings, map[string]specEconomics) {
 	perSpec := make(map[string]specEconomics)
 	byModel := make(map[string]*ModelRollup)
 	var s TokenSavings
+	var hasEstimated bool
 
 	for _, e := range events {
 		if e.Type != state.EvtAgentRouted {
@@ -273,6 +281,12 @@ func rollupSavings(events []state.Event) (TokenSavings, map[string]specEconomics
 		s.TotalSpentUSD += d.CostUSD
 		s.TokensIn += d.TokensIn
 		s.TokensOut += d.TokensOut
+
+		// Worst-case precision: any non-"actual" event (including absent field)
+		// marks the entire rollup as estimated.
+		if d.Precision != "actual" {
+			hasEstimated = true
+		}
 
 		if e.SpecID != "" {
 			econ := perSpec[e.SpecID]
@@ -299,5 +313,15 @@ func rollupSavings(events []state.Event) (TokenSavings, map[string]specEconomics
 	sort.Slice(s.ByModel, func(i, j int) bool {
 		return s.ByModel[i].SavedUSD > s.ByModel[j].SavedUSD
 	})
+
+	// Set precision only when at least one route was recorded.
+	if s.Routes > 0 {
+		if hasEstimated {
+			s.Precision = "estimated"
+		} else {
+			s.Precision = "actual"
+		}
+	}
+
 	return s, perSpec
 }

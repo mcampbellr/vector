@@ -109,9 +109,10 @@ func (s *Store) WorkLog(id string, data WorkLoggedData, actor string, now time.T
 // handled instead of the baseline. cost/saved are derived from the model price
 // table (LookupModelPrice) so callers supply only the models and token counts;
 // the binary owns the economics. specID is optional — pass "" for a route not
-// tied to a spec (it still rolls into the global Token Savings Meter). Returns
-// the economics it recorded.
-func (s *Store) RouteAgent(specID, task, model, baseline string, tokensIn, tokensOut int, actor string, now time.Time) (AgentRoutedData, error) {
+// tied to a spec (it still rolls into the global Token Savings Meter). precision
+// must be "actual" (harness-reported token counts) or "estimated" (self-reported
+// by the command); "" normalizes to "estimated". Returns the economics it recorded.
+func (s *Store) RouteAgent(specID, task, model, baseline string, tokensIn, tokensOut int, precision string, actor string, now time.Time) (AgentRoutedData, error) {
 	if tokensIn < 0 || tokensOut < 0 {
 		return AgentRoutedData{}, fmt.Errorf("token counts must be non-negative (in=%d out=%d)", tokensIn, tokensOut)
 	}
@@ -123,6 +124,13 @@ func (s *Store) RouteAgent(specID, task, model, baseline string, tokensIn, token
 	if !ok {
 		return AgentRoutedData{}, fmt.Errorf("unknown baseline model %q (known: haiku, sonnet, opus, fable, or a claude-* id)", baseline)
 	}
+	// Normalize and validate precision.
+	if precision == "" {
+		precision = "estimated"
+	}
+	if precision != "actual" && precision != "estimated" {
+		return AgentRoutedData{}, fmt.Errorf("invalid precision %q: must be actual or estimated", precision)
+	}
 
 	cost := modelPrice.CostUSD(tokensIn, tokensOut)
 	data := AgentRoutedData{
@@ -133,6 +141,7 @@ func (s *Store) RouteAgent(specID, task, model, baseline string, tokensIn, token
 		TokensOut: tokensOut,
 		CostUSD:   cost,
 		SavedUSD:  basePrice.CostUSD(tokensIn, tokensOut) - cost,
+		Precision: precision,
 	}
 
 	s.mu.Lock()

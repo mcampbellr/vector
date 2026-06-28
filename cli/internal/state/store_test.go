@@ -537,6 +537,45 @@ func TestSpecWithoutRelatedSerializesClean(t *testing.T) {
 	}
 }
 
+// TestRouteAgent_PrecisionDefault verifies that omitting precision ("") normalizes to "estimated".
+func TestRouteAgent_PrecisionDefault(t *testing.T) {
+	root := t.TempDir()
+	store, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	data, err := store.RouteAgent("", "summarize", "haiku", "opus", 1000, 200, "", "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("RouteAgent: %v", err)
+	}
+	if data.Precision != "estimated" {
+		t.Errorf("Precision = %q, want \"estimated\" (empty string should normalize)", data.Precision)
+	}
+}
+
+// TestRouteAgent_PrecisionActual verifies that "actual" is stored as-is.
+func TestRouteAgent_PrecisionActual(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	data, err := store.RouteAgent("", "refine", "haiku", "opus", 500, 100, "actual", "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("RouteAgent: %v", err)
+	}
+	if data.Precision != "actual" {
+		t.Errorf("Precision = %q, want \"actual\"", data.Precision)
+	}
+}
+
+// TestRouteAgent_PrecisionInvalid verifies that unknown precision values are rejected.
+func TestRouteAgent_PrecisionInvalid(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	_, err := store.RouteAgent("", "refine", "haiku", "opus", 500, 100, "bogus", "tester", fixedNow())
+	if err == nil {
+		t.Fatal("expected error for precision \"bogus\", got nil")
+	}
+}
+
 func readEvents(t *testing.T, path string) []Event {
 	t.Helper()
 	f, err := os.Open(path)

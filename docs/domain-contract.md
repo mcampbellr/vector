@@ -63,6 +63,33 @@
   ruteo a agentes baratos) → se muestra **por separado**, no en el campo de estimación. No
   vive en el state committed.
 
+### Shape de `agent.routed` (payload en `activity.jsonl`)
+
+```json
+{
+  "task": "refine spec",
+  "model": "haiku",
+  "baseline": "opus",
+  "tokensIn": 1000,
+  "tokensOut": 200,
+  "costUsd": 0.000375,
+  "savedUsd": 0.020625,
+  "precision": "estimated"
+}
+```
+
+- **`precision`** (`"actual"` | `"estimated"`, `omitempty`):
+  - `"actual"` — conteos de tokens reportados por el harness de Claude Code (medición exacta).
+    Se pasa con `vector spec route --precision actual`.
+  - `"estimated"` — auto-reportado por el command orquestador (default). Se serializa como
+    `omitempty`, por lo que eventos anteriores a este campo tienen el campo ausente.
+  - **Campo ausente** (eventos anteriores a esta feature) → se trata como `"estimated"` en el
+    rollup del board. Sin migración del log; retrocompatibilidad en runtime.
+- El rollup `tokenSavings.precision` en `GET /api/board` usa **semántica de peor caso**:
+  - `"actual"` solo si **todos** los eventos son exactos.
+  - `"estimated"` si **cualquier** evento es estimado o tiene el campo ausente.
+  - `""` (omitido) si no hay rutas registradas aún (meter vacío, sin badge).
+
 ## 4. Contrato `web/` ↔ `cli/`
 
 - `vector serve` expone una **API HTTP versionada**; `web/` la consume. **Nunca** lee el

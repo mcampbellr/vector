@@ -189,6 +189,12 @@ register the card with its relations; the binary writes the doc and creates the 
       --tokens-in <validator-in> --tokens-out <validator-out>
     ```
 
+    **Precision**: omit `--precision` (defaults to `estimated`) unless the harness exposed the
+    exact token counts (e.g. via a tool-result metadata field or environment variable). If the
+    harness did provide real counts, pass `--precision actual` — this marks the meter as exact
+    and removes the "Estimated" badge on the board. Never pass `--precision actual` for numbers
+    you derived yourself; an honest estimate is more trustworthy than a false claim of precision.
+
     Use the actual subagent token usage when you have it; otherwise pass your best estimate, rounded
     to the nearest thousand (the meter is an estimate by design). Skip a route you did not run.
     `--baseline` defaults to `opus`; keep it explicit.

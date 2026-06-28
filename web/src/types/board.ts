@@ -92,6 +92,13 @@ export interface TokenSavings {
   tokensIn: number
   tokensOut: number
   byModel: ModelRollup[]
+  /**
+   * Data quality of the rolled-up savings.
+   *   "actual"    — every contributing event was harness-reported (exact).
+   *   "estimated" — at least one event was self-reported by a command.
+   *   absent / "" — no routes recorded (meter empty; no badge shown).
+   */
+  precision?: 'actual' | 'estimated'
 }
 
 export interface Totals {
