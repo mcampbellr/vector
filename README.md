@@ -36,10 +36,37 @@ drifts out of sync.
 
 ## Installation
 
-**Prerequisite: Go 1.26+** (the version declared in `cli/go.mod`). Check your version with
-`go version` before building, or the build will fail without an obvious reason.
+Vector ships as a single binary that bundles the CLI and the embedded web board. Installing it
+needs no Go, Node, or any other toolchain on your machine.
 
-The single supported path today is to clone the repo and build the binary locally:
+### Install script
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mcampbellr/vector/main/scripts/install.sh | sh
+```
+
+Detects your OS and architecture, downloads the matching binary from the latest
+[release](https://github.com/mcampbellr/vector/releases), verifies its SHA256, and installs to
+`~/.local/bin/vector`. No `sudo`, no shell-profile edits. Supported platforms: macOS and Linux
+on `amd64` and `arm64`.
+
+Pin a specific version instead of the latest:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mcampbellr/vector/main/scripts/install.sh | sh -s -- --version v0.1.0
+```
+
+Override the install directory with `VECTOR_INSTALL_DIR` (default `~/.local/bin`).
+
+### Binary
+
+Download the archive for your platform from
+[GitHub Releases](https://github.com/mcampbellr/vector/releases), extract it, and move the
+`vector` binary onto your `PATH`. Each archive ships next to a `checksums.txt` for verification.
+
+### From source
+
+Requires **Go 1.26+** (the version declared in `cli/go.mod`).
 
 ```bash
 git clone https://github.com/mcampbellr/vector.git
@@ -47,7 +74,10 @@ cd vector/cli
 go build -o ~/.local/bin/vector ./cmd/vector
 ```
 
-Make sure `~/.local/bin` is on your `PATH`. Then, inside each repo you want to manage:
+### Set up a repo
+
+Make sure `~/.local/bin` is on your `PATH`, then run `vector init` inside each repo you want to
+manage:
 
 ```bash
 cd <your-project>
@@ -56,9 +86,6 @@ vector init
 
 `vector init` seeds the `/vector:*` commands into `.claude/commands/vector/`, detects your stack,
 and creates the `.vector/` state directory.
-
-> A one-line installer (`curl … | install.sh`) is planned but not available yet. Use the
-> clone-and-build steps above until it ships.
 
 ## Quickstart
 

@@ -16,21 +16,16 @@ Plataformas soportadas: `darwin`/`linux` × `amd64`/`arm64`. Windows no está so
 ## Instalación
 
 ```sh
-curl -fsSL https://github.com/mcampbellr/vector/releases/latest/download/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/mcampbellr/vector/main/scripts/install.sh | sh
 ```
 
-> **Nota importante.** Este comando anónimo `curl … | sh` **solo funciona cuando el repositorio
-> `mcampbellr/vector` es público**. Mientras el repo sea privado, las requests anónimas a la
-> GitHub Releases API devuelven `404`/`403` y la instalación falla — es el comportamiento
-> esperado ("build now, publish later"). Hasta entonces, instala localmente (compilando desde
-> el repo) o mediante un download autenticado con un token de GitHub:
+> **Nota.** Este comando anónimo `curl … | sh` requiere que el repositorio `mcampbellr/vector`
+> sea **público**. Si el repo estuviera privado, las requests anónimas devuelven `404`/`403`; en
+> ese caso instala compilando desde el repo (`go build`) o con un download autenticado:
 >
 > ```sh
 > GITHUB_TOKEN=<tu_token> bash scripts/install.sh --version v0.1.0
 > ```
->
-> La URL pública estable de `install.sh` se confirma al hacer el repo público (ver las
-> preguntas abiertas del spec `one-step-installer-script`).
 
 El instalador detecta tu sistema operativo y arquitectura, resuelve la última versión (o la
 fijada con `--version`), descarga el binario de tu plataforma junto con `checksums.txt`,
@@ -70,6 +65,6 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Referencia cruzada
 
-La sección de instalación del `README.md` se actualizará en el spec
-`rewrite-public-readme-humanized` cuando el repo sea público. Este documento es la fuente de
-verdad de la instalación hasta entonces.
+El `README.md` (raíz) documenta la instalación para el público general (instalador, binario,
+build desde fuente). Este documento es la referencia detallada de flags, variables de entorno y
+verificación del instalador.
