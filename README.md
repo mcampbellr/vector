@@ -93,22 +93,29 @@ and creates the `.vector/` state directory.
 
 ## Quickstart
 
-From an existing repo, four steps take you from nothing to a card on the board:
+Vector is built to drop into an existing repo. Four steps take you from nothing to a board:
 
 ```bash
 vector init                      # seed the commands and detect your stack
 ```
 
 ```text
-/vector:raw "add user authentication"   # in Claude Code: create a spec
+/vector:sync                     # in Claude Code: import existing OpenSpec changes onto the board
+```
+
+```text
+/vector:raw "add user authentication"   # create a new spec from scratch
 ```
 
 ```bash
 vector serve                     # open the local board
 ```
 
-The spec you created with `/vector:raw` shows up in the `open` column. Open the board in your
-browser to watch it move as you propose and apply the change.
+Run `/vector:sync` first. It is idempotent and additive: in a repo that already uses OpenSpec it
+pulls those changes onto the board so you never recreate specs by hand, and in a fresh repo it
+simply finds nothing and does no harm. Reach for `/vector:raw` for anything new. Either way the
+cards land in the `open` column — open the board in your browser to watch them move as you propose
+and apply each change.
 
 ## Key Concepts
 
