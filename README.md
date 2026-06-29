@@ -117,6 +117,11 @@ browser to watch it move as you propose and apply the change.
 | **`/vector:*` commands** | Project commands that run inside Claude Code, seeded into `.claude/commands/vector/`. See [`docs/plugin-and-commands.md`](docs/plugin-and-commands.md). |
 | **`vector init`** | The terminal subcommand that bootstraps a repo: it seeds the commands, detects your stack, and asks for consent before touching anything. |
 
+Click a card to open its details drawer — status, priority, ticket, the next command to run, the
+activity history, and the spec files. Open a file to read the spec itself, rendered from disk.
+
+![A spec's details drawer open beside a modal rendering the spec.md markdown — goal, scope, and user flow](docs/assets/spec-view.png)
+
 ## Commands Reference
 
 The `/vector:*` commands run inside Claude Code. The binary owns every write to the board state;
@@ -159,6 +164,11 @@ moves to `in-progress` while the work happens, then to `review` once the build a
 
 Throughout, `vector serve` keeps a local board open in your browser. It reflects each transition
 in real time over SSE, so you watch the card travel across the columns as the work lands.
+
+When you want a written status, `/vector:standup` projects the activity since your last check-in
+into a digest — a short narrative plus one line per spec, each tied to its ticket and status.
+
+![Vector standup digest: a narrative paragraph followed by per-spec cards with status, ticket, and a one-line summary](docs/assets/standup.png)
 
 ## Contributing / License
 
