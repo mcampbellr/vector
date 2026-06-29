@@ -39,11 +39,6 @@
   min-height: 0;
 }
 
-.rail {
-  flex-shrink: 0;
-  padding: var(--space-5) 0 var(--space-5) var(--space-6);
-}
-
 .placeholder {
   margin: auto;
   padding: var(--space-6);

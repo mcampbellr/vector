@@ -51,12 +51,30 @@ tags: [vector, spec, capture]
 
 ## Decisión: los slash commands bajo el namespace `vector`
 
-`/vector:raw` · `/vector:bug` · `/vector:link` · `/vector:status` · `/vector:daily` ·
-`/vector:apply` · `/vector:close` · `/vector:archive` · `/vector:comment`
+`/vector:raw` · `/vector:research` · `/vector:bug` · `/vector:quick` · `/vector:link` ·
+`/vector:status` · `/vector:daily` · `/vector:apply` · `/vector:close` · `/vector:archive` ·
+`/vector:comment`
+
+`/vector:research` es el hermano exhaustivo de `/vector:raw`: antes de especificar, **investiga la
+viabilidad** de la idea por lentes (`technical` siempre; `security`/`marketing`/`design` por
+señales del texto), delega cada lente a un revisor Sonnet (`vector-feasibility-reviewer`, read-only)
+que reúne su propia evidencia y emite un veredicto `go`/`go-with-risks`/`no-go`, consolida un
+veredicto global, **gatea go/no-go con el usuario** y —solo con go— autora el spec de 20 secciones
+con el **reporte de viabilidad embebido** y registra la card `draft` (reusando el pipeline de `raw`:
+refiner Haiku + validator Sonnet). No corre las cuatro lentes "por si acaso"; pregunta si la
+detección es ambigua.
 
 `/vector:bug` es la contraparte bug-framed de `/vector:raw`: refina un reporte (Haiku), deduce
 la **causa raíz** vía `git blame`/`git log` (mapeando commits sospechosos a una spec de Vector
 o a un ticket) y registra el bug como card `draft` con relaciones `relatedTo[]` persistidas.
+
+`/vector:quick` es el equivalente Vector-native de `/quick-win`: aplica un cambio pequeño y de
+bajo riesgo (refactor, rename, helper extraído, ajuste de copy, índice faltante) **en la misma
+corrida**. Refina con un agente Haiku (`vector-quick-refiner`, sin validador Sonnet), registra la
+card directamente `in-progress` **marcada quick-win** (`quickWin:true`), implementa, valida con el
+gate de lint/typecheck del repo, loguea el trabajo (`work.logged`), commitea opcionalmente
+(preguntando) y la deja en `review`. No crea un change de OpenSpec; si el cambio crece, escala a
+`/vector:raw`.
 
 `init` queda **fuera** de los slash commands: es el subcomando de terminal `vector init` que
 bootstrapea el repo y siembra los de arriba (ver §Distribución).
@@ -71,7 +89,9 @@ kit/                              # fuente versionada en el repo Vector
 └── commands/
     └── vector/                   # el subdirectorio = namespace del colon
         ├── raw.md                # → /vector:raw  (template ≈ /idea)
+        ├── research.md           # → /vector:research (raw + feasibility lenses + go/no-go gate)
         ├── bug.md                # → /vector:bug  (raw bug-framed + traza de causa)
+        ├── quick.md              # → /vector:quick (apply-in-run ≈ /quick-win)
         ├── link.md
         ├── status.md
         ├── daily.md

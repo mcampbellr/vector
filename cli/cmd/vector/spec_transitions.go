@@ -323,6 +323,99 @@ func runSpecNext(args []string) error {
 	return nil
 }
 
+// runSpecFix records a /vector:fix correction as a spec.fixed event. It never
+// transitions status — the command orchestrates lifecycle moves through `vector
+// spec status` (the LOCKED machine), so this stays a single additive write and the
+// binary remains the sole state writer. The classification is the refiner's
+// verdict; --validation-result is informational metadata, not a gate.
+func runSpecFix(args []string) error {
+	id, rest := leadingID(args)
+	fs := flag.NewFlagSet("spec fix", flag.ContinueOnError)
+	idFlag := fs.String("id", "", "spec id (or pass it as the first argument)")
+	classification := fs.String("classification", "", "correction class: spec-only|code-only|spec+code")
+	artifacts := fs.String("artifacts", "", "comma list of OpenSpec artifacts amended: proposal,design,tasks")
+	files := fs.String("files", "", "comma-separated code files touched")
+	validationResult := fs.String("validation-result", "", "implementer validation outcome: pass|fail (informational)")
+	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	if id == "" {
+		id = *idFlag
+	}
+	if id == "" {
+		return errors.New("usage: vector spec fix <id> --classification spec-only|code-only|spec+code [--artifacts proposal,design,tasks] [--files ...] [--validation-result pass|fail]")
+	}
+	if id != state.Slug(id) {
+		return fmt.Errorf("invalid spec id %q: must be kebab-case", id)
+	}
+
+	class := strings.TrimSpace(*classification)
+	switch class {
+	case "spec-only", "code-only", "spec+code":
+	case "":
+		return errors.New("--classification is required (spec-only|code-only|spec+code)")
+	default:
+		return fmt.Errorf("invalid --classification %q: allowed spec-only|code-only|spec+code", class)
+	}
+
+	validation := strings.TrimSpace(*validationResult)
+	switch validation {
+	case "", "pass", "fail":
+	default:
+		return fmt.Errorf("invalid --validation-result %q: allowed pass|fail", validation)
+	}
+
+	arts, err := parseFixArtifacts(*artifacts)
+	if err != nil {
+		return err
+	}
+	touched := splitCSV(*files)
+
+	store, err := openStore(*repoRoot)
+	if err != nil {
+		return err
+	}
+	spec, err := store.FixSpec(id, class, validation, arts, touched, resolveActor(), time.Now())
+	if err != nil {
+		return err
+	}
+
+	if *jsonOut {
+		return printJSON(map[string]string{
+			"id":               spec.ID,
+			"status":           string(spec.Status),
+			"classification":   class,
+			"validationResult": validation,
+			"artifacts":        fmt.Sprintf("%d", len(arts)),
+			"files":            fmt.Sprintf("%d", len(touched)),
+		})
+	}
+	fmt.Printf("recorded fix for spec %q (%s; %d artifact(s), %d file(s))\n", spec.ID, class, len(arts), len(touched))
+	return nil
+}
+
+// parseFixArtifacts splits a comma list of amended OpenSpec artifacts, rejecting
+// names outside proposal,design,tasks. Casing and an optional .md suffix are
+// tolerated (via canonicalArtifact); the returned slice holds the canonical
+// names (lowercase, no .md), so persisted state never depends on the input format.
+func parseFixArtifacts(list string) ([]string, error) {
+	vals := splitCSV(list)
+	if len(vals) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(vals))
+	for _, v := range vals {
+		name, ok := canonicalArtifact(v)
+		if !ok {
+			return nil, fmt.Errorf("invalid --artifacts %q: allowed proposal,design,tasks", v)
+		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
 // openStore resolves the repo root and opens the state store — shared by the
 // transition subcommands.
 func openStore(repoRoot string) (*state.Store, error) {

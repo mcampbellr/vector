@@ -23,7 +23,10 @@ import (
 	"github.com/mariocampbell/vector/internal/state"
 )
 
-const version = "0.0.1-dev"
+// version is the binary's reported version. The default "dev" is for local
+// builds; GoReleaser injects the release tag at build time via
+// ldflags "-X main.version={{.Version}}".
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -593,7 +596,7 @@ func humanizeSlug(slug string) string {
 
 func runSpec(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vector spec <create|list|propose|apply|link|relate|status|close|archive|next|worklog|summarize|route> ...")
+		return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route> ...")
 	}
 	switch args[0] {
 	case "create":
@@ -604,6 +607,8 @@ func runSpec(args []string) error {
 		return runSpecPropose(args[1:])
 	case "apply":
 		return runSpecApply(args[1:])
+	case "fix":
+		return runSpecFix(args[1:])
 	case "link":
 		return runSpecLink(args[1:])
 	case "relate":
@@ -717,21 +722,47 @@ func runSpecPropose(args []string) error {
 	return nil
 }
 
+// canonicalArtifact normalizes a raw --artifacts segment to its canonical name
+// (proposal|design|tasks): trim → strip a single case-insensitive .md suffix →
+// lowercase → match. ok is false for anything outside the allowed set (including
+// an empty post-normalization segment such as ".md" or "proposal.md.md").
+func canonicalArtifact(part string) (string, bool) {
+	s := strings.TrimSpace(part)
+	if len(s) >= 3 && strings.EqualFold(s[len(s)-3:], ".md") {
+		s = s[:len(s)-3]
+	}
+	switch strings.ToLower(s) {
+	case "proposal":
+		return "proposal", true
+	case "design":
+		return "design", true
+	case "tasks":
+		return "tasks", true
+	default:
+		return "", false
+	}
+}
+
 // parseArtifacts turns a comma list into an ArtifactSet, rejecting unknown names.
+// Each segment is normalized via canonicalArtifact, so casing and an optional .md
+// suffix are tolerated; empty segments are tolerated.
 func parseArtifacts(list string) (state.ArtifactSet, error) {
 	var a state.ArtifactSet
 	for _, part := range strings.Split(list, ",") {
-		switch strings.TrimSpace(part) {
+		if strings.TrimSpace(part) == "" {
+			continue // tolerate empty segments
+		}
+		name, ok := canonicalArtifact(part)
+		if !ok {
+			return a, fmt.Errorf("invalid --artifacts %q: allowed proposal,design,tasks", part)
+		}
+		switch name {
 		case "proposal":
 			a.Proposal = true
 		case "design":
 			a.Design = true
 		case "tasks":
 			a.Tasks = true
-		case "":
-			// tolerate empty segments
-		default:
-			return a, fmt.Errorf("invalid --artifacts %q: allowed proposal,design,tasks", part)
 		}
 	}
 	return a, nil
@@ -747,6 +778,7 @@ func runSpecCreate(args []string) error {
 	bodyFile := fs.String("body-file", "", "path to the spec doc body, or - for stdin")
 	ticketJSON := fs.String("ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
 	relatedJSON := fs.String("related", "", "seed cause→bug relations as JSON [{\"kind\":\"spec\",\"ref\":\"id\",\"source\":\"blame\"}]")
+	quickWin := fs.Bool("quick-win", false, "mark the card as a /vector:quick one-run change")
 	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
 	if err := fs.Parse(args); err != nil {
@@ -805,6 +837,7 @@ func runSpecCreate(args []string) error {
 		Priority:       state.Priority(*priority),
 		Status:         state.Status(*status),
 		Body:           body,
+		QuickWin:       *quickWin,
 		Ticket:         ticket,
 		RelatedTo:      related,
 		Actor:          resolveActor(),
@@ -1071,7 +1104,7 @@ usage:
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector standup [--since 24h|today|7d] [--json]
   vector standup commit --digest-file -|path
-  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
+  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--quick-win] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
   vector spec link <id> <ref> [--provider jira|linear|github|other] [--json]

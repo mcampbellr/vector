@@ -1,0 +1,57 @@
+name: release
+
+# Tag-triggered release pipeline. Pushing a v* tag builds the web SPA, embeds it
+# into the Go binary, runs the test suite, then GoReleaser publishes the GitHub
+# release (4 platform archives + checksums.txt). Build now, publish later: this
+# only produces releases once a tag is pushed.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web SPA
+        run: npm ci && npm run build
+        working-directory: web
+
+      - name: Embed web dist into CLI
+        run: |
+          rm -rf cli/internal/webui/dist
+          cp -R web/dist cli/internal/webui/dist
+
+      - name: Generate scaffold assets
+        run: go -C cli generate ./internal/scaffold
+
+      - name: Run CLI tests
+        run: go -C cli test ./...
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

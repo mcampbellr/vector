@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "one-step-installer-script",
+  "title": "Instalador de un paso (curl | sh) para el CLI de Vector con pipeline de release por plataforma",
+  "status": "review",
+  "priority": "high",
+  "repo": "",
+  "specDoc": ".vector/specs/one-step-installer-script/spec.md",
+  "openspec": {
+    "change": "one-step-installer-script",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-28T05:29:59.487129Z",
+  "startedAt": "2026-06-28T19:29:44.444148Z",
+  "reviewAt": "2026-06-28T19:35:01.835895Z",
+  "updatedAt": "2026-06-28T19:35:01.835895Z"
+}

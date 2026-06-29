@@ -65,6 +65,7 @@ type SpecState struct {
 	Assignee      string   `json:"assignee,omitempty"`   // git handle → powers "my specs"
 	Labels        []string `json:"labels,omitempty"`
 	EstimateMin   int      `json:"estimateMinutes,omitempty"`
+	QuickWin      bool     `json:"quickWin,omitempty"`   // /vector:quick one-run change marker
 
 	Ticket    *Ticket       `json:"ticket,omitempty"`
 	RelatedTo []RelatedItem `json:"relatedTo,omitempty"`     // cause→bug trace (/vector:bug)

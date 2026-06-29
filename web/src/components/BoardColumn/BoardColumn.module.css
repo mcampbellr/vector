@@ -13,6 +13,27 @@
   padding: 0 var(--space-1) var(--space-3);
   position: sticky;
   top: 0;
+  background-color: var(--color-app-bg);
+  z-index: 1;
+}
+
+/*
+ * El scroll container del board (.board en KanbanBoard) tiene padding-top: var(--space-5).
+ * Un sticky header con top:0 se ancla al borde del content box, quedando esa franja de
+ * var(--space-5) por encima descubierta: al scrollear, las cards asoman sobre el header.
+ * Este pseudo-elemento extiende el fondo del header hacia arriba para cubrir exactamente
+ * esa franja. Usa --color-app-bg (igual que el header y el fondo del board) → invisible en
+ * reposo y sin costura de color al scrollear.
+ */
+.header::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--space-5);
+  background-color: var(--color-app-bg);
+  pointer-events: none;
 }
 
 .title {

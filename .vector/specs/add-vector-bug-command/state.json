@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "add-vector-bug-command",
   "title": "Comando /vector:bug con trazabilidad de causa",
-  "status": "in-progress",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-vector-bug-command/spec.md",
@@ -16,5 +16,6 @@
   },
   "createdAt": "2026-06-27T19:00:46.407047Z",
   "startedAt": "2026-06-27T19:27:37.447764Z",
-  "updatedAt": "2026-06-27T19:27:37.447764Z"
+  "closedAt": "2026-06-28T08:00:47.443673Z",
+  "updatedAt": "2026-06-28T08:00:47.443673Z"
 }

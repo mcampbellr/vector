@@ -3,10 +3,10 @@ import { useBoard } from './api/useBoard'
 import { BoardHeader } from './components/BoardHeader/BoardHeader'
 import { KanbanBoard } from './components/KanbanBoard/KanbanBoard'
 import { StandupView } from './components/StandupView'
-import { TokenSavingsMeter } from './components/TokenSavingsMeter/TokenSavingsMeter'
+import { TokenBreakdownView } from './components/TokenBreakdownView'
 import styles from './App.module.css'
 
-type View = 'board' | 'standup'
+type View = 'board' | 'standup' | 'tokens'
 
 export function App() {
   const { board, connection, error } = useBoard()
@@ -51,17 +51,27 @@ export function App() {
         >
           Standup
         </button>
+        <button
+          type="button"
+          className={`${styles.tab} ${view === 'tokens' ? styles.tabActive : ''}`}
+          onClick={() => setView('tokens')}
+        >
+          Tokens
+        </button>
       </nav>
-      {view === 'board' ? (
+      {view === 'board' && (
         <div className={styles.content}>
-          <aside className={styles.rail}>
-            <TokenSavingsMeter savings={board.tokenSavings} />
-          </aside>
           <KanbanBoard columns={board.columns} />
         </div>
-      ) : (
+      )}
+      {view === 'standup' && (
         <div className={styles.content}>
           <StandupView />
+        </div>
+      )}
+      {view === 'tokens' && (
+        <div className={styles.content}>
+          <TokenBreakdownView board={board} />
         </div>
       )}
     </div>

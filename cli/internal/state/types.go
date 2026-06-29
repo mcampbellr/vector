@@ -138,6 +138,12 @@ type SpecState struct {
 	// hand) and cleared whenever the card leaves review. See docs/domain-contract.md.
 	NeedsUAT bool `json:"needsUat,omitempty"`
 
+	// QuickWin marks a card created by /vector:quick as a small one-run change
+	// (applied directly, no OpenSpec change, no Sonnet validator). Persisted as a
+	// read-only marker; surfaced on the board projection as a badge. Backward-
+	// compatible (omitempty) so specs without it read/serialize byte-identically.
+	QuickWin bool `json:"quickWin,omitempty"`
+
 	Ticket   *Ticket    `json:"ticket,omitempty"`
 	OpenSpec *OpenSpec  `json:"openspec,omitempty"`
 	Flag     *Attention `json:"needsAttention,omitempty"`

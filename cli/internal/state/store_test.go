@@ -245,6 +245,88 @@ func TestProposeSpecRejectsNonDraft(t *testing.T) {
 	}
 }
 
+func TestFixSpec(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "Add foo", Status: StatusInProgress, Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	later := fixedNow().Add(time.Hour)
+	spec, err := store.FixSpec("add-foo", "spec+code", "pass", []string{"design", "tasks"}, []string{"a.go", "b.go"}, "tester", later)
+	if err != nil {
+		t.Fatalf("FixSpec: %v", err)
+	}
+	// Fix never transitions status.
+	if spec.Status != StatusInProgress {
+		t.Errorf("Status = %q, want in-progress (fix never transitions)", spec.Status)
+	}
+	// UpdatedAt bumped to the fix time.
+	onDisk, err := store.ReadSpec("add-foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !onDisk.UpdatedAt.Equal(later.UTC()) {
+		t.Errorf("UpdatedAt = %v, want %v (bumped on fix)", onDisk.UpdatedAt, later.UTC())
+	}
+	if onDisk.Status != StatusInProgress {
+		t.Errorf("on-disk Status = %q, want in-progress", onDisk.Status)
+	}
+
+	// Events: spec.created then spec.fixed carrying the data.
+	events := readEvents(t, filepath.Join(store.root, "local", "activity.jsonl"))
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want 2 (created + fixed)", len(events))
+	}
+	if events[1].Type != EvtSpecFixed {
+		t.Fatalf("events[1].Type = %q, want spec.fixed", events[1].Type)
+	}
+	var fd FixedData
+	if err := json.Unmarshal(events[1].Data, &fd); err != nil {
+		t.Fatal(err)
+	}
+	if fd.Classification != "spec+code" || fd.ValidationResult != "pass" {
+		t.Errorf("unexpected FixedData head: %+v", fd)
+	}
+	if len(fd.Artifacts) != 2 || fd.Artifacts[0] != "design" || len(fd.Files) != 2 || fd.Files[1] != "b.go" {
+		t.Errorf("unexpected FixedData artifacts/files: %+v", fd)
+	}
+}
+
+func TestFixSpecRejectsUnfixableStatus(t *testing.T) {
+	for _, st := range []Status{StatusDraft, StatusClosed, StatusArchived} {
+		t.Run(string(st), func(t *testing.T) {
+			store, _ := Open(t.TempDir())
+			if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "x", Status: st, Now: fixedNow()}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.FixSpec("add-foo", "spec-only", "", nil, nil, "t", fixedNow()); err == nil {
+				t.Fatalf("expected error fixing a %q spec", st)
+			}
+			// No spec.fixed event must be appended on rejection.
+			events := readEvents(t, filepath.Join(store.root, "local", "activity.jsonl"))
+			for _, e := range events {
+				if e.Type == EvtSpecFixed {
+					t.Fatalf("spec.fixed was appended despite rejected %q status", st)
+				}
+			}
+		})
+	}
+}
+
+func TestFixSpecAllowsInFlightStatuses(t *testing.T) {
+	for _, st := range []Status{StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview} {
+		t.Run(string(st), func(t *testing.T) {
+			store, _ := Open(t.TempDir())
+			if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "x", Status: st, Now: fixedNow()}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.FixSpec("add-foo", "code-only", "fail", nil, []string{"x.go"}, "t", fixedNow()); err != nil {
+				t.Fatalf("FixSpec(%q): %v", st, err)
+			}
+		})
+	}
+}
+
 func TestListSpecs(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	for _, title := range []string{"Alpha", "Beta"} {
@@ -302,6 +384,63 @@ func TestCreateSpecWithTicket(t *testing.T) {
 	}
 	if data.Provider != TicketJira || data.Key != "ACME-1" || !data.Auto {
 		t.Errorf("unexpected spec.linked data: %+v", data)
+	}
+}
+
+// TestCreateSpecWithQuickWin verifies the quickWin marker round-trips on create
+// and persists to disk independent of status (a quick-win card is born in-progress).
+func TestCreateSpecWithQuickWin(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	spec, err := store.CreateSpec(CreateSpecParams{
+		Title:    "Extract magic timeouts",
+		Status:   StatusInProgress,
+		QuickWin: true,
+		Actor:    "tester",
+		Now:      fixedNow(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSpec: %v", err)
+	}
+	if !spec.QuickWin {
+		t.Fatalf("quickWin not set on returned spec: %+v", spec)
+	}
+	onDisk, err := store.ReadSpec(spec.ID)
+	if err != nil {
+		t.Fatalf("ReadSpec: %v", err)
+	}
+	if !onDisk.QuickWin {
+		t.Fatalf("quickWin not persisted on disk: %+v", onDisk)
+	}
+
+	// The serialized state.json carries the quickWin field when set.
+	raw, err := os.ReadFile(store.StatePath(spec.ID))
+	if err != nil {
+		t.Fatalf("read state.json: %v", err)
+	}
+	if !strings.Contains(string(raw), `"quickWin": true`) {
+		t.Fatalf("quickWin missing from state.json: %s", raw)
+	}
+}
+
+// TestCreateSpecWithoutQuickWinSerializesClean verifies a non-quick-win card omits
+// the field entirely (omitempty), so existing specs read/serialize byte-identically.
+func TestCreateSpecWithoutQuickWinSerializesClean(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	spec, err := store.CreateSpec(CreateSpecParams{Title: "Plain", Actor: "tester", Now: fixedNow()})
+	if err != nil {
+		t.Fatalf("CreateSpec: %v", err)
+	}
+	if spec.QuickWin {
+		t.Fatalf("quickWin should be false by default: %+v", spec)
+	}
+	raw, err := os.ReadFile(store.StatePath(spec.ID))
+	if err != nil {
+		t.Fatalf("read state.json: %v", err)
+	}
+	if strings.Contains(string(raw), "quickWin") {
+		t.Fatalf("quickWin should be omitted when false: %s", raw)
 	}
 }
 

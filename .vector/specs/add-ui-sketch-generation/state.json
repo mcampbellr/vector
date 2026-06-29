@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "add-ui-sketch-generation",
+  "title": "Generar sketches de diseño Excalidraw para specs de UI",
+  "status": "draft",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/add-ui-sketch-generation/spec.md",
+  "createdAt": "2026-06-29T15:56:40.72954Z",
+  "updatedAt": "2026-06-29T15:56:40.72954Z"
+}

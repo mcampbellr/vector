@@ -25,6 +25,9 @@ cli/internal/webui/dist/assets/
 .vector/local/
 # Transient scratch (e.g. spec docs composed by /vector:raw before registration).
 .vector/tmp/
+# Derived repo-intel cache (class C): regenerable, fingerprint-validated, never
+# committed (docs/knowledge-architecture.md §3).
+.vector/cache/
 
 # Obsidian (volatile UI state — keep app.json/core-plugins.json/graph.json)
 docs/.obsidian/workspace.json

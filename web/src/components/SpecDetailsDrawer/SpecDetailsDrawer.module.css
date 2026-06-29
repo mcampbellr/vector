@@ -219,13 +219,13 @@
 .cmdCopy:hover {
   color: var(--color-accent);
   border-color: var(--color-accent);
-  background: #eef2ff;
+  background: var(--color-accent-bg);
 }
 
 .cmdCopy.copied {
-  color: #047857;
-  border-color: #047857;
-  background: #d1fae5;
+  color: var(--color-success-fg);
+  border-color: var(--color-success-fg);
+  background: var(--color-success-bg);
 }
 
 /* Files section — list of a spec's source documents. */
@@ -282,16 +282,71 @@
 }
 
 .modalPanel {
+  position: relative;
   display: flex;
   flex-direction: column;
-  width: min(720px, 94vw);
-  max-height: 86vh;
+  max-width: 95vw;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
   box-shadow: var(--shadow-raised);
   overflow: hidden;
   animation: drawerIn 0.16s ease;
+}
+
+/* Drag-to-resize handles. Discreet by default; tint with --color-border on
+   hover/focus. Width/height of the panel are driven by an inline style; these
+   are absolute children anchored to .modalPanel (position: relative). */
+.resizeHandleRight,
+.resizeHandleBottom,
+.resizeHandleCorner {
+  position: absolute;
+  z-index: 1;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.resizeHandleRight {
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.resizeHandleBottom {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 10px;
+  cursor: row-resize;
+}
+
+.resizeHandleCorner {
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  z-index: 2;
+  cursor: se-resize;
+}
+
+.resizeHandleRight:hover,
+.resizeHandleRight:focus-visible,
+.resizeHandleBottom:hover,
+.resizeHandleBottom:focus-visible,
+.resizeHandleCorner:hover,
+.resizeHandleCorner:focus-visible {
+  background: var(--color-border);
+  outline: none;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .resizeHandleRight,
+  .resizeHandleBottom,
+  .resizeHandleCorner {
+    display: none;
+  }
 }
 
 .modalHeader {
@@ -339,7 +394,7 @@
 
 .retry:hover {
   border-color: var(--color-accent);
-  background: #eef2ff;
+  background: var(--color-accent-bg);
 }
 
 /* Rendered Markdown — readable defaults scoped to the preview. */

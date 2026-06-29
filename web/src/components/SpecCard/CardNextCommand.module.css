@@ -40,11 +40,11 @@
 .copyBtn:hover {
   color: var(--color-accent);
   border-color: var(--color-accent);
-  background: #eef2ff;
+  background: var(--color-accent-bg);
 }
 
 .copyBtn.copied {
-  color: #047857;
-  border-color: #047857;
-  background: #d1fae5;
+  color: var(--color-success-fg);
+  border-color: var(--color-success-fg);
+  background: var(--color-success-bg);
 }

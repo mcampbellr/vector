@@ -13,6 +13,13 @@ const (
 	bugCommand        = ".claude/commands/vector/bug.md"
 	bugRefiner        = ".claude/agents/vector-bug-refiner.md"
 	specComposerAgent = ".claude/agents/vector-spec-composer.md"
+	fixCommand        = ".claude/commands/vector/fix.md"
+	fixRefiner        = ".claude/agents/vector-fix-refiner.md"
+	fixImplementer    = ".claude/agents/vector-fix-implementer.md"
+	quickCommand      = ".claude/commands/vector/quick.md"
+	quickRefiner      = ".claude/agents/vector-quick-refiner.md"
+	researchCommand   = ".claude/commands/vector/research.md"
+	feasibilityAgent  = ".claude/agents/vector-feasibility-reviewer.md"
 )
 
 func TestSeedCommandsCreatesUnderClaude(t *testing.T) {
@@ -132,6 +139,67 @@ func TestSeedCommandsSeedsSpecComposerAgent(t *testing.T) {
 	}
 	if got := actionFor(results, specComposerAgent); got != ActionCreated {
 		t.Fatalf("%s action = %q, want %q", specComposerAgent, got, ActionCreated)
+	}
+}
+
+// TestSeedCommandsSeedsFixCommandAndAgents guards that `vector init` writes the
+// /vector:fix command and both its embedded agents — the Haiku refiner and the
+// Sonnet implementer must be vendored (go generate) and embedded so the command
+// never assumes the user's personal /fix skill exists.
+func TestSeedCommandsSeedsFixCommandAndAgents(t *testing.T) {
+	root := t.TempDir()
+
+	results, err := SeedCommands(root, SeedOptions{})
+	if err != nil {
+		t.Fatalf("SeedCommands: %v", err)
+	}
+	for _, rel := range []string{fixCommand, fixRefiner, fixImplementer} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Fatalf("expected %s to be seeded: %v", rel, err)
+		}
+		if got := actionFor(results, rel); got != ActionCreated {
+			t.Fatalf("%s action = %q, want %q", rel, got, ActionCreated)
+		}
+	}
+}
+
+// TestSeedCommandsSeedsQuickCommandAndRefiner guards that `vector init` writes the
+// /vector:quick command and its Haiku refiner — both must be vendored (go generate)
+// and embedded so the command never assumes the user's personal /quick-win skill exists.
+func TestSeedCommandsSeedsQuickCommandAndRefiner(t *testing.T) {
+	root := t.TempDir()
+
+	results, err := SeedCommands(root, SeedOptions{})
+	if err != nil {
+		t.Fatalf("SeedCommands: %v", err)
+	}
+	for _, rel := range []string{quickCommand, quickRefiner} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Fatalf("expected %s to be seeded: %v", rel, err)
+		}
+		if got := actionFor(results, rel); got != ActionCreated {
+			t.Fatalf("%s action = %q, want %q", rel, got, ActionCreated)
+		}
+	}
+}
+
+// TestSeedCommandsSeedsResearchCommandAndReviewer guards that `vector init` writes the
+// /vector:research command and its Sonnet feasibility reviewer agent — both must be
+// vendored (go generate) and embedded so the command never assumes a global agent exists.
+func TestSeedCommandsSeedsResearchCommandAndReviewer(t *testing.T) {
+	root := t.TempDir()
+
+	results, err := SeedCommands(root, SeedOptions{})
+	if err != nil {
+		t.Fatalf("SeedCommands: %v", err)
+	}
+	for _, rel := range []string{researchCommand, feasibilityAgent} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Fatalf("expected %s to be seeded: %v", rel, err)
+		}
+		if got := actionFor(results, rel); got != ActionCreated {
+			t.Fatalf("%s action = %q, want %q", rel, got, ActionCreated)
+		}
 	}
 }
 

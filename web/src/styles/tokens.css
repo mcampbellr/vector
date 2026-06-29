@@ -17,6 +17,16 @@
   /* Brand accent (gradient from the reference covers/avatar) */
   --gradient-brand: linear-gradient(120deg, #f472b6 0%, #a855f7 50%, #6366f1 100%);
   --color-accent: #6366f1;
+  --color-accent-bg: #eef2ff;
+
+  /* Connection status dots (extracted from BoardHeader) */
+  --conn-live: #10b981;
+  --conn-reconnecting: #f59e0b;
+  --conn-error: #ef4444;
+
+  /* Success accents (extracted from card/drawer "copied" states) */
+  --color-success-fg: #047857;
+  --color-success-bg: #d1fae5;
 
   /* Status palette: progress→amber, review→violet, todo→slate, done→green */
   --status-draft-fg: #475569;
@@ -62,8 +72,169 @@
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* Dark palette (Dracula-based, tuned for WCAG AA). Applied explicitly via
+   [data-theme="dark"], and via the OS preference only when no explicit theme is
+   set (:root:not([data-theme])). The two blocks intentionally carry identical
+   values — CSS cannot share declarations across a media-query boundary. */
+:root[data-theme='dark'] {
+  /* Surfaces */
+  --color-app-bg: #21222c;
+  --color-surface: #282a36;
+  --color-surface-muted: #343746;
+  --color-border: #44475a;
+  --color-border-strong: #6272a4;
+
+  /* Text */
+  --color-text: #f8f8f2;
+  --color-text-secondary: #aeb8d4;
+  --color-text-tertiary: #8893b8;
+
+  /* Brand accent */
+  --gradient-brand: linear-gradient(120deg, #ff79c6 0%, #bd93f9 50%, #8be9fd 100%);
+  --color-accent: #bd93f9;
+  --color-accent-bg: #312a46;
+
+  /* Connection status dots */
+  --conn-live: #50fa7b;
+  --conn-reconnecting: #ffb86c;
+  --conn-error: #ff5555;
+
+  /* Success accents */
+  --color-success-fg: #50fa7b;
+  --color-success-bg: #1f3a2c;
+
+  /* Status palette */
+  --status-draft-fg: #c8cee0;
+  --status-draft-bg: #343746;
+  --status-open-fg: #c8cee0;
+  --status-open-bg: #343746;
+  --status-progress-fg: #ffb86c;
+  --status-progress-bg: #3b3324;
+  --status-attention-fg: #ff6e6e;
+  --status-attention-bg: #3b2630;
+  --status-review-fg: #bd93f9;
+  --status-review-bg: #312a46;
+  --status-closed-fg: #50fa7b;
+  --status-closed-bg: #1f3a2c;
+
+  /* Priority */
+  --priority-urgent: #ff5555;
+  --priority-high: #ffb86c;
+  --priority-normal: #8893b8;
+  --priority-low: #6272a4;
+
+  /* Savings (the differentiator) */
+  --savings-fg: #50fa7b;
+  --savings-bg: #1f3a2c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    /* Surfaces */
+    --color-app-bg: #21222c;
+    --color-surface: #282a36;
+    --color-surface-muted: #343746;
+    --color-border: #44475a;
+    --color-border-strong: #6272a4;
+
+    /* Text */
+    --color-text: #f8f8f2;
+    --color-text-secondary: #aeb8d4;
+    --color-text-tertiary: #8893b8;
+
+    /* Brand accent */
+    --gradient-brand: linear-gradient(120deg, #ff79c6 0%, #bd93f9 50%, #8be9fd 100%);
+    --color-accent: #bd93f9;
+    --color-accent-bg: #312a46;
+
+    /* Connection status dots */
+    --conn-live: #50fa7b;
+    --conn-reconnecting: #ffb86c;
+    --conn-error: #ff5555;
+
+    /* Success accents */
+    --color-success-fg: #50fa7b;
+    --color-success-bg: #1f3a2c;
+
+    /* Status palette */
+    --status-draft-fg: #c8cee0;
+    --status-draft-bg: #343746;
+    --status-open-fg: #c8cee0;
+    --status-open-bg: #343746;
+    --status-progress-fg: #ffb86c;
+    --status-progress-bg: #3b3324;
+    --status-attention-fg: #ff6e6e;
+    --status-attention-bg: #3b2630;
+    --status-review-fg: #bd93f9;
+    --status-review-bg: #312a46;
+    --status-closed-fg: #50fa7b;
+    --status-closed-bg: #1f3a2c;
+
+    /* Priority */
+    --priority-urgent: #ff5555;
+    --priority-high: #ffb86c;
+    --priority-normal: #8893b8;
+    --priority-low: #6272a4;
+
+    /* Savings (the differentiator) */
+    --savings-fg: #50fa7b;
+    --savings-bg: #1f3a2c;
+  }
+}
+
+/* Explicit Light pins the light palette so an explicit choice beats a dark OS
+   (the :root defaults above are the light values). */
+:root[data-theme='light'] {
+  --color-app-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f3f4f6;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-text: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-tertiary: #9ca3af;
+  --gradient-brand: linear-gradient(120deg, #f472b6 0%, #a855f7 50%, #6366f1 100%);
+  --color-accent: #6366f1;
+  --color-accent-bg: #eef2ff;
+  --conn-live: #10b981;
+  --conn-reconnecting: #f59e0b;
+  --conn-error: #ef4444;
+  --color-success-fg: #047857;
+  --color-success-bg: #d1fae5;
+  --status-draft-fg: #475569;
+  --status-draft-bg: #f1f5f9;
+  --status-open-fg: #475569;
+  --status-open-bg: #eef2f7;
+  --status-progress-fg: #b45309;
+  --status-progress-bg: #fef3c7;
+  --status-attention-fg: #b91c1c;
+  --status-attention-bg: #fee2e2;
+  --status-review-fg: #7c3aed;
+  --status-review-bg: #ede9fe;
+  --status-closed-fg: #047857;
+  --status-closed-bg: #d1fae5;
+  --priority-urgent: #dc2626;
+  --priority-high: #ea580c;
+  --priority-normal: #6b7280;
+  --priority-low: #9ca3af;
+  --savings-fg: #047857;
+  --savings-bg: #ecfdf5;
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* Color-only theme transition; no layout/size animation. Element-level (low
+   specificity) so any component's own transition still wins. */
+* {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none;
+  }
 }
 
 html,

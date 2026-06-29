@@ -12,6 +12,8 @@ function makeCard(overrides: Partial<Card>): Card {
     hasOpenSpec: false,
     savedUsd: 0,
     routes: 0,
+    tokensIn: 0,
+    tokensOut: 0,
     updatedAt: '2026-06-27T00:00:00Z',
     ...overrides,
   }

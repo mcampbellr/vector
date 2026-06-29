@@ -2,10 +2,21 @@
   "schemaVersion": 1,
   "id": "add-research-command",
   "title": "Comando /vector:research para investigar viabilidad",
-  "status": "draft",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-research-command/spec.md",
+  "openspec": {
+    "change": "add-research-command",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
   "createdAt": "2026-06-27T20:11:01.853347Z",
-  "updatedAt": "2026-06-27T20:11:01.853347Z"
+  "startedAt": "2026-06-29T00:03:28.263651Z",
+  "reviewAt": "2026-06-29T00:07:53.6632Z",
+  "closedAt": "2026-06-29T13:33:17.601135Z",
+  "updatedAt": "2026-06-29T13:33:17.601135Z"
 }

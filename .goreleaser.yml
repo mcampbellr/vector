@@ -1,0 +1,53 @@
+# GoReleaser v2 — Vector CLI release pipeline.
+# Builds 4 precompiled binaries (darwin/linux × amd64/arm64) with the embedded
+# web SPA and seeded kit assets, publishes a GitHub release with a SHA256
+# checksums.txt. No Homebrew/Docker/snapcraft, no Windows, no GPG (V1 scope).
+#
+# Asset name contract: vector_<VERSION>_<OS>_<ARCH>.tar.gz with <VERSION> = tag
+# without the leading "v". scripts/install.sh builds the identical string.
+version: 2
+
+project_name: vector
+
+before:
+  hooks:
+    # Belt-and-suspenders: the release workflow already runs these in order.
+    # Repeating them here keeps `goreleaser release --snapshot` self-contained.
+    - sh -c "cd web && npm ci && npm run build"
+    - sh -c "rm -rf cli/internal/webui/dist && cp -R web/dist cli/internal/webui/dist"
+    - go -C cli generate ./internal/scaffold
+    - go -C cli mod tidy
+
+builds:
+  - id: vector
+    dir: cli
+    main: ./cmd/vector
+    binary: vector
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: vector
+    formats: [tar.gz]
+    name_template: "vector_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+release:
+  github:
+    owner: mcampbellr
+    name: vector
+  prerelease: auto
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"

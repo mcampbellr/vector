@@ -22,6 +22,13 @@
   (lo computa `sync`, reusando `isVerificationTask`). **No es un estado nuevo** ni cambia la
   máquina de estados — es una refinación de `review` que el board muestra como badge "UAT"
   (ver change `review-uat-flag`).
+- Una card puede llevar un **marcador `quickWin`** (bool): la setea `/vector:quick` al crear la
+  card directamente en `in-progress` para un cambio pequeño aplicado **en la misma corrida**
+  (apply-in-run: `in-progress → review`, sin change de OpenSpec ni validador Sonnet). **No es un
+  estado nuevo** ni cambia la máquina de estados — es metadata read-only que el board muestra como
+  badge "Quick Win". El cierre sigue siendo explícito (`/vector:close`). Link opcional a ticket o
+  a otra spec (`relatedTo`) reusando la maquinaria existente; nunca bloquea la creación de la card
+  (ver change `add-vector-quick-command`).
 
 ### Máquina de estados (transiciones permitidas)
 
@@ -117,6 +124,7 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 |---------|--------------------------|-----------------------------|------------------|
 | `/vector:raw [text]` | crea `<id>/state.json` (`status:draft`, `createdAt`, `specDoc` puntero) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | — (change se crea en propose) |
 | `/vector:bug [report] {scope}` | crea `fix-<id>/state.json` (`status:draft`, prefijo `fix-`) + spec doc bug-framed; siembra `relatedTo[{kind,ref,source}]` (causa deducida por git, idempotente; `--related` inválido **degrada** a card sin relaciones) | `spec.created` + un `spec.related` por relación | — (change se crea en propose) |
+| `/vector:quick "<text>" {ticket\|spec-id}` | crea `<id>/state.json` directamente en `status:in-progress` con `quickWin:true` (`createdAt`, `startedAt`, `specDoc` puntero al brief) + opcional `ticket`/`relatedTo`; luego `work.logged` (tras implementar) y `status:review` (`reviewAt`) | `spec.created` [+ `spec.linked`/`spec.related`] + `status.changed` + `work.logged` + `status.changed`(→review) | — (no crea change; apply-in-run nativo) |
 | `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
 | `vector spec relate <id>` (lo invoca `/vector:bug`) | añade un `relatedTo{kind,ref,source}` (idempotente en `{kind,ref}`; **no** cambia `status`) | `spec.related` | — |

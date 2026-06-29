@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "fix-sticky-column-header-overlay",
+  "title": "Títulos de columna del board se solapan con las cards al scrollear",
+  "status": "review",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/fix-sticky-column-header-overlay/spec.md",
+  "openspec": {
+    "change": "fix-sticky-column-header-overlay",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-28T04:37:28.056316Z",
+  "startedAt": "2026-06-28T08:25:42.008414Z",
+  "reviewAt": "2026-06-28T08:27:47.498218Z",
+  "updatedAt": "2026-06-28T09:03:37.512687Z"
+}

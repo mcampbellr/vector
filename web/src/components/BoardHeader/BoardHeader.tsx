@@ -2,6 +2,7 @@ import { Layers } from 'lucide-react'
 import type { ConnectionState } from '../../api/useBoard'
 import { relativeTime } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
+import { ThemeControl } from './ThemeControl'
 import styles from './BoardHeader.module.css'
 
 interface BoardHeaderProps {
@@ -36,10 +37,13 @@ export function BoardHeader({ repo, specCount, updatedAt, connection }: BoardHea
           </p>
         </div>
       </div>
-      <span className={`${styles.status} ${styles[connection]}`}>
-        <span className={styles.dot} />
-        {CONNECTION_LABEL[connection]}
-      </span>
+      <div className={styles.actions}>
+        <span className={`${styles.status} ${styles[connection]}`}>
+          <span className={styles.dot} />
+          {CONNECTION_LABEL[connection]}
+        </span>
+        <ThemeControl />
+      </div>
     </header>
   )
 }

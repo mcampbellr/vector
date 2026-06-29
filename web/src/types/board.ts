@@ -54,8 +54,14 @@ export interface Card {
   artifacts?: Artifacts
   attentionReason?: string
   needsUat?: boolean
+  /** /vector:quick one-run change; rendered as a read-only badge. */
+  quickWin?: boolean
   savedUsd: number
   routes: number
+  tokensIn: number
+  tokensOut: number
+  /** This spec's own per-model token breakdown; absent when it has no routes. */
+  byModel?: ModelRollup[]
   updatedAt: string
 }
 
@@ -81,6 +87,8 @@ export interface ModelRollup {
   model: string
   baseline: string
   routes: number
+  tokensIn: number
+  tokensOut: number
   savedUsd: number
 }
 

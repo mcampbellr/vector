@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "fix-raw-bug-worktree-creation",
+  "title": "Aislar cada spec en su worktree branch-per-spec al crearlo (/vector:raw y /vector:bug)",
+  "status": "open",
+  "priority": "high",
+  "repo": "",
+  "specDoc": ".vector/specs/fix-raw-bug-worktree-creation/spec.md",
+  "openspec": {
+    "change": "fix-raw-bug-worktree-creation",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-06-28T23:13:37.7545Z",
+  "updatedAt": "2026-06-28T23:58:58.771689Z"
+}

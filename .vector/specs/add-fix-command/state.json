@@ -2,10 +2,20 @@
   "schemaVersion": 1,
   "id": "add-fix-command",
   "title": "Comando /vector:fix (corregir specs ya especificados)",
-  "status": "draft",
+  "status": "review",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-fix-command/spec.md",
+  "openspec": {
+    "change": "add-fix-command",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
   "createdAt": "2026-06-27T18:42:40.799997Z",
-  "updatedAt": "2026-06-27T18:42:40.799997Z"
+  "startedAt": "2026-06-28T08:20:09.886083Z",
+  "reviewAt": "2026-06-28T08:28:26.226389Z",
+  "updatedAt": "2026-06-28T08:28:26.226389Z"
 }

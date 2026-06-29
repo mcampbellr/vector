@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "add-dark-mode",
   "title": "Dark mode for the board UI",
-  "status": "open",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-dark-mode/spec.md",
@@ -15,5 +15,8 @@
     }
   },
   "createdAt": "2026-06-27T19:59:00.947703Z",
-  "updatedAt": "2026-06-27T20:06:48.626527Z"
+  "startedAt": "2026-06-28T08:11:55.21059Z",
+  "reviewAt": "2026-06-28T08:17:22.88508Z",
+  "closedAt": "2026-06-28T08:19:33.687617Z",
+  "updatedAt": "2026-06-28T08:19:33.687617Z"
 }

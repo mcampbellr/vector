@@ -2,10 +2,21 @@
   "schemaVersion": 1,
   "id": "add-token-breakdown-tab",
   "title": "Token breakdown tab: per-spec token usage",
-  "status": "draft",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-token-breakdown-tab/spec.md",
+  "openspec": {
+    "change": "add-token-breakdown-tab",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
   "createdAt": "2026-06-27T20:07:08.881138Z",
-  "updatedAt": "2026-06-27T20:07:08.881138Z"
+  "startedAt": "2026-06-28T07:57:57.079296Z",
+  "reviewAt": "2026-06-28T08:04:58.922143Z",
+  "closedAt": "2026-06-28T08:09:27.883754Z",
+  "updatedAt": "2026-06-28T08:09:27.883754Z"
 }

@@ -139,6 +139,29 @@ func TestBuildRollsUpTokenSavings(t *testing.T) {
 	if !almostEqual(card.SavedUSD, 0.41) {
 		t.Errorf("card savedUsd = %v, want 0.41", card.SavedUSD)
 	}
+
+	// Per-spec token totals: spec "a" has 2 routed events (1000 in / 100 out each).
+	if card.TokensIn != 2000 {
+		t.Errorf("card tokensIn = %d, want 2000", card.TokensIn)
+	}
+	if card.TokensOut != 200 {
+		t.Errorf("card tokensOut = %d, want 200", card.TokensOut)
+	}
+	if len(card.ByModel) != 1 {
+		t.Fatalf("card byModel groups = %d, want 1", len(card.ByModel))
+	}
+	cm := card.ByModel[0]
+	if cm.Model != "haiku" || cm.Baseline != "opus" {
+		t.Errorf("card byModel pair = %s→%s, want haiku→opus", cm.Model, cm.Baseline)
+	}
+	if cm.Routes != 2 || cm.TokensIn != 2000 || cm.TokensOut != 200 {
+		t.Errorf("card byModel haiku→opus = {routes:%d, in:%d, out:%d}, want {2, 2000, 200}", cm.Routes, cm.TokensIn, cm.TokensOut)
+	}
+
+	// Global per-model breakdown must also carry token counts (not just routes/USD).
+	if s.ByModel[0].TokensIn != 2000 || s.ByModel[0].TokensOut != 200 {
+		t.Errorf("global byModel[0] tokens = {in:%d, out:%d}, want {2000, 200}", s.ByModel[0].TokensIn, s.ByModel[0].TokensOut)
+	}
 }
 
 func TestBuildProjectsRelatedTo(t *testing.T) {
@@ -172,6 +195,36 @@ func TestBuildProjectsRelatedTo(t *testing.T) {
 	}
 	if containsField(raw, "relatedTo") {
 		t.Errorf("relatedTo present for a relation-less card: %s", raw)
+	}
+}
+
+// TestBuildProjectsQuickWin verifies the Card projection carries quickWin and that
+// a non-quick-win card omits the field from the JSON contract (omitempty).
+func TestBuildProjectsQuickWin(t *testing.T) {
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	src := fakeSource{specs: []*state.SpecState{{
+		ID: "extract-timeouts", Title: "Extract timeouts", Status: state.StatusInProgress,
+		Priority: state.PriorityNormal, QuickWin: true, UpdatedAt: now,
+	}}}
+
+	b, err := Build(src, "demo", now)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	card := columnByStatus(t, b, "in-progress").Cards[0]
+	if !card.QuickWin {
+		t.Fatalf("card.QuickWin = false, want true: %+v", card)
+	}
+
+	// A non-quick-win card must omit quickWin from the JSON contract.
+	plain := fakeSource{specs: []*state.SpecState{{ID: "p", Title: "P", Status: state.StatusOpen, Priority: state.PriorityNormal, UpdatedAt: now}}}
+	pb, _ := Build(plain, "demo", now)
+	raw, err := json.Marshal(columnByStatus(t, pb, "open").Cards[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsField(raw, "quickWin") {
+		t.Errorf("quickWin present for a non-quick-win card: %s", raw)
 	}
 }
 

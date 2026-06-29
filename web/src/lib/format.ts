@@ -1,12 +1,5 @@
 // Presentation helpers shared across board components.
 
-/** Formats a USD amount with adaptive precision (cents under $10, else 2dp). */
-export function formatUsd(value: number): string {
-  if (value === 0) return '$0.00'
-  if (value < 10) return `$${value.toFixed(2)}`
-  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
 /** Compact integer (1_240 → "1.2k"). */
 export function formatCompact(value: number): string {
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)

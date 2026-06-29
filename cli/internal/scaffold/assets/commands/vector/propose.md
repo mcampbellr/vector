@@ -63,6 +63,8 @@ state (CLI-owns-writes).
    ```
    It transitions `draft → open`, records `openspec{change,artifacts}`, and logs
    `spec.proposed` + `status.changed`. Parse the JSON.
+   `--artifacts` takes the canonical names `proposal,design,tasks` and tolerates any casing
+   and an optional `.md` suffix (e.g. `Proposal.md,design` is accepted).
 
 7. **Summarize what was done (post-action).** Generate the per-spec "what was done" summary the
    board's details drawer shows. The binary projects and persists; **you never write the summary

@@ -13,7 +13,7 @@ import (
 )
 
 // SchemaVersion guards the public board contract consumed by web/.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Board is the full projection served at GET /api/board. The web frontend owns
 // no canonical state; this is the single shape it renders.
@@ -54,8 +54,12 @@ type Card struct {
 	Artifacts       *Artifacts    `json:"artifacts,omitempty"`
 	AttentionReason string        `json:"attentionReason,omitempty"`
 	NeedsUAT        bool          `json:"needsUat,omitempty"` // review awaiting manual UAT
+	QuickWin        bool          `json:"quickWin,omitempty"` // /vector:quick one-run change
 	SavedUSD        float64       `json:"savedUsd"`
 	Routes          int           `json:"routes"`
+	TokensIn        int           `json:"tokensIn"`
+	TokensOut       int           `json:"tokensOut"`
+	ByModel         []ModelRollup `json:"byModel,omitempty"` // this spec's per-model token breakdown
 	UpdatedAt       time.Time     `json:"updatedAt"`
 }
 
@@ -100,10 +104,12 @@ type TokenSavings struct {
 
 // ModelRollup breaks savings down by the cheap model that handled the work.
 type ModelRollup struct {
-	Model    string  `json:"model"`
-	Baseline string  `json:"baseline"`
-	Routes   int     `json:"routes"`
-	SavedUSD float64 `json:"savedUsd"`
+	Model     string  `json:"model"`
+	Baseline  string  `json:"baseline"`
+	Routes    int     `json:"routes"`
+	TokensIn  int     `json:"tokensIn"`
+	TokensOut int     `json:"tokensOut"`
+	SavedUSD  float64 `json:"savedUsd"`
 }
 
 // Totals are board-wide counters.
@@ -219,8 +225,12 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 		HasOpenSpec: spec.OpenSpec != nil,
 		SpecDoc:     spec.SpecDoc,
 		NeedsUAT:    spec.NeedsUAT,
+		QuickWin:    spec.QuickWin,
 		SavedUSD:    econ.savedUSD,
 		Routes:      econ.routes,
+		TokensIn:    econ.tokensIn,
+		TokensOut:   econ.tokensOut,
+		ByModel:     econ.byModel,
 		UpdatedAt:   spec.UpdatedAt.UTC(),
 	}
 	if spec.Ticket != nil {
@@ -254,8 +264,11 @@ func sortCards(cards []Card) {
 }
 
 type specEconomics struct {
-	savedUSD float64
-	routes   int
+	savedUSD  float64
+	routes    int
+	tokensIn  int
+	tokensOut int
+	byModel   []ModelRollup // sorted by tokensIn+tokensOut desc
 }
 
 // rollupSavings folds agent.routed events into the board-wide Token Savings
@@ -264,6 +277,7 @@ type specEconomics struct {
 // every event carries exact harness-reported counts; "" when no routes exist.
 func rollupSavings(events []state.Event) (TokenSavings, map[string]specEconomics) {
 	perSpec := make(map[string]specEconomics)
+	perSpecByModel := make(map[string]map[string]*ModelRollup) // specID → modelPair → rollup
 	byModel := make(map[string]*ModelRollup)
 	var s TokenSavings
 	var hasEstimated bool
@@ -288,21 +302,55 @@ func rollupSavings(events []state.Event) (TokenSavings, map[string]specEconomics
 			hasEstimated = true
 		}
 
+		key := d.Model + "→" + d.Baseline
+
 		if e.SpecID != "" {
 			econ := perSpec[e.SpecID]
 			econ.savedUSD += d.SavedUSD
 			econ.routes++
+			econ.tokensIn += d.TokensIn
+			econ.tokensOut += d.TokensOut
 			perSpec[e.SpecID] = econ
+
+			specModels := perSpecByModel[e.SpecID]
+			if specModels == nil {
+				specModels = make(map[string]*ModelRollup)
+				perSpecByModel[e.SpecID] = specModels
+			}
+			sm := specModels[key]
+			if sm == nil {
+				sm = &ModelRollup{Model: d.Model, Baseline: d.Baseline}
+				specModels[key] = sm
+			}
+			sm.Routes++
+			sm.TokensIn += d.TokensIn
+			sm.TokensOut += d.TokensOut
+			sm.SavedUSD += d.SavedUSD
 		}
 
-		key := d.Model + "→" + d.Baseline
 		m := byModel[key]
 		if m == nil {
 			m = &ModelRollup{Model: d.Model, Baseline: d.Baseline}
 			byModel[key] = m
 		}
 		m.Routes++
+		m.TokensIn += d.TokensIn
+		m.TokensOut += d.TokensOut
 		m.SavedUSD += d.SavedUSD
+	}
+
+	// Attach each spec's per-model breakdown, sorted by routed-token volume desc.
+	for specID, specModels := range perSpecByModel {
+		rollups := make([]ModelRollup, 0, len(specModels))
+		for _, m := range specModels {
+			rollups = append(rollups, *m)
+		}
+		sort.Slice(rollups, func(i, j int) bool {
+			return rollups[i].TokensIn+rollups[i].TokensOut > rollups[j].TokensIn+rollups[j].TokensOut
+		})
+		econ := perSpec[specID]
+		econ.byModel = rollups
+		perSpec[specID] = econ
 	}
 
 	s.BaselineUSD = s.TotalSpentUSD + s.TotalSavedUSD

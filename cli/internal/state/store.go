@@ -64,6 +64,10 @@ type CreateSpecParams struct {
 	// review (the invariant: the flag is a refinement of review, nothing else).
 	NeedsUAT bool
 
+	// QuickWin marks the card as a /vector:quick one-run change. Persisted as-is on
+	// the initial SpecState (independent of status) and surfaced as a board badge.
+	QuickWin bool
+
 	// Ticket, when set, seeds the spec's external-tracker link at creation time
 	// (e.g. a ref detected in a /vector:raw idea, or sync's conservative scan). It
 	// is persisted on state.json and also emits a spec.linked event alongside
@@ -244,6 +248,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		SpecDoc:       docRel,
 		OpenSpec:      p.OpenSpec,
 		NeedsUAT:      p.NeedsUAT && status == StatusReview,
+		QuickWin:      p.QuickWin,
 		Ticket:        p.Ticket,
 		RelatedTo:     related,
 		CreatedAt:     now,
@@ -466,6 +471,59 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 		return nil, fmt.Errorf("marshal status.changed data: %w", err)
 	}
 	if err := s.appendEvent(Event{V: EventVersion, TS: now, Type: EvtStatusChanged, SpecID: id, Repo: spec.Repo, Actor: actor, Data: changed}); err != nil {
+		return nil, err
+	}
+	return spec, nil
+}
+
+// statusFixable reports whether a spec in the given status may be fixed. A fix is
+// an in-flight correction (/vector:fix), so only specs already in the working set
+// qualify; draft/closed/archived are out of scope.
+func statusFixable(st Status) bool {
+	switch st {
+	case StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// FixSpec records a spec.fixed event for an in-flight correction: the refiner's
+// classification, the implementer's (informational) validation result, and the
+// OpenSpec artifacts/code files touched. It bumps UpdatedAt and appends a single
+// additive event, all under one lock — modeled on ProposeSpec. It does NOT
+// transition status: lifecycle moves go through SetStatus (the LOCKED machine),
+// keeping the binary's single-writer guarantee without re-entering the mutex.
+// Errors if the spec is draft/closed/archived (only an open/in-progress/
+// needs-attention/review spec can be fixed).
+func (s *Store) FixSpec(id, classification, validationResult string, artifacts, files []string, actor string, now time.Time) (*SpecState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return nil, err
+	}
+	if !statusFixable(spec.Status) {
+		return nil, fmt.Errorf("spec %q is %q: only an open/in-progress/needs-attention/review spec can be fixed", id, spec.Status)
+	}
+
+	now = now.UTC()
+	spec.UpdatedAt = now
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return nil, err
+	}
+
+	payload, err := json.Marshal(FixedData{
+		Classification:   classification,
+		ValidationResult: validationResult,
+		Artifacts:        artifacts,
+		Files:            files,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal spec.fixed data: %w", err)
+	}
+	if err := s.appendEvent(Event{V: EventVersion, TS: now, Type: EvtSpecFixed, SpecID: id, Repo: spec.Repo, Actor: actor, Data: payload}); err != nil {
 		return nil, err
 	}
 	return spec, nil

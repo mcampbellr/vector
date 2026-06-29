@@ -4,6 +4,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Vector board</title>
+    <script>
+      // No-flash boot: apply the persisted/OS theme before first paint. Mirrors
+      // (does not replace) ThemeProvider's resolution. Dependency-free, guarded.
+      (function () {
+        try {
+          var stored = localStorage.getItem('vector-theme')
+          var mode = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+          var resolved =
+            mode === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : mode
+          document.documentElement.setAttribute('data-theme', resolved)
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

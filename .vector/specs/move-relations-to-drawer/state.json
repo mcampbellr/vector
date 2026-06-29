@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "move-relations-to-drawer",
   "title": "Move relation chips from SpecCard board face to SpecDetailsDrawer",
-  "status": "in-progress",
+  "status": "review",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/move-relations-to-drawer/spec.md",
@@ -16,5 +16,6 @@
   ],
   "createdAt": "2026-06-28T19:17:16.076141Z",
   "startedAt": "2026-06-28T19:17:16.076141Z",
-  "updatedAt": "2026-06-28T19:17:16.076141Z"
+  "reviewAt": "2026-06-28T19:20:47.762106Z",
+  "updatedAt": "2026-06-28T19:20:47.762106Z"
 }

@@ -99,7 +99,7 @@
 
 .artifactOn {
   color: var(--color-accent);
-  background: #eef2ff;
+  background: var(--color-accent-bg);
   opacity: 1;
 }
 
@@ -141,6 +141,19 @@
   letter-spacing: 0.03em;
   color: var(--status-progress-fg);
   background: var(--status-progress-bg);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+}
+
+.quickWin {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
   padding: 2px 7px;
   border-radius: var(--radius-pill);
 }

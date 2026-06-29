@@ -20,6 +20,7 @@ const (
 	EvtReminderSet   EventType = "reminder.set"
 	EvtSpecProposed  EventType = "spec.proposed"
 	EvtSpecApplied   EventType = "spec.applied"
+	EvtSpecFixed     EventType = "spec.fixed" // a /vector:fix correction (additive; never transitions)
 	EvtSpecClosed    EventType = "spec.closed"
 	EvtSpecArchived  EventType = "spec.archived"
 	EvtBoardMoved    EventType = "board.moved"
@@ -76,6 +77,18 @@ type WorkLoggedData struct {
 	FilesTouched   []string `json:"filesTouched,omitempty"`
 	TasksCompleted []string `json:"tasksCompleted,omitempty"`
 	Note           string   `json:"note,omitempty"`
+}
+
+// FixedData is the payload for EvtSpecFixed: a /vector:fix correction recorded on
+// an in-flight spec. Classification is the refiner's verdict (spec-only|code-only|
+// spec+code); ValidationResult is the implementer's informational outcome
+// (pass|fail, optional); Artifacts lists the OpenSpec artifacts amended and Files
+// the code files touched. Purely additive — it never transitions status.
+type FixedData struct {
+	Classification   string   `json:"classification"`
+	ValidationResult string   `json:"validationResult,omitempty"`
+	Artifacts        []string `json:"artifacts,omitempty"`
+	Files            []string `json:"files,omitempty"`
 }
 
 // SpecRelatedData is the payload for EvtSpecRelated: a cause→bug relation added to
