@@ -20,7 +20,7 @@ agents, and the expensive models handle design and implementation. The second is
 of truth. The JSON state drives the board, the standup digest, and the activity trace, so nothing
 drifts out of sync.
 
-![Vector kanban board showing specs in open, in-progress, review, and closed columns](docs/assets/kanban-reference.png)
+![Vector kanban board: spec cards spread across draft, open, in-progress, needs-attention, review, and closed columns, each showing its status, priority flag, ticket link, and apply command](docs/assets/board.png)
 
 ## Why Vector
 
