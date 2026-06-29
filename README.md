@@ -1,5 +1,7 @@
 # Vector
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 Spec-driven project management for developers who work with Claude Code.
 
 ## What is Vector
