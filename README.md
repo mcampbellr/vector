@@ -1,6 +1,8 @@
 # Vector
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/mcampbellr/vector?sort=semver)](https://github.com/mcampbellr/vector/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/mcampbellr/vector?filename=cli%2Fgo.mod)](cli/go.mod)
+[![License](https://img.shields.io/github/license/mcampbellr/vector)](LICENSE)
 
 Spec-driven project management for developers who work with Claude Code.
 
@@ -178,8 +180,7 @@ Contributions are welcome. Open an issue to report a bug or propose a feature, a
 request for changes. Keep commits and PR text in English, and run the build and tests before
 opening a PR.
 
-**License: TBD.** No license has been chosen for this project yet. Until one is added, treat the
-code as all-rights-reserved and ask before reusing it.
+Licensed under the [Apache License 2.0](LICENSE).
 
 ## Further Reading
 
