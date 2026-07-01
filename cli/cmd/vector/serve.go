@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io/fs"
 	"net"
@@ -18,6 +17,7 @@ import (
 	"github.com/mariocampbell/vector/internal/board"
 	"github.com/mariocampbell/vector/internal/state"
 	"github.com/mariocampbell/vector/internal/webui"
+	"github.com/spf13/cobra"
 )
 
 // runServe starts the local board panel: the read-only HTTP API (/api/board,
@@ -25,64 +25,77 @@ import (
 // it runs only while the dev manages Vector. It binds 8787 by default (the port
 // the Vite dev proxy targets), falling back to a free port if 8787 is taken
 // unless --port was given explicitly (architecture/distribution-packaging.md).
-func runServe(args []string) error {
-	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	port := fs.Int("port", 8787, "port to listen on (default 8787; 0 picks a free port)")
-	host := fs.String("host", "127.0.0.1", "interface to bind")
-	webDir := fs.String("web-dir", "", "serve the panel from this dir instead of the embedded build (dev)")
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	pollMs := fs.Int("poll", 1000, "state poll interval in ms for live updates")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
+func newServeCmd() *cobra.Command {
+	var (
+		port     int
+		host     string
+		webDir   string
+		repoRoot string
+		pollMs   int
+	)
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "start the local board panel (HTTP API + SSE + embedded web UI)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Detect whether the user explicitly set --port so we know whether to fall
+			// back silently or hard-fail on a bind error.
+			portSet := cmd.Flags().Changed("port")
 
-	// Detect whether the user explicitly set --port so we know whether to fall
-	// back silently or hard-fail on a bind error.
-	var portSet bool
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "port" {
-			portSet = true
-		}
-	})
-
-	root, err := resolveRepoRoot(*repoRoot)
-	if err != nil {
-		return err
-	}
-	store, err := state.Open(root)
-	if err != nil {
-		return err
-	}
-
-	static, uiSource, err := webui.Resolve(*webDir, root, strings.HasSuffix(version, "-dev"))
-	if err != nil {
-		return fmt.Errorf("init web ui: %w", err)
-	}
-	srv := board.NewServer(store, filepath.Base(root))
-	httpServer := &http.Server{Handler: withCORS(srv.Routes(static))}
-
-	addr := fmt.Sprintf("%s:%d", *host, *port)
-	listener, listenErr := net.Listen("tcp", addr)
-	if listenErr != nil {
-		// If the user did not explicitly set --port and 8787 is in use, retry on a
-		// free port and warn that the Vite proxy will not reach this instance.
-		if !portSet && errors.Is(listenErr, syscall.EADDRINUSE) {
-			listener, err = net.Listen("tcp", fmt.Sprintf("%s:0", *host))
+			root, err := resolveRepoRoot(repoRoot)
 			if err != nil {
-				return fmt.Errorf("listen on %s:0 (fallback): %w", *host, err)
+				return err
 			}
-			fmt.Fprintf(os.Stderr, "warning: port 8787 is in use; serving on %s instead.\n", listener.Addr())
-			fmt.Fprintf(os.Stderr, "         The Vite dev proxy (which targets 8787) will NOT reach this instance.\n")
-			fmt.Fprintf(os.Stderr, "         Free port 8787 and restart, or pass --port 8787, or set VECTOR_API for Vite.\n")
-		} else {
-			return fmt.Errorf("listen on %s: %w", addr, listenErr)
-		}
-	}
+			store, err := state.Open(root)
+			if err != nil {
+				return err
+			}
 
+			static, uiSource, err := webui.Resolve(webDir, root, strings.HasSuffix(version, "-dev"))
+			if err != nil {
+				return fmt.Errorf("init web ui: %w", err)
+			}
+			srv := board.NewServer(store, filepath.Base(root))
+			httpServer := &http.Server{Handler: withCORS(srv.Routes(static))}
+
+			addr := fmt.Sprintf("%s:%d", host, port)
+			listener, listenErr := net.Listen("tcp", addr)
+			if listenErr != nil {
+				// If the user did not explicitly set --port and 8787 is in use, retry on a
+				// free port and warn that the Vite proxy will not reach this instance.
+				if !portSet && errors.Is(listenErr, syscall.EADDRINUSE) {
+					listener, err = net.Listen("tcp", fmt.Sprintf("%s:0", host))
+					if err != nil {
+						return fmt.Errorf("listen on %s:0 (fallback): %w", host, err)
+					}
+					fmt.Fprintf(os.Stderr, "warning: port 8787 is in use; serving on %s instead.\n", listener.Addr())
+					fmt.Fprintf(os.Stderr, "         The Vite dev proxy (which targets 8787) will NOT reach this instance.\n")
+					fmt.Fprintf(os.Stderr, "         Free port 8787 and restart, or pass --port 8787, or set VECTOR_API for Vite.\n")
+				} else {
+					return fmt.Errorf("listen on %s: %w", addr, listenErr)
+				}
+			}
+
+			return runServeLoop(root, httpServer, listener, uiSource, pollMs, srv.Broadcast)
+		},
+	}
+	f := cmd.Flags()
+	f.IntVar(&port, "port", 8787, "port to listen on (default 8787; 0 picks a free port)")
+	f.StringVar(&host, "host", "127.0.0.1", "interface to bind")
+	f.StringVar(&webDir, "web-dir", "", "serve the panel from this dir instead of the embedded build (dev)")
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.IntVar(&pollMs, "poll", 1000, "state poll interval in ms for live updates")
+	return cmd
+}
+
+// runServeLoop wires the signal-driven shutdown and the state watcher around the
+// bound listener, then blocks until Ctrl-C or a serve error. Split out of the
+// factory so the RunE stays a thin flag adapter.
+func runServeLoop(root string, httpServer *http.Server, listener net.Listener, uiSource string, pollMs int, broadcast func()) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go watchState(ctx, root, time.Duration(*pollMs)*time.Millisecond, srv.Broadcast)
+	go watchState(ctx, root, time.Duration(pollMs)*time.Millisecond, broadcast)
 
 	url := fmt.Sprintf("http://%s", listener.Addr().String())
 	fmt.Printf("vector serve: %s\n", root)

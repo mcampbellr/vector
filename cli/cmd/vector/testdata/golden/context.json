@@ -1,0 +1,32 @@
+{
+  "examplePath": "",
+  "language": "",
+  "buildCmd": "go build ./...",
+  "lintCmd": "golangci-lint run",
+  "testCmd": "go test ./...",
+  "applyMode": "ask",
+  "ticketDetected": false,
+  "sketchEnabled": true,
+  "worktree": {
+    "layout": false,
+    "root": "",
+    "baseBranch": "main",
+    "branchPrefix": "feat/"
+  },
+  "intel": {
+    "stack": {
+      "packageManager": "go-modules",
+      "runtime": {
+        "name": "go",
+        "version": "1.26"
+      },
+      "frameworks": []
+    },
+    "workspaces": [
+      {
+        "path": ".",
+        "kind": "go-module"
+      }
+    ]
+  }
+}

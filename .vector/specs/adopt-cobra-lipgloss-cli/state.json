@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "adopt-cobra-lipgloss-cli",
+  "title": "Adoptar cobra + lipgloss en el CLI de Vector",
+  "status": "closed",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/adopt-cobra-lipgloss-cli/spec.md",
+  "openspec": {
+    "change": "adopt-cobra-lipgloss-cli",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-07-01T09:41:47.823652Z",
+  "startedAt": "2026-07-01T12:45:35.884522Z",
+  "reviewAt": "2026-07-01T13:15:55.138759Z",
+  "closedAt": "2026-07-01T16:46:53.752645Z",
+  "updatedAt": "2026-07-01T16:46:53.752645Z"
+}

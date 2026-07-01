@@ -1,0 +1,8 @@
+{
+  "applyMode": "ask",
+  "applyModel": "opus",
+  "id": "alpha",
+  "priority": "normal",
+  "status": "open",
+  "title": "Alpha feature"
+}

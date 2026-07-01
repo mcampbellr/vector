@@ -7,7 +7,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -21,6 +20,7 @@ import (
 	"github.com/mariocampbell/vector/internal/openspec"
 	"github.com/mariocampbell/vector/internal/scaffold"
 	"github.com/mariocampbell/vector/internal/state"
+	"github.com/spf13/cobra"
 )
 
 // version is the binary's reported version. The default "dev" is for local
@@ -29,259 +29,290 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+	os.Exit(dispatch(os.Args[1:]))
+}
+
+// dispatch builds the root command, applies the legacy exit-code contract that
+// cobra does not model natively (no-args and unknown-top-level-command → 2), and
+// returns the process exit code. Split out of main() so the exit-code mapping is
+// unit-testable without spawning a subprocess (dispatch_test.go).
+func dispatch(args []string) int {
+	root := newRootCmd()
+
+	// No args → legacy usage banner to stderr, exit 2 (cobra would show help + exit 0).
+	if len(args) == 0 {
+		_ = root.Help() // styled help → stderr (ui.ApplyCustomHelp writes to OutOrStderr)
+		return 2
 	}
 
-	var err error
-	switch os.Args[1] {
-	case "init":
-		err = runInit(os.Args[2:])
-	case "update":
-		err = runUpdate(os.Args[2:])
-	case "context":
-		err = runContext(os.Args[2:])
-	case "sync":
-		err = runSync(os.Args[2:])
-	case "serve":
-		err = runServe(os.Args[2:])
-	case "standup":
-		err = runStandup(os.Args[2:])
-	case "spec":
-		err = runSpec(os.Args[2:])
-	case "detect-ticket":
-		err = runDetectTicket(os.Args[2:])
-	case "version", "--version", "-v":
-		fmt.Println("vector", version)
-	case "help", "-h", "--help":
-		usage()
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
-		usage()
-		os.Exit(2)
+	// Unknown top-level command (first token a bare word that is not a known
+	// subcommand) → legacy behavior: message + usage to stderr, exit 2. cobra would
+	// otherwise map an unknown command to exit 1; preserve the historical exit 2.
+	if first := args[0]; !strings.HasPrefix(first, "-") && !isKnownCommand(root, first) {
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", first)
+		_ = root.Help()
+		return 2
 	}
 
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
-	}
+	root.SetArgs(args)
+	return mapExitError(root.Execute())
 }
 
 // runInit seeds the /vector:* project commands into the repo's
 // .claude/commands/vector/ and initializes the .vector state skeleton. It is
 // additive: nothing else under .claude is touched, and existing command files
 // are left intact unless --force is given.
-func runInit(args []string) error {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	force := fs.Bool("force", false, "overwrite existing /vector:* command files")
-	dryRun := fs.Bool("dry-run", false, "show what would be written without writing")
-	language := fs.String("language", "", "prose language for Vector agents (e.g. es, Spanish); empty = conversation language")
-	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
+func newInitCmd() *cobra.Command {
+	var (
+		repoRoot string
+		force    bool
+		dryRun   bool
+		language string
+		jsonOut  bool
+	)
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "seed /vector:* commands and initialize the .vector state skeleton",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			root, err := resolveRepoRoot(repoRoot)
+			if err != nil {
+				return err
+			}
 
-	root, err := resolveRepoRoot(*repoRoot)
-	if err != nil {
-		return err
-	}
+			results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: force, DryRun: dryRun})
+			if err != nil {
+				return fmt.Errorf("seed vector commands: %w", err)
+			}
 
-	results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: *force, DryRun: *dryRun})
-	if err != nil {
-		return fmt.Errorf("seed vector commands: %w", err)
-	}
-
-	// Resolve the repo config (migrates from .project-structure, else detects,
-	// else .vector fallback). Persisted unless it already exists (kept to respect
-	// edits) or this is a dry run. cfg is what we'd write / what is in effect.
-	cfg := config.Resolve(root)
-	cfgExisted := config.Exists(root)
-	cfgAction := "written"
-	switch {
-	case *dryRun:
-		cfgAction = "would write"
-	case cfgExisted && !*force:
-		cfgAction = "skipped (exists)"
-		if existing, err := config.Load(root); err == nil {
-			cfg = existing // report what's actually in effect
-		}
-	}
-
-	// Initialize the state skeleton and persist config (unless dry-run).
-	if !*dryRun {
-		if _, err := state.Open(root); err != nil {
-			return fmt.Errorf("init state: %w", err)
-		}
-		if !cfgExisted || *force {
-			// Set the prose language from --language; on a --force re-init without the
-			// flag, preserve any language already configured (Resolve drops it).
-			if lang := strings.TrimSpace(*language); lang != "" {
-				cfg.Language = lang
-			} else if *force {
-				if existing, lerr := config.Load(root); lerr == nil {
-					cfg.Language = existing.ResolvedLanguage()
+			// Resolve the repo config (migrates from .project-structure, else detects,
+			// else .vector fallback). Persisted unless it already exists (kept to respect
+			// edits) or this is a dry run. cfg is what we'd write / what is in effect.
+			cfg := config.Resolve(root)
+			cfgExisted := config.Exists(root)
+			cfgAction := "written"
+			switch {
+			case dryRun:
+				cfgAction = "would write"
+			case cfgExisted && !force:
+				cfgAction = "skipped (exists)"
+				if existing, err := config.Load(root); err == nil {
+					cfg = existing // report what's actually in effect
 				}
 			}
-			// Detect and persist build/lint/test commands when uncached (or --force).
-			if cfg.BuildCmd == "" || cfg.LintCmd == "" || cfg.TestCmd == "" || *force {
-				detBuild, detLint, detTest := config.DetectBuildCmds(root)
-				if cfg.BuildCmd == "" || *force {
-					cfg.BuildCmd = detBuild
+
+			// Initialize the state skeleton and persist config (unless dry-run).
+			if !dryRun {
+				if _, err := state.Open(root); err != nil {
+					return fmt.Errorf("init state: %w", err)
 				}
-				if cfg.LintCmd == "" || *force {
-					cfg.LintCmd = detLint
-				}
-				if cfg.TestCmd == "" || *force {
-					cfg.TestCmd = detTest
+				if !cfgExisted || force {
+					// Set the prose language from --language; on a --force re-init without the
+					// flag, preserve any language already configured (Resolve drops it).
+					if lang := strings.TrimSpace(language); lang != "" {
+						cfg.Language = lang
+					} else if force {
+						if existing, lerr := config.Load(root); lerr == nil {
+							cfg.Language = existing.ResolvedLanguage()
+						}
+					}
+					// Detect and persist build/lint/test commands when uncached (or --force).
+					if cfg.BuildCmd == "" || cfg.LintCmd == "" || cfg.TestCmd == "" || force {
+						detBuild, detLint, detTest := config.DetectBuildCmds(root)
+						if cfg.BuildCmd == "" || force {
+							cfg.BuildCmd = detBuild
+						}
+						if cfg.LintCmd == "" || force {
+							cfg.LintCmd = detLint
+						}
+						if cfg.TestCmd == "" || force {
+							cfg.TestCmd = detTest
+						}
+					}
+					cfg.KitVersion = version
+					if err := config.Write(root, cfg); err != nil {
+						return fmt.Errorf("write config: %w", err)
+					}
 				}
 			}
-			cfg.KitVersion = version
-			if err := config.Write(root, cfg); err != nil {
-				return fmt.Errorf("write config: %w", err)
+
+			if jsonOut {
+				b, err := json.MarshalIndent(struct {
+					Root   string                `json:"root"`
+					DryRun bool                  `json:"dryRun"`
+					Files  []scaffold.FileResult `json:"files"`
+					Config *config.Config        `json:"config"`
+				}{Root: root, DryRun: dryRun, Files: results, Config: cfg}, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal json result: %w", err)
+				}
+				fmt.Println(string(b))
+				return nil
 			}
-		}
-	}
 
-	if *jsonOut {
-		b, err := json.MarshalIndent(struct {
-			Root   string                `json:"root"`
-			DryRun bool                  `json:"dryRun"`
-			Files  []scaffold.FileResult `json:"files"`
-			Config *config.Config        `json:"config"`
-		}{Root: root, DryRun: *dryRun, Files: results, Config: cfg}, "", "  ")
-		if err != nil {
-			return fmt.Errorf("marshal json result: %w", err)
-		}
-		fmt.Println(string(b))
-		return nil
+			fmt.Printf("vector init: %s\n", root)
+			for _, r := range results {
+				fmt.Printf("  %-12s %s\n", r.Action, r.Path)
+			}
+			fmt.Printf("  %-12s .vector/config.json (specPath: %s, source: %s)\n", cfgAction, cfg.SpecPath, cfg.Source)
+			if lang := cfg.ResolvedLanguage(); lang != "" {
+				fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
+			}
+			if dryRun {
+				fmt.Println("\n(dry run — nothing written; a real init also creates the .vector/ state skeleton)")
+				return nil
+			}
+			if openspec.Detected(root) {
+				fmt.Println("\nDetected openspec/ — run `vector sync` to import existing changes onto the board.")
+			}
+			fmt.Println("\nReload Claude Code (/reload-plugins) to pick up the /vector:* commands.")
+			return nil
+		},
 	}
-
-	fmt.Printf("vector init: %s\n", root)
-	for _, r := range results {
-		fmt.Printf("  %-12s %s\n", r.Action, r.Path)
-	}
-	fmt.Printf("  %-12s .vector/config.json (specPath: %s, source: %s)\n", cfgAction, cfg.SpecPath, cfg.Source)
-	if lang := cfg.ResolvedLanguage(); lang != "" {
-		fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
-	}
-	if *dryRun {
-		fmt.Println("\n(dry run — nothing written; a real init also creates the .vector/ state skeleton)")
-		return nil
-	}
-	if openspec.Detected(root) {
-		fmt.Println("\nDetected openspec/ — run `vector sync` to import existing changes onto the board.")
-	}
-	fmt.Println("\nReload Claude Code (/reload-plugins) to pick up the /vector:* commands.")
-	return nil
+	f := cmd.Flags()
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&force, "force", false, "overwrite existing /vector:* command files")
+	f.BoolVar(&dryRun, "dry-run", false, "show what would be written without writing")
+	f.StringVar(&language, "language", "", "prose language for Vector agents (e.g. es, Spanish); empty = conversation language")
+	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
+	return cmd
 }
 
 // runUpdate re-seeds the /vector:* kit artifacts (commands, agents, template) to
 // match the binary, preserving the repo's config (.vector/config.json) and state
 // (.vector/specs, activity). Use it to refresh a repo after upgrading the binary.
-func runUpdate(args []string) error {
-	fs := flag.NewFlagSet("update", flag.ContinueOnError)
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
-	language := fs.String("language", "", "set/change the prose language for Vector agents (e.g. es, Spanish); unset = leave as-is")
-	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	root, err := resolveRepoRoot(*repoRoot)
-	if err != nil {
-		return err
-	}
-	if !config.Exists(root) {
-		return fmt.Errorf("no .vector/config.json in %s — run `vector init` first", root)
-	}
-	cfg, err := config.Load(root)
-	if err != nil {
-		return err
-	}
-	prev := cfg.KitVersion
-	if prev == "" {
-		prev = "(unstamped)"
-	}
+func newUpdateCmd() *cobra.Command {
+	var (
+		repoRoot string
+		dryRun   bool
+		language string
+		jsonOut  bool
+	)
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "re-seed the /vector:* kit to match the binary, preserving config and state",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			root, err := resolveRepoRoot(repoRoot)
+			if err != nil {
+				return err
+			}
+			if !config.Exists(root) {
+				return fmt.Errorf("no .vector/config.json in %s — run `vector init` first", root)
+			}
+			cfg, err := config.Load(root)
+			if err != nil {
+				return err
+			}
+			prev := cfg.KitVersion
+			if prev == "" {
+				prev = "(unstamped)"
+			}
 
-	// Force-overwrite the seeded kit artifacts; never touches config or state.
-	results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: true, DryRun: *dryRun})
-	if err != nil {
-		return fmt.Errorf("re-seed vector kit: %w", err)
-	}
-	// A provided --language sets/changes the prose language; absent, it is left
-	// as-is (update never clears a configured language).
-	if lang := strings.TrimSpace(*language); lang != "" {
-		cfg.Language = lang
-	}
-	// Detect and persist build/lint/test commands when any are uncached.
-	// update never clears existing detected commands; it only fills gaps.
-	if cfg.BuildCmd == "" || cfg.LintCmd == "" || cfg.TestCmd == "" {
-		detBuild, detLint, detTest := config.DetectBuildCmds(root)
-		if cfg.BuildCmd == "" {
-			cfg.BuildCmd = detBuild
-		}
-		if cfg.LintCmd == "" {
-			cfg.LintCmd = detLint
-		}
-		if cfg.TestCmd == "" {
-			cfg.TestCmd = detTest
-		}
-	}
-	if !*dryRun {
-		cfg.KitVersion = version
-		if err := config.Write(root, cfg); err != nil {
-			return fmt.Errorf("update kit version stamp: %w", err)
-		}
-	}
+			// Force-overwrite the seeded kit artifacts; never touches config or state.
+			results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: true, DryRun: dryRun})
+			if err != nil {
+				return fmt.Errorf("re-seed vector kit: %w", err)
+			}
+			// A provided --language sets/changes the prose language; absent, it is left
+			// as-is (update never clears a configured language).
+			if lang := strings.TrimSpace(language); lang != "" {
+				cfg.Language = lang
+			}
+			// Detect and persist build/lint/test commands when any are uncached.
+			// update never clears existing detected commands; it only fills gaps.
+			if cfg.BuildCmd == "" || cfg.LintCmd == "" || cfg.TestCmd == "" {
+				detBuild, detLint, detTest := config.DetectBuildCmds(root)
+				if cfg.BuildCmd == "" {
+					cfg.BuildCmd = detBuild
+				}
+				if cfg.LintCmd == "" {
+					cfg.LintCmd = detLint
+				}
+				if cfg.TestCmd == "" {
+					cfg.TestCmd = detTest
+				}
+			}
+			if !dryRun {
+				cfg.KitVersion = version
+				if err := config.Write(root, cfg); err != nil {
+					return fmt.Errorf("update kit version stamp: %w", err)
+				}
+			}
 
-	if *jsonOut {
-		b, err := json.MarshalIndent(struct {
-			Root        string                `json:"root"`
-			DryRun      bool                  `json:"dryRun"`
-			FromVersion string                `json:"fromVersion"`
-			ToVersion   string                `json:"toVersion"`
-			Files       []scaffold.FileResult `json:"files"`
-		}{Root: root, DryRun: *dryRun, FromVersion: prev, ToVersion: version, Files: results}, "", "  ")
-		if err != nil {
-			return fmt.Errorf("marshal json result: %w", err)
-		}
-		fmt.Println(string(b))
-		return nil
-	}
+			if jsonOut {
+				b, err := json.MarshalIndent(struct {
+					Root        string                `json:"root"`
+					DryRun      bool                  `json:"dryRun"`
+					FromVersion string                `json:"fromVersion"`
+					ToVersion   string                `json:"toVersion"`
+					Files       []scaffold.FileResult `json:"files"`
+				}{Root: root, DryRun: dryRun, FromVersion: prev, ToVersion: version, Files: results}, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal json result: %w", err)
+				}
+				fmt.Println(string(b))
+				return nil
+			}
 
-	fmt.Printf("vector update: %s\n", root)
-	fmt.Printf("  kit %s -> %s\n", prev, version)
-	for _, r := range results {
-		fmt.Printf("  %-12s %s\n", r.Action, r.Path)
+			fmt.Printf("vector update: %s\n", root)
+			fmt.Printf("  kit %s -> %s\n", prev, version)
+			for _, r := range results {
+				fmt.Printf("  %-12s %s\n", r.Action, r.Path)
+			}
+			if lang := cfg.ResolvedLanguage(); lang != "" {
+				fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
+			}
+			if dryRun {
+				fmt.Println("\n(dry run — nothing written)")
+				return nil
+			}
+			fmt.Println("\nConfig and state preserved. Reload Claude Code (/reload-plugins) to pick up changes.")
+			return nil
+		},
 	}
-	if lang := cfg.ResolvedLanguage(); lang != "" {
-		fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
-	}
-	if *dryRun {
-		fmt.Println("\n(dry run — nothing written)")
-		return nil
-	}
-	fmt.Println("\nConfig and state preserved. Reload Claude Code (/reload-plugins) to pick up changes.")
-	return nil
+	f := cmd.Flags()
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&dryRun, "dry-run", false, "show what would change without writing")
+	f.StringVar(&language, "language", "", "set/change the prose language for Vector agents (e.g. es, Spanish); unset = leave as-is")
+	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
+	return cmd
 }
 
 // runSync projects the repo's OpenSpec changes onto the Vector board. It is
 // additive and idempotent: new changes become cards (status by task progress),
 // existing sync-owned cards are left alone unless --reconcile, and /vector:raw
 // drafts are never touched. Applied capability specs (openspec/specs/) are skipped.
-func runSync(args []string) error {
-	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	branch := fs.String("branch", "", "authoritative worktree for [branch] path templates (bare+worktree layouts); persisted to config")
-	reconcile := fs.Bool("reconcile", false, "update status of already-synced cards to match OpenSpec")
-	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
-	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
-	if err := fs.Parse(args); err != nil {
-		return err
+func newSyncCmd() *cobra.Command {
+	var (
+		repoRoot  string
+		branch    string
+		reconcile bool
+		dryRun    bool
+		jsonOut   bool
+	)
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "project the repo's OpenSpec changes onto the board (idempotent, additive)",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runSyncBody(repoRoot, branch, reconcile, dryRun, jsonOut)
+		},
 	}
-	root, err := resolveRepoRoot(*repoRoot)
+	f := cmd.Flags()
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.StringVar(&branch, "branch", "", "authoritative worktree for [branch] path templates (bare+worktree layouts); persisted to config")
+	f.BoolVar(&reconcile, "reconcile", false, "update status of already-synced cards to match OpenSpec")
+	f.BoolVar(&dryRun, "dry-run", false, "show what would change without writing")
+	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
+	return cmd
+}
+
+// runSyncBody holds the sync business logic, unchanged from the pre-cobra
+// implementation except that flag values arrive as parameters rather than through
+// a flag.FlagSet.
+func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error {
+	root, err := resolveRepoRoot(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -290,7 +321,7 @@ func runSync(args []string) error {
 	if err != nil {
 		return fmt.Errorf("read .vector/config.json (run `vector init` first): %w", err)
 	}
-	branchPersisted := resolveSyncBranch(cfg, *branch)
+	branchPersisted := resolveSyncBranch(cfg, branch)
 
 	// Read changes across every worktree (so in-progress changes living only in
 	// their own worktree are visible), collapsed to one canonical change per name.
@@ -311,7 +342,7 @@ func runSync(args []string) error {
 	if err != nil {
 		return err
 	}
-	if branchPersisted && !*dryRun {
+	if branchPersisted && !dryRun {
 		if err := config.Write(root, cfg); err != nil {
 			return fmt.Errorf("persist resolved branch: %w", err)
 		}
@@ -369,7 +400,7 @@ func runSync(args []string) error {
 		case rerr != nil && !errors.Is(rerr, os.ErrNotExist):
 			return rerr
 		case rerr != nil: // not found → create
-			if !*dryRun {
+			if !dryRun {
 				if _, err := store.CreateSpec(state.CreateSpecParams{
 					ID:         c.Name,
 					Title:      humanizeSlug(c.Name),
@@ -387,14 +418,14 @@ func runSync(args []string) error {
 			results = append(results, syncResult{c.Name, string(status), "created"})
 		case existing.OpenSpec == nil: // user-authored (e.g. a /vector:raw draft) — never touch
 			results = append(results, syncResult{c.Name, string(existing.Status), "skipped (not sync-owned)"})
-		case *reconcile:
+		case reconcile:
 			// Terminal cards (closed/archived) are never reconciled back to a
 			// tasks-derived status; mirror ReconcileStatus's guard in the preview.
 			effective := status
 			if existing.Status.IsTerminal() {
 				effective = existing.Status
 			}
-			if *dryRun {
+			if dryRun {
 				action := "unchanged"
 				if existing.Status != effective {
 					action = "would update"
@@ -445,7 +476,7 @@ func runSync(args []string) error {
 		case rerr != nil && !errors.Is(rerr, os.ErrNotExist):
 			return rerr
 		case rerr != nil: // not found → create draft
-			if !*dryRun {
+			if !dryRun {
 				if _, err := store.CreateSpec(state.CreateSpecParams{
 					ID:         d.Slug,
 					Title:      humanizeSlug(d.Slug),
@@ -464,12 +495,12 @@ func runSync(args []string) error {
 		}
 	}
 
-	if *jsonOut {
+	if jsonOut {
 		b, err := json.MarshalIndent(struct {
 			Root   string       `json:"root"`
 			DryRun bool         `json:"dryRun"`
 			Specs  []syncResult `json:"specs"`
-		}{Root: root, DryRun: *dryRun, Specs: results}, "", "  ")
+		}{Root: root, DryRun: dryRun, Specs: results}, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal json result: %w", err)
 		}
@@ -481,7 +512,7 @@ func runSync(args []string) error {
 	for _, r := range results {
 		fmt.Printf("  %-24s %-12s %s\n", r.Action, r.Status, r.ID)
 	}
-	if *dryRun {
+	if dryRun {
 		fmt.Println("\n(dry run — nothing written)")
 	}
 	return nil
@@ -594,134 +625,129 @@ func humanizeSlug(slug string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-func runSpec(args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
+// newSpecCmd is the `spec` parent command. It carries every spec.* subcommand and
+// keeps an explicit RunE so `vector spec` with no subverb returns the legacy usage
+// error (exit 1) instead of cobra's default help+exit-0.
+func newSpecCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "spec",
+		Short: "create and transition specs on the board",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
+		},
 	}
-	switch args[0] {
-	case "create":
-		return runSpecCreate(args[1:])
-	case "list":
-		return runSpecList(args[1:])
-	case "propose":
-		return runSpecPropose(args[1:])
-	case "apply":
-		return runSpecApply(args[1:])
-	case "fix":
-		return runSpecFix(args[1:])
-	case "link":
-		return runSpecLink(args[1:])
-	case "relate":
-		return runSpecRelate(args[1:])
-	case "status":
-		return runSpecStatus(args[1:])
-	case "close":
-		return runSpecClose(args[1:])
-	case "archive":
-		return runSpecArchive(args[1:])
-	case "next":
-		return runSpecNext(args[1:])
-	case "worklog":
-		return runSpecWorklog(args[1:])
-	case "summarize":
-		return runSpecSummarize(args[1:])
-	case "route":
-		return runSpecRoute(args[1:])
-	case "attach-sketch":
-		return runSpecAttachSketch(args[1:])
-	default:
-		return fmt.Errorf("unknown spec subcommand %q", args[0])
-	}
+	cmd.AddCommand(
+		newSpecCreateCmd(),
+		newSpecListCmd(),
+		newSpecProposeCmd(),
+		newSpecApplyCmd(),
+		newSpecFixCmd(),
+		newSpecLinkCmd(),
+		newSpecRelateCmd(),
+		newSpecStatusCmd(),
+		newSpecCloseCmd(),
+		newSpecArchiveCmd(),
+		newSpecNextCmd(),
+		newSpecWorklogCmd(),
+		newSpecSummarizeCmd(),
+		newSpecRouteCmd(),
+		newSpecAttachSketchCmd(),
+	)
+	return cmd
 }
 
 // runSpecPropose formalizes a draft spec: records the OpenSpec change provenance
 // and transitions draft → open. The /vector:propose command creates the actual
 // change artifacts (delegated to OpenSpec, or native) and then calls this to flip
 // the board state — the binary stays the sole state writer.
-func runSpecPropose(args []string) error {
-	// Accept the id as a leading positional even when flags follow (Go's flag
-	// package stops parsing at the first non-flag arg).
-	var leadingID string
-	rest := args
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		leadingID, rest = args[0], args[1:]
-	}
+func newSpecProposeCmd() *cobra.Command {
+	var (
+		idFlag    string
+		change    string
+		artifacts string
+		repoRoot  string
+		dryRun    bool
+		jsonOut   bool
+	)
+	cmd := &cobra.Command{
+		Use:   "propose [id]",
+		Short: "formalize a draft spec's OpenSpec provenance and move it draft → open",
+		RunE: func(_ *cobra.Command, args []string) error {
+			// Accept the id as a leading positional even when flags interleave (pflag
+			// hands RunE the leftover positionals).
+			leading, _ := leadingID(args)
 
-	fs := flag.NewFlagSet("spec propose", flag.ContinueOnError)
-	id := fs.String("id", "", "spec id to propose (or pass it as the first argument)")
-	change := fs.String("change", "", "OpenSpec change name (defaults to the spec id)")
-	artifacts := fs.String("artifacts", "proposal,design,tasks", "comma list of created artifacts: proposal,design,tasks")
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	dryRun := fs.Bool("dry-run", false, "show what would change without writing")
-	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
-	if err := fs.Parse(rest); err != nil {
-		return err
-	}
+			specID := idFlag
+			if specID == "" {
+				specID = leading
+			}
+			if specID == "" {
+				return fmt.Errorf("usage: vector spec propose <id> [--change name] [--artifacts proposal,design,tasks]")
+			}
+			changeName := change
+			if changeName == "" {
+				changeName = specID
+			}
+			if changeName != state.Slug(changeName) {
+				return fmt.Errorf("invalid --change %q: must be kebab-case", changeName)
+			}
+			arts, err := parseArtifacts(artifacts)
+			if err != nil {
+				return err
+			}
 
-	specID := *id
-	if specID == "" {
-		specID = leadingID
-	}
-	if specID == "" && fs.NArg() > 0 {
-		specID = fs.Arg(0)
-	}
-	if specID == "" {
-		return fmt.Errorf("usage: vector spec propose <id> [--change name] [--artifacts proposal,design,tasks]")
-	}
-	changeName := *change
-	if changeName == "" {
-		changeName = specID
-	}
-	if changeName != state.Slug(changeName) {
-		return fmt.Errorf("invalid --change %q: must be kebab-case", changeName)
-	}
-	arts, err := parseArtifacts(*artifacts)
-	if err != nil {
-		return err
-	}
+			root, err := resolveRepoRoot(repoRoot)
+			if err != nil {
+				return err
+			}
+			store, err := state.Open(root)
+			if err != nil {
+				return err
+			}
 
-	root, err := resolveRepoRoot(*repoRoot)
-	if err != nil {
-		return err
-	}
-	store, err := state.Open(root)
-	if err != nil {
-		return err
-	}
+			// Validate up front (covers dry-run and idempotency without writing).
+			spec, err := store.ReadSpec(specID)
+			if err != nil {
+				return err
+			}
+			if spec.Status == state.StatusOpen {
+				if jsonOut {
+					return printJSON(map[string]string{"id": specID, "status": string(spec.Status), "note": "already open"})
+				}
+				fmt.Printf("spec %q is already open (no change)\n", specID)
+				return nil
+			}
+			if spec.Status != state.StatusDraft {
+				return fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", specID, spec.Status)
+			}
 
-	// Validate up front (covers dry-run and idempotency without writing).
-	spec, err := store.ReadSpec(specID)
-	if err != nil {
-		return err
-	}
-	if spec.Status == state.StatusOpen {
-		if *jsonOut {
-			return printJSON(map[string]string{"id": specID, "status": string(spec.Status), "note": "already open"})
-		}
-		fmt.Printf("spec %q is already open (no change)\n", specID)
-		return nil
-	}
-	if spec.Status != state.StatusDraft {
-		return fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", specID, spec.Status)
-	}
+			if dryRun {
+				if jsonOut {
+					return printJSON(map[string]string{"id": specID, "status": "draft", "wouldBe": "open", "change": changeName})
+				}
+				fmt.Printf("would propose spec %q (draft → open)\n  change: %s\n", specID, changeName)
+				return nil
+			}
 
-	if *dryRun {
-		if *jsonOut {
-			return printJSON(map[string]string{"id": specID, "status": "draft", "wouldBe": "open", "change": changeName})
-		}
-		fmt.Printf("would propose spec %q (draft → open)\n  change: %s\n", specID, changeName)
-		return nil
+			updated, err := store.ProposeSpec(specID, &state.OpenSpec{Change: changeName, Artifacts: arts}, resolveActor(), time.Now())
+			if err != nil {
+				return err
+			}
+			if jsonOut {
+				return printJSON(map[string]string{"id": updated.ID, "status": string(updated.Status), "change": changeName, "specDoc": updated.SpecDoc})
+			}
+			fmt.Printf("proposed spec %q (status: draft → open)\n  change: %s\n  next: /vector:apply %s\n", updated.ID, changeName, updated.ID)
+			return nil
+		},
 	}
-
-	updated, err := store.ProposeSpec(specID, &state.OpenSpec{Change: changeName, Artifacts: arts}, resolveActor(), time.Now())
-	if err != nil {
-		return err
-	}
-	if *jsonOut {
-		return printJSON(map[string]string{"id": updated.ID, "status": string(updated.Status), "change": changeName, "specDoc": updated.SpecDoc})
-	}
-	fmt.Printf("proposed spec %q (status: draft → open)\n  change: %s\n  next: /vector:apply %s\n", updated.ID, changeName, updated.ID)
-	return nil
+	f := cmd.Flags()
+	f.StringVar(&idFlag, "id", "", "spec id to propose (or pass it as the first argument)")
+	f.StringVar(&change, "change", "", "OpenSpec change name (defaults to the spec id)")
+	f.StringVar(&artifacts, "artifacts", "proposal,design,tasks", "comma list of created artifacts: proposal,design,tasks")
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&dryRun, "dry-run", false, "show what would change without writing")
+	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
+	return cmd
 }
 
 // canonicalArtifact normalizes a raw --artifacts segment to its canonical name
@@ -770,101 +796,119 @@ func parseArtifacts(list string) (state.ArtifactSet, error) {
 	return a, nil
 }
 
-func runSpecCreate(args []string) error {
-	fs := flag.NewFlagSet("spec create", flag.ContinueOnError)
-	title := fs.String("title", "", "spec title (required unless --id is given)")
-	id := fs.String("id", "", "spec id (kebab-case); derived from title if empty")
-	repo := fs.String("repo", "", "repo name for the board")
-	priority := fs.String("priority", "normal", "urgent|high|normal|low")
-	status := fs.String("status", "draft", "draft|open|in-progress|needs-attention|review|closed|archived")
-	bodyFile := fs.String("body-file", "", "path to the spec doc body, or - for stdin")
-	ticketJSON := fs.String("ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
-	relatedJSON := fs.String("related", "", "seed cause→bug relations as JSON [{\"kind\":\"spec\",\"ref\":\"id\",\"source\":\"blame\"}]")
-	quickWin := fs.Bool("quick-win", false, "mark the card as a /vector:quick one-run change")
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if strings.TrimSpace(*title) == "" && *id == "" {
-		return fmt.Errorf("--title or --id is required")
-	}
+func newSpecCreateCmd() *cobra.Command {
+	var (
+		title       string
+		id          string
+		repo        string
+		priority    string
+		status      string
+		bodyFile    string
+		ticketJSON  string
+		relatedJSON string
+		quickWin    bool
+		repoRoot    string
+		jsonOut     bool
+	)
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "create a spec card on the board",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if strings.TrimSpace(title) == "" && id == "" {
+				return fmt.Errorf("--title or --id is required")
+			}
 
-	body, err := readBody(*bodyFile)
-	if err != nil {
-		return err
-	}
-	ticket, err := parseTicketFlag(*ticketJSON)
-	if err != nil {
-		return err
-	}
-	root, err := resolveRepoRoot(*repoRoot)
-	if err != nil {
-		return err
-	}
+			body, err := readBody(bodyFile)
+			if err != nil {
+				return err
+			}
+			ticket, err := parseTicketFlag(ticketJSON)
+			if err != nil {
+				return err
+			}
+			root, err := resolveRepoRoot(repoRoot)
+			if err != nil {
+				return err
+			}
 
-	specID := *id
-	if specID == "" {
-		specID = state.Slug(*title)
-	}
-	// Resolve the spec doc location from the repo config (migrated by `vector
-	// init`). Without a config, CreateSpec falls back to .vector storage.
-	var docAbs, docRel string
-	if cfg, cfgErr := config.Load(root); cfgErr == nil && specID != "" {
-		docRel, docAbs = cfg.SpecDocPath(root, specID)
-	}
+			specID := id
+			if specID == "" {
+				specID = state.Slug(title)
+			}
+			// Resolve the spec doc location from the repo config (migrated by `vector
+			// init`). Without a config, CreateSpec falls back to .vector storage.
+			var docAbs, docRel string
+			if cfg, cfgErr := config.Load(root); cfgErr == nil && specID != "" {
+				docRel, docAbs = cfg.SpecDocPath(root, specID)
+			}
 
-	store, err := state.Open(root)
-	if err != nil {
-		return err
-	}
+			store, err := state.Open(root)
+			if err != nil {
+				return err
+			}
 
-	// Resolve seed relations. An invalid --related (malformed JSON, bad enum, or a
-	// kind:spec ref that does not exist) degrades to a relation-less card rather
-	// than aborting a valid card — mirrors the --ticket fallback. The warning goes
-	// to stderr so --json stdout stays clean for tooling.
-	related, relErr := parseRelatedFlag(*relatedJSON)
-	if relErr == nil {
-		relErr = verifyRelatedExist(store, related)
-	}
-	if relErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: ignoring --related (%v); creating card without relations\n", relErr)
-		related = nil
-	}
+			// Resolve seed relations. An invalid --related (malformed JSON, bad enum, or a
+			// kind:spec ref that does not exist) degrades to a relation-less card rather
+			// than aborting a valid card — mirrors the --ticket fallback. The warning goes
+			// to stderr so --json stdout stays clean for tooling.
+			related, relErr := parseRelatedFlag(relatedJSON)
+			if relErr == nil {
+				relErr = verifyRelatedExist(store, related)
+			}
+			if relErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: ignoring --related (%v); creating card without relations\n", relErr)
+				related = nil
+			}
 
-	spec, err := store.CreateSpec(state.CreateSpecParams{
-		Title:          *title,
-		ID:             specID,
-		Repo:           *repo,
-		Priority:       state.Priority(*priority),
-		Status:         state.Status(*status),
-		Body:           body,
-		QuickWin:       *quickWin,
-		Ticket:         ticket,
-		RelatedTo:      related,
-		Actor:          resolveActor(),
-		Now:            time.Now(),
-		SpecDocAbsPath: docAbs,
-		SpecDocRel:     docRel,
-	})
-	if err != nil {
-		return err
-	}
+			spec, err := store.CreateSpec(state.CreateSpecParams{
+				Title:          title,
+				ID:             specID,
+				Repo:           repo,
+				Priority:       state.Priority(priority),
+				Status:         state.Status(status),
+				Body:           body,
+				QuickWin:       quickWin,
+				Ticket:         ticket,
+				RelatedTo:      related,
+				Actor:          resolveActor(),
+				Now:            time.Now(),
+				SpecDocAbsPath: docAbs,
+				SpecDocRel:     docRel,
+			})
+			if err != nil {
+				return err
+			}
 
-	if *jsonOut {
-		return printJSONValue(map[string]any{
-			"id":        spec.ID,
-			"status":    string(spec.Status),
-			"state":     store.StatePath(spec.ID),
-			"specDoc":   spec.SpecDoc,
-			"relatedTo": spec.RelatedTo,
-		})
+			if jsonOut {
+				return printJSONValue(map[string]any{
+					"id":        spec.ID,
+					"status":    string(spec.Status),
+					"state":     store.StatePath(spec.ID),
+					"specDoc":   spec.SpecDoc,
+					"relatedTo": spec.RelatedTo,
+				})
+			}
+			fmt.Printf("created spec %q (status: %s)\n  spec doc: %s\n", spec.ID, spec.Status, spec.SpecDoc)
+			if len(spec.RelatedTo) > 0 {
+				fmt.Printf("  related: %s\n", formatRelations(spec.RelatedTo))
+			}
+			return nil
+		},
 	}
-	fmt.Printf("created spec %q (status: %s)\n  spec doc: %s\n", spec.ID, spec.Status, spec.SpecDoc)
-	if len(spec.RelatedTo) > 0 {
-		fmt.Printf("  related: %s\n", formatRelations(spec.RelatedTo))
-	}
-	return nil
+	f := cmd.Flags()
+	f.StringVar(&title, "title", "", "spec title (required unless --id is given)")
+	f.StringVar(&id, "id", "", "spec id (kebab-case); derived from title if empty")
+	f.StringVar(&repo, "repo", "", "repo name for the board")
+	f.StringVar(&priority, "priority", "normal", "urgent|high|normal|low")
+	f.StringVar(&status, "status", "draft", "draft|open|in-progress|needs-attention|review|closed|archived")
+	f.StringVar(&bodyFile, "body-file", "", "path to the spec doc body, or - for stdin")
+	f.StringVar(&ticketJSON, "ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
+	f.StringVar(&relatedJSON, "related", "", "seed cause→bug relations as JSON [{\"kind\":\"spec\",\"ref\":\"id\",\"source\":\"blame\"}]")
+	f.BoolVar(&quickWin, "quick-win", false, "mark the card as a /vector:quick one-run change")
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
+	return cmd
 }
 
 // verifyRelatedExist checks that every kind:spec relation points to a spec that
@@ -890,54 +934,63 @@ func formatRelations(items []state.RelatedItem) string {
 	return strings.Join(parts, ", ")
 }
 
-func runSpecList(args []string) error {
-	fs := flag.NewFlagSet("spec list", flag.ContinueOnError)
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	jsonOut := fs.Bool("json", false, "emit specs as a JSON array for tooling (cause resolution)")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	root, err := resolveRepoRoot(*repoRoot)
-	if err != nil {
-		return err
-	}
-	store, err := state.Open(root)
-	if err != nil {
-		return err
-	}
-	specs, err := store.ListSpecs()
-	if err != nil {
-		return err
-	}
-	if *jsonOut {
-		// A robust contract for cause deduction: id/title/status/priority + the
-		// OpenSpec change name (commits map to it) and any existing relations.
-		out := make([]map[string]any, 0, len(specs))
-		for _, s := range specs {
-			entry := map[string]any{
-				"id":       s.ID,
-				"title":    s.Title,
-				"status":   string(s.Status),
-				"priority": string(s.Priority),
+func newSpecListCmd() *cobra.Command {
+	var (
+		repoRoot string
+		jsonOut  bool
+	)
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "list specs on the board",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			root, err := resolveRepoRoot(repoRoot)
+			if err != nil {
+				return err
 			}
-			if s.OpenSpec != nil {
-				entry["change"] = s.OpenSpec.Change
+			store, err := state.Open(root)
+			if err != nil {
+				return err
 			}
-			if len(s.RelatedTo) > 0 {
-				entry["relatedTo"] = s.RelatedTo
+			specs, err := store.ListSpecs()
+			if err != nil {
+				return err
 			}
-			out = append(out, entry)
-		}
-		return printJSONValue(out)
+			if jsonOut {
+				// A robust contract for cause deduction: id/title/status/priority + the
+				// OpenSpec change name (commits map to it) and any existing relations.
+				out := make([]map[string]any, 0, len(specs))
+				for _, s := range specs {
+					entry := map[string]any{
+						"id":       s.ID,
+						"title":    s.Title,
+						"status":   string(s.Status),
+						"priority": string(s.Priority),
+					}
+					if s.OpenSpec != nil {
+						entry["change"] = s.OpenSpec.Change
+					}
+					if len(s.RelatedTo) > 0 {
+						entry["relatedTo"] = s.RelatedTo
+					}
+					out = append(out, entry)
+				}
+				return printJSONValue(out)
+			}
+			if len(specs) == 0 {
+				fmt.Println("no specs")
+				return nil
+			}
+			for _, s := range specs {
+				fmt.Printf("%-40s %-16s %-8s %s\n", s.ID, s.Status, s.Priority, s.Title)
+			}
+			return nil
+		},
 	}
-	if len(specs) == 0 {
-		fmt.Println("no specs")
-		return nil
-	}
-	for _, s := range specs {
-		fmt.Printf("%-40s %-16s %-8s %s\n", s.ID, s.Status, s.Priority, s.Title)
-	}
-	return nil
+	f := cmd.Flags()
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&jsonOut, "json", false, "emit specs as a JSON array for tooling (cause resolution)")
+	return cmd
 }
 
 func readBody(path string) (string, error) {
@@ -1015,84 +1068,93 @@ type DetectTicketResponse struct {
 // runDetectTicket implements `vector detect-ticket`: reads text from stdin or
 // --text-file, loads the repo config (absent config → empty defaults, not an
 // error), runs detectTicketFromText, and emits a DetectTicketResponse as JSON.
-func runDetectTicket(args []string) error {
-	fs := flag.NewFlagSet("detect-ticket", flag.ContinueOnError)
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	textFile := fs.String("text-file", "-", "path to text file to analyze, or - for stdin")
-	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
+func newDetectTicketCmd() *cobra.Command {
+	var (
+		repoRoot string
+		textFile string
+		jsonOut  bool
+	)
+	cmd := &cobra.Command{
+		Use:   "detect-ticket",
+		Short: "detect an external ticket from text (for /vector:raw and /vector:bug)",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			root, err := resolveRepoRoot(repoRoot)
+			if err != nil {
+				return err
+			}
 
-	root, err := resolveRepoRoot(*repoRoot)
-	if err != nil {
-		return err
-	}
+			// Config absent (before vector init) → empty defaults, not an error.
+			// Config present but corrupted (bad provider) → propagate.
+			cfg, cfgErr := config.Load(root)
+			if cfgErr != nil {
+				if !errors.Is(cfgErr, os.ErrNotExist) {
+					return cfgErr
+				}
+				cfg = &config.Config{}
+			}
 
-	// Config absent (before vector init) → empty defaults, not an error.
-	// Config present but corrupted (bad provider) → propagate.
-	cfg, cfgErr := config.Load(root)
-	if cfgErr != nil {
-		if !errors.Is(cfgErr, os.ErrNotExist) {
-			return cfgErr
-		}
-		cfg = &config.Config{}
-	}
+			// Read the input text.
+			var text string
+			switch textFile {
+			case "-":
+				b, ioErr := io.ReadAll(os.Stdin)
+				if ioErr != nil {
+					return fmt.Errorf("read stdin: %w", ioErr)
+				}
+				text = string(b)
+			default:
+				b, ioErr := os.ReadFile(textFile)
+				if ioErr != nil {
+					return fmt.Errorf("read text file: %w", ioErr)
+				}
+				text = string(b)
+			}
 
-	// Read the input text.
-	var text string
-	switch *textFile {
-	case "-":
-		b, ioErr := io.ReadAll(os.Stdin)
-		if ioErr != nil {
-			return fmt.Errorf("read stdin: %w", ioErr)
-		}
-		text = string(b)
-	default:
-		b, ioErr := os.ReadFile(*textFile)
-		if ioErr != nil {
-			return fmt.Errorf("read text file: %w", ioErr)
-		}
-		text = string(b)
-	}
+			ticket := detectTicketFromText(text, cfg.ResolvedDefaultTicketProvider(), cfg.NormalizedTicketKeyPrefixes())
 
-	ticket := detectTicketFromText(text, cfg.ResolvedDefaultTicketProvider(), cfg.NormalizedTicketKeyPrefixes())
+			prefixes := cfg.NormalizedTicketKeyPrefixes()
+			if prefixes == nil {
+				prefixes = []string{}
+			}
 
-	prefixes := cfg.NormalizedTicketKeyPrefixes()
-	if prefixes == nil {
-		prefixes = []string{}
-	}
+			resp := DetectTicketResponse{
+				Ticket:                ticket,
+				Language:              cfg.ResolvedLanguage(),
+				DefaultTicketProvider: cfg.ResolvedDefaultTicketProvider(),
+				TicketKeyPrefixes:     prefixes,
+			}
 
-	resp := DetectTicketResponse{
-		Ticket:                ticket,
-		Language:              cfg.ResolvedLanguage(),
-		DefaultTicketProvider: cfg.ResolvedDefaultTicketProvider(),
-		TicketKeyPrefixes:     prefixes,
-	}
+			if jsonOut {
+				b, marshalErr := json.MarshalIndent(resp, "", "  ")
+				if marshalErr != nil {
+					return fmt.Errorf("marshal json result: %w", marshalErr)
+				}
+				fmt.Println(string(b))
+				return nil
+			}
 
-	if *jsonOut {
-		b, marshalErr := json.MarshalIndent(resp, "", "  ")
-		if marshalErr != nil {
-			return fmt.Errorf("marshal json result: %w", marshalErr)
-		}
-		fmt.Println(string(b))
-		return nil
+			// Human-readable summary.
+			if resp.Ticket != nil {
+				fmt.Printf("ticket: %s:%s", resp.Ticket.Provider, resp.Ticket.Key)
+				if resp.Ticket.URL != "" {
+					fmt.Printf(" (%s)", resp.Ticket.URL)
+				}
+				fmt.Println()
+			} else {
+				fmt.Println("ticket: none")
+			}
+			if resp.Language != "" {
+				fmt.Printf("language: %s\n", resp.Language)
+			}
+			return nil
+		},
 	}
-
-	// Human-readable summary.
-	if resp.Ticket != nil {
-		fmt.Printf("ticket: %s:%s", resp.Ticket.Provider, resp.Ticket.Key)
-		if resp.Ticket.URL != "" {
-			fmt.Printf(" (%s)", resp.Ticket.URL)
-		}
-		fmt.Println()
-	} else {
-		fmt.Println("ticket: none")
-	}
-	if resp.Language != "" {
-		fmt.Printf("language: %s\n", resp.Language)
-	}
-	return nil
+	f := cmd.Flags()
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.StringVar(&textFile, "text-file", "-", "path to text file to analyze, or - for stdin")
+	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
+	return cmd
 }
 
 func usage() {

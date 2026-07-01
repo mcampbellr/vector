@@ -112,6 +112,22 @@ vector init
 `vector init` seeds the `/vector:*` commands into `.claude/commands/vector/`, detects your stack,
 and creates the `.vector/` state directory.
 
+### Terminal surface
+
+The binary exposes a full command tree. Run `vector --help` (or `vector <command> --help`) for
+styled, auto-generated usage of every subcommand, and generate shell completions on the fly:
+
+```bash
+vector completion zsh  > "${fpath[1]}/_vector"   # zsh
+vector completion bash > /usr/local/etc/bash_completion.d/vector
+vector completion fish > ~/.config/fish/completions/vector.fish
+vector completion powershell > vector.ps1        # PowerShell
+```
+
+Completion scripts are generated at runtime (nothing embedded), so they always match the binary
+you have installed. Machine-readable `--json` output is unaffected by the styled human surface —
+scripts that consume `vector <command> --json` see byte-identical output.
+
 ## Quickstart
 
 Vector is built to drop into an existing repo. Four steps take you from nothing to a board:

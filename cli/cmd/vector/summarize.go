@@ -3,13 +3,13 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/mariocampbell/vector/internal/standup"
 	"github.com/mariocampbell/vector/internal/state"
+	"github.com/spf13/cobra"
 )
 
 // summarizeWindow is the activity window the summarize projection covers. A
@@ -50,32 +50,69 @@ type agentSummary struct {
 // no subcommand it projects a spec's recent activity (for the
 // vector-summary-writer agent); `commit` persists the generated prose. The binary
 // never generates prose — CLI-owns-writes.
-func runSpecSummarize(args []string) error {
-	// The commit subcommand accepts both orderings: `summarize commit <id> …` and
-	// `summarize <id> commit …` (the kit commands use the latter).
-	if len(args) > 0 && args[0] == "commit" {
-		return runSpecSummarizeCommit("", args[1:])
-	}
-	id, rest := leadingID(args)
-	if len(rest) > 0 && rest[0] == "commit" {
-		return runSpecSummarizeCommit(id, rest[1:])
-	}
+// newSpecSummarizeCmd is a single command (not a parent with a cobra `commit`
+// child) so it can preserve BOTH orderings the kit commands rely on:
+// `summarize commit <id>` and `summarize <id> commit`. A pure cobra
+// AddCommand("commit") would only understand the first. This is a deliberate,
+// documented exception to the child-command pattern used everywhere else in the
+// tree — the RunE detects "commit" in either position over its positional args.
+// The commit-only flags (--action, --summary-file) are registered on this single
+// command; they are inert in projection mode.
+func newSpecSummarizeCmd() *cobra.Command {
+	var (
+		idFlag      string
+		action      string
+		summaryFile string
+		repoRoot    string
+		jsonOut     bool
+	)
+	cmd := &cobra.Command{
+		Use:   "summarize [id] [commit]",
+		Short: "project a spec's recent activity, or commit the agent-generated summary",
+		RunE: func(_ *cobra.Command, args []string) error {
+			// Two-order commit detection: "commit <id>" or "<id> commit".
+			commit := false
+			var posID string
+			switch {
+			case len(args) > 0 && args[0] == "commit":
+				commit = true
+				if len(args) > 1 {
+					posID = args[1]
+				}
+			case len(args) > 1 && args[1] == "commit":
+				commit = true
+				posID = args[0]
+			case len(args) > 0:
+				posID = args[0]
+			}
+			id := idFlag
+			if id == "" {
+				id = posID
+			}
 
-	fs := flag.NewFlagSet("spec summarize", flag.ContinueOnError)
-	idFlag := fs.String("id", "", "spec id (or pass it as the first argument)")
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	jsonOut := fs.Bool("json", false, "emit the projection as JSON for the summary agent")
-	if err := fs.Parse(rest); err != nil {
-		return err
+			if commit {
+				return runSpecSummarizeCommitBody(id, action, summaryFile, repoRoot, jsonOut)
+			}
+			return runSpecSummarizeProjection(id, repoRoot, jsonOut)
+		},
 	}
-	if id == "" {
-		id = *idFlag
-	}
+	f := cmd.Flags()
+	f.StringVar(&idFlag, "id", "", "spec id (or pass it as the first argument)")
+	f.StringVar(&action, "action", "", "the command that produced this summary (required for commit)")
+	f.StringVar(&summaryFile, "summary-file", "", "path to the summary JSON, or - for stdin (required for commit)")
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&jsonOut, "json", false, "emit JSON for tooling / the projection for the summary agent")
+	return cmd
+}
+
+// runSpecSummarizeProjection projects a spec's recent activity for the
+// vector-summary-writer agent.
+func runSpecSummarizeProjection(id, repoRoot string, jsonOut bool) error {
 	if id == "" {
 		return errors.New("usage: vector spec summarize <id> [--json]")
 	}
 
-	store, err := openStore(*repoRoot)
+	store, err := openStore(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -120,7 +157,7 @@ func runSpecSummarize(args []string) error {
 		proj.TemplateSummary = buildTemplateSummary(spec.ID, spec.Title, timelineEvents)
 	}
 
-	if *jsonOut {
+	if jsonOut {
 		b, err := json.MarshalIndent(proj, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal projection: %w", err)
@@ -134,37 +171,23 @@ func runSpecSummarize(args []string) error {
 	return nil
 }
 
-// runSpecSummarizeCommit persists the agent-generated summary. On any validation
-// failure (missing flags, unreadable file, invalid/empty prose) it writes nothing
-// and returns a clear error — the run leaves summaries.json untouched.
-func runSpecSummarizeCommit(presetID string, args []string) error {
-	id, rest := presetID, args
-	if id == "" {
-		id, rest = leadingID(args)
-	}
-	fs := flag.NewFlagSet("spec summarize commit", flag.ContinueOnError)
-	idFlag := fs.String("id", "", "spec id (or pass it as the first argument)")
-	action := fs.String("action", "", "the command that produced this summary (required)")
-	summaryFile := fs.String("summary-file", "", "path to the summary JSON, or - for stdin (required)")
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	jsonOut := fs.Bool("json", false, "emit a JSON result for tooling")
-	if err := fs.Parse(rest); err != nil {
-		return err
-	}
-	if id == "" {
-		id = *idFlag
-	}
+// runSpecSummarizeCommitBody persists the agent-generated summary. On any
+// validation failure (missing flags, unreadable file, invalid/empty prose) it
+// writes nothing and returns a clear error — the run leaves summaries.json
+// untouched. id/action/summaryFile arrive already resolved by the RunE's two-order
+// detection (the id from the positional or --id flag).
+func runSpecSummarizeCommitBody(id, action, summaryFile, repoRoot string, jsonOut bool) error {
 	if id == "" {
 		return errors.New("usage: vector spec summarize commit <id> --action <name> --summary-file -|path")
 	}
-	if *action == "" {
+	if action == "" {
 		return errors.New("usage: vector spec summarize commit <id> --action <name> --summary-file -|path")
 	}
-	if *summaryFile == "" {
+	if summaryFile == "" {
 		return errors.New("usage: vector spec summarize commit <id> --action <name> --summary-file -|path")
 	}
 
-	raw, err := readBody(*summaryFile)
+	raw, err := readBody(summaryFile)
 	if err != nil {
 		return fmt.Errorf("cannot read summary file: %w", err)
 	}
@@ -177,7 +200,7 @@ func runSpecSummarizeCommit(presetID string, args []string) error {
 		return errors.New("empty summary: nothing written")
 	}
 
-	store, err := openStore(*repoRoot)
+	store, err := openStore(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -196,7 +219,7 @@ func runSpecSummarizeCommit(presetID string, args []string) error {
 	// summary exists and no work.logged event was recorded after it, preserve the
 	// prior prose instead of overwriting it (CLI-owns-writes — the binary refuses to
 	// let an empty-handed regeneration destroy substance).
-	if *action == "close" || *action == "archive" {
+	if action == "close" || action == "archive" {
 		prior, err := store.ReadSummary(id)
 		if err != nil {
 			return err
@@ -207,30 +230,30 @@ func runSpecSummarizeCommit(presetID string, args []string) error {
 				return err
 			}
 			if !hasWorkLoggedAfter(events, id, prior.GeneratedAt) {
-				if *jsonOut {
+				if jsonOut {
 					return printJSON(map[string]string{
 						"id":        id,
-						"action":    *action,
+						"action":    action,
 						"preserved": "true",
 					})
 				}
-				fmt.Printf("no new work since the last summary; preserved the prior summary for spec %q (action: %s)\n", id, *action)
+				fmt.Printf("no new work since the last summary; preserved the prior summary for spec %q (action: %s)\n", id, action)
 				return nil
 			}
 		}
 	}
 
-	if err := store.WriteSummary(id, summary, *action, time.Now()); err != nil {
+	if err := store.WriteSummary(id, summary, action, time.Now()); err != nil {
 		return err
 	}
 
-	if *jsonOut {
+	if jsonOut {
 		return printJSON(map[string]string{
 			"id":     id,
-			"action": *action,
+			"action": action,
 		})
 	}
-	fmt.Printf("summary committed for spec %q (action: %s)\n", id, *action)
+	fmt.Printf("summary committed for spec %q (action: %s)\n", id, action)
 	return nil
 }
 

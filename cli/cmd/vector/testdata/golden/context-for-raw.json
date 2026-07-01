@@ -1,0 +1,16 @@
+{
+  "command": "raw",
+  "tier": "lazy-validate",
+  "validatedDomains": [
+    "stack",
+    "workspace"
+  ],
+  "stack": {
+    "packageManager": "go-modules",
+    "runtime": {
+      "name": "go",
+      "version": "1.26"
+    },
+    "frameworks": []
+  }
+}
