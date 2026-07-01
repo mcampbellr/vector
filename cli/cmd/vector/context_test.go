@@ -135,3 +135,63 @@ func TestContextForProjection(t *testing.T) {
 		}
 	})
 }
+
+// TestContextWorktreeBlock verifies the additive worktree block: inert on a
+// non-worktree repo (the default .vector store) and populated on a bare+worktree
+// layout, with base/prefix defaults and overrides honored.
+func TestContextWorktreeBlock(t *testing.T) {
+	t.Run("non-worktree is inert", func(t *testing.T) {
+		root := seedContextRepo(t) // config.Resolve → .vector/specs/<slug>/ (no [branch])
+		out := captureStdout(t, func() error {
+			return runContext([]string{"--repo-root", root, "--json"})
+		})
+		var co ContextOutput
+		if err := json.Unmarshal([]byte(out), &co); err != nil {
+			t.Fatalf("invalid JSON: %v\n%s", err, out)
+		}
+		if co.Worktree.Layout {
+			t.Errorf("worktree.layout = true, want false for non-worktree repo")
+		}
+		if co.Worktree.Root != "" {
+			t.Errorf("worktree.root = %q, want empty", co.Worktree.Root)
+		}
+		// Defaults are always exposed even when inert.
+		if co.Worktree.BaseBranch != config.DefaultBaseBranch || co.Worktree.BranchPrefix != config.DefaultBranchPrefix {
+			t.Errorf("defaults = (%q, %q), want (%q, %q)",
+				co.Worktree.BaseBranch, co.Worktree.BranchPrefix, config.DefaultBaseBranch, config.DefaultBranchPrefix)
+		}
+	})
+
+	t.Run("worktree layout populated with overrides", func(t *testing.T) {
+		root := t.TempDir()
+		cfg := &config.Config{
+			SchemaVersion: config.SchemaVersion,
+			SpecPath:      "code/[branch]/.vector/specs/<slug>/",
+			SpecFilename:  "spec.md",
+			SpecStore:     config.StoreConvention,
+			Source:        config.SourceDefault,
+			BaseBranch:    "develop",
+			BranchPrefix:  "spec/",
+		}
+		if err := config.Write(root, cfg); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+		writeContextFile(t, root, "go.mod", "module example.com/x\n\ngo 1.26\n")
+		out := captureStdout(t, func() error {
+			return runContext([]string{"--repo-root", root, "--json"})
+		})
+		var co ContextOutput
+		if err := json.Unmarshal([]byte(out), &co); err != nil {
+			t.Fatalf("invalid JSON: %v\n%s", err, out)
+		}
+		if !co.Worktree.Layout {
+			t.Error("worktree.layout = false, want true for [branch] layout")
+		}
+		if co.Worktree.Root != "code" {
+			t.Errorf("worktree.root = %q, want %q", co.Worktree.Root, "code")
+		}
+		if co.Worktree.BaseBranch != "develop" || co.Worktree.BranchPrefix != "spec/" {
+			t.Errorf("override = (%q, %q), want (develop, spec/)", co.Worktree.BaseBranch, co.Worktree.BranchPrefix)
+		}
+	})
+}

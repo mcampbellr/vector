@@ -60,9 +60,15 @@ register the card with its relations; the binary writes the doc and creates the 
    Extract from `CONTEXT`:
    - `SPEC_EXAMPLE_PATH` ← `CONTEXT.examplePath`
    - `SPEC_LANGUAGE` ← `CONTEXT.language`
+   - `WT_LAYOUT` ← `CONTEXT.worktree.layout` (true when the repo declares a bare+worktree layout —
+     the `[branch]` placeholder is present in `spec-path`/`changes-path`)
+   - `WT_ROOT` ← `CONTEXT.worktree.root` (literal prefix before `[branch]`, e.g. `code`)
+   - `WT_BASE` ← `CONTEXT.worktree.baseBranch` (fork point for new worktrees, default `main`)
+   - `WT_PREFIX` ← `CONTEXT.worktree.branchPrefix` (feature-branch prefix, default `feat/`)
 
    **Fallback when `vector context` fails**: emit a one-line warning; `SPEC_EXAMPLE_PATH` and
-   `SPEC_LANGUAGE` will be resolved in step 4 using the original glob+detect approach.
+   `SPEC_LANGUAGE` will be resolved in step 4 using the original glob+detect approach. Treat
+   `WT_LAYOUT` as `false` (the worktree step in step 9 stays inert) when context is unavailable.
 
 1. **Parse the input.** Split `$ARGUMENTS` into `RAW_BUG` (the report) and an optional trailing
    `{spec-id|branch|file}` token (`SCOPE`). If `RAW_BUG` is empty, ask the user for the report via
@@ -147,8 +153,41 @@ register the card with its relations; the binary writes the doc and creates the 
    - `BLOCK` → fix the required items (ask the user if a fix needs info). Re-validate. **Cap 3
      cycles**; if still blocked, surface the report verbatim and stop **without** registering.
 
-9. **Register the draft card** — pass the validated spec to the binary via file path. The binary
-   reads the doc from `SPEC_PATH`, creates the card in `draft`, and persists `relatedTo[]`:
+9. **Register the draft card**.
+
+   a. **Ensure the spec's worktree exists** (bare+worktree layouts only). When `WT_LAYOUT` is
+      true, the binary resolves the spec doc under `<WT_ROOT>/<SPEC_ID>/…`, so that per-spec git
+      worktree must exist **before** `vector spec create` writes the doc — otherwise the doc lands
+      as a loose, untracked `<WT_ROOT>/<SPEC_ID>/` directory (the bug this command guards against).
+      Run, from `REPO_ROOT`:
+
+      ```bash
+      if [ "$WT_LAYOUT" = "true" ]; then
+        WT_PATH="$WT_ROOT/$SPEC_ID"                      # e.g. code/<slug>
+        WT_BRANCH="$WT_PREFIX$SPEC_ID"                   # e.g. feat/<slug>
+        if git -C "$REPO_ROOT" worktree list --porcelain | grep -Fqx "worktree $REPO_ROOT/$WT_PATH"; then
+          echo "reusing existing worktree $WT_PATH"      # idempotent: never recreate
+        else
+          git -C "$REPO_ROOT" worktree add "$WT_PATH" -b "$WT_BRANCH" "$WT_BASE"
+        fi
+      fi
+      ```
+
+      - **Inert on non-worktree repos**: `WT_LAYOUT` false → skip entirely; behavior identical to
+        today (e.g. Vector's own repo, `.vector/specs/<slug>/`).
+      - **Idempotent**: if `git worktree list` already lists `<WT_ROOT>/<SPEC_ID>`, reuse it — no
+        recreation, no error.
+      - **Conflict → abort, never auto-delete**: if `git worktree add` fails (a loose
+        non-worktree directory or a stale `<WT_PREFIX><SPEC_ID>` branch already occupies the path),
+        surface git's error **verbatim** plus the manual fix (remove/relocate the loose
+        `<WT_ROOT>/<SPEC_ID>/` stub, or `git worktree add` it by hand) and **stop without
+        registering the card**. Do not delete or overwrite the user's files. Cleanup of pre-existing
+        stubs is out of scope (the user's responsibility).
+
+   b. **Create the card** — pass the validated spec to the binary via file path. The binary reads
+      the doc from `SPEC_PATH`, creates the card in `draft` (writing the doc inside the worktree
+      created in 9a, so it stays tracked on the `<WT_PREFIX><SPEC_ID>` branch), and persists
+      `relatedTo[]`:
 
    ```bash
    vector spec create \

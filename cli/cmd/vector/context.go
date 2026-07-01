@@ -33,8 +33,23 @@ type ContextOutput struct {
 	// /vector:raw and /vector:research is enabled for this repo (true unless
 	// sketchEnabled is explicitly false in config). The command skips the sketch
 	// prompt when this is false, without re-reading config.json itself.
-	SketchEnabled bool          `json:"sketchEnabled"`
-	Intel         *IntelSummary `json:"intel,omitempty"`
+	SketchEnabled bool            `json:"sketchEnabled"`
+	Worktree      WorktreeContext `json:"worktree"`
+	Intel         *IntelSummary   `json:"intel,omitempty"`
+}
+
+// WorktreeContext describes the repo's bare+worktree layout for the /vector:raw
+// and /vector:bug orchestration: whether the [branch] placeholder is present
+// (Layout), the worktree root directory (Root — the literal prefix before
+// [branch], e.g. "code"), and the base branch + branch prefix used when creating
+// a per-spec worktree. On non-worktree repos Layout is false, Root is empty, and
+// the worktree-create step is inert (BaseBranch/BranchPrefix still carry their
+// defaults but are not consulted).
+type WorktreeContext struct {
+	Layout       bool   `json:"layout"`
+	Root         string `json:"root"`
+	BaseBranch   string `json:"baseBranch"`
+	BranchPrefix string `json:"branchPrefix"`
 }
 
 // IntelSummary is the compact repo-intel projection embedded in ContextOutput:
@@ -181,6 +196,12 @@ func runContext(args []string) error {
 		ApplyMode:      string(cfg.ResolvedApplyMode()),
 		TicketDetected: cfg.ResolvedDefaultTicketProvider() != "",
 		SketchEnabled:  cfg.IsSketchEnabled(),
+		Worktree: WorktreeContext{
+			Layout:       cfg.HasBranchPlaceholder(),
+			Root:         cfg.WorktreeRoot(),
+			BaseBranch:   cfg.BaseBranchOrDefault(),
+			BranchPrefix: cfg.BranchPrefixOrDefault(),
+		},
 	}
 
 	// Validate (and lazily regenerate) the full intel cache, attaching a compact
@@ -210,6 +231,11 @@ func runContext(args []string) error {
 	fmt.Printf("%-16s %s\n", "applyMode", out.ApplyMode)
 	fmt.Printf("%-16s %v\n", "ticketDetected", out.TicketDetected)
 	fmt.Printf("%-16s %v\n", "sketchEnabled", out.SketchEnabled)
+	if out.Worktree.Layout {
+		fmt.Printf("%-16s %s (base %s, prefix %s)\n", "worktree", out.Worktree.Root, out.Worktree.BaseBranch, out.Worktree.BranchPrefix)
+	} else {
+		fmt.Printf("%-16s %s\n", "worktree", "(none)")
+	}
 	return nil
 }
 
