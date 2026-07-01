@@ -2,7 +2,7 @@ name: release
 
 # Tag-triggered release pipeline. Pushing a v* tag builds the web SPA, embeds it
 # into the Go binary, runs the test suite, then GoReleaser publishes the GitHub
-# release (4 platform archives + checksums.txt). Build now, publish later: this
+# release (6 platform archives + checksums.txt). Build now, publish later: this
 # only produces releases once a tag is pushed.
 on:
   push:

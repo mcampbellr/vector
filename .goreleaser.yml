@@ -1,7 +1,7 @@
 # GoReleaser v2 — Vector CLI release pipeline.
-# Builds 4 precompiled binaries (darwin/linux × amd64/arm64) with the embedded
-# web SPA and seeded kit assets, publishes a GitHub release with a SHA256
-# checksums.txt. No Homebrew/Docker/snapcraft, no Windows, no GPG (V1 scope).
+# Builds 6 precompiled binaries (darwin/linux/windows × amd64/arm64) with the
+# embedded web SPA and seeded kit assets, publishes a GitHub release with a
+# SHA256 checksums.txt. No Homebrew/Docker/snapcraft, no GPG (V1 scope).
 #
 # Asset name contract: vector_<VERSION>_<OS>_<ARCH>.tar.gz with <VERSION> = tag
 # without the leading "v". scripts/install.sh builds the identical string.
@@ -30,14 +30,22 @@ builds:
     goos:
       - darwin
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
 
 archives:
+  # Native archive format per platform: .tar.gz on Unix, .zip on Windows.
+  # GoReleaser v2 discriminates format by goos via format_overrides (the
+  # Archive schema has no top-level `goos` field), keeping a single id and an
+  # invariant name_template across all three platforms.
   - id: vector
     formats: [tar.gz]
     name_template: "vector_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
 
 checksum:
   name_template: checksums.txt
@@ -48,6 +56,10 @@ release:
     owner: mcampbellr
     name: vector
   prerelease: auto
+  # Publish the PowerShell installer as a release asset so the
+  # releases/latest/download/install.ps1 one-liner URL resolves.
+  extra_files:
+    - glob: scripts/install.ps1
 
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"
