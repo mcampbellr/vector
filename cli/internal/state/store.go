@@ -538,7 +538,7 @@ func (s *Store) FixSpec(id, classification, validationResult string, artifacts, 
 // overwrites the file and refreshes the ref's timestamp rather than duplicating it,
 // matching file-overwrite semantics. ref.CreatedAt drives the spec's UpdatedAt so
 // the `vector serve` watcher observes a fresh state.json and broadcasts over SSE.
-func (s *Store) AttachSketch(id string, file []byte, ref SketchRef) error {
+func (s *Store) AttachSketch(id string, file []byte, ref SketchRef, actor string) error {
 	if ref.Name == "" || ref.Name != filepath.Base(ref.Name) || ref.Name == "." || ref.Name == ".." || strings.ContainsAny(ref.Name, `/\`) {
 		return fmt.Errorf("invalid sketch name %q: must be a bare file name", ref.Name)
 	}
@@ -569,7 +569,23 @@ func (s *Store) AttachSketch(id string, file []byte, ref SketchRef) error {
 		spec.Sketches = append(spec.Sketches, ref)
 	}
 	spec.UpdatedAt = ref.CreatedAt.UTC()
-	return writeSpecFile(s.statePath(id), spec)
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(SketchAttachedData{Name: ref.Name})
+	if err != nil {
+		return fmt.Errorf("marshal sketch.attached data: %w", err)
+	}
+	return s.appendEvent(Event{
+		V:      EventVersion,
+		TS:     ref.CreatedAt.UTC(),
+		Type:   EvtSketchAttached,
+		SpecID: spec.ID,
+		Repo:   spec.Repo,
+		Actor:  actor,
+		Data:   data,
+	})
 }
 
 // setStatusTimestamp stamps the lifecycle timestamp implied by a status, without

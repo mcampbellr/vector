@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "emit-sketch-attached-event",
+  "title": "Emit sketch.attached event in Store.AttachSketch to close the state-sync audit gap",
+  "status": "in-progress",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/emit-sketch-attached-event/spec.md",
+  "quickWin": true,
+  "createdAt": "2026-07-01T12:49:37.889477Z",
+  "startedAt": "2026-07-01T12:49:37.889477Z",
+  "updatedAt": "2026-07-01T12:49:37.889477Z"
+}
