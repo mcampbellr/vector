@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "canonical-sketch-filenames",
+  "title": "Compute canonical Excalidraw sketch filenames in the binary",
+  "status": "in-progress",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/canonical-sketch-filenames/spec.md",
+  "quickWin": true,
+  "createdAt": "2026-07-01T18:46:53.514274Z",
+  "startedAt": "2026-07-01T18:46:53.514274Z",
+  "updatedAt": "2026-07-01T18:46:53.514274Z"
+}
