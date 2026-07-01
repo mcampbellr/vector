@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react'
-import { ClipboardCheck, Clock, Sparkles, Tag, Zap } from 'lucide-react'
+import { ClipboardCheck, Clock, Layers, Sparkles, Tag, Zap } from 'lucide-react'
 import type { Card } from '../../types/board'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
@@ -71,6 +71,15 @@ export function SpecCard({ card, onSelect }: SpecCardProps) {
           <span className={styles.uat} title="Requires manual UAT" aria-label="Requires manual UAT">
             <ClipboardCheck size={12} strokeWidth={2} />
             UAT
+          </span>
+        )}
+        {card.sketches && card.sketches.length > 0 && (
+          <span
+            className={styles.sketch}
+            title={`${card.sketches.length} Excalidraw sketch${card.sketches.length > 1 ? 'es' : ''} attached`}
+            aria-label={`${card.sketches.length} Excalidraw sketch${card.sketches.length > 1 ? 'es' : ''} attached`}
+          >
+            <Layers size={13} strokeWidth={2} />
           </span>
         )}
         <PriorityFlag priority={card.priority} />
