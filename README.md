@@ -51,8 +51,8 @@ curl -fsSL https://raw.githubusercontent.com/mcampbellr/vector/main/scripts/inst
 
 Detects your OS and architecture, downloads the matching binary from the latest
 [release](https://github.com/mcampbellr/vector/releases), verifies its SHA256, and installs to
-`~/.local/bin/vector`. No `sudo`, no shell-profile edits. Supported platforms: macOS and Linux
-on `amd64` and `arm64`.
+`~/.local/bin/vector`. No `sudo`, no shell-profile edits. Supported platforms: macOS, Linux, and
+Windows on `amd64` and `arm64`.
 
 Pin a specific version instead of the latest:
 
@@ -61,6 +61,27 @@ curl -fsSL https://raw.githubusercontent.com/mcampbellr/vector/main/scripts/inst
 ```
 
 Override the install directory with `VECTOR_INSTALL_DIR` (default `~/.local/bin`).
+
+### Windows
+
+In PowerShell 5.1+ (latest release):
+
+```powershell
+irm https://raw.githubusercontent.com/mcampbellr/vector/main/scripts/install.ps1 | iex
+```
+
+Detects your architecture, downloads the matching `.zip` from the latest release, verifies its
+SHA256, and installs `vector.exe` to `%LOCALAPPDATA%\Programs\Vector\vector.exe` (no admin
+elevation). To pin a version — or to inspect the script first — use the two-step form, since a
+PowerShell 5.1 one-liner cannot forward arguments through `iex`:
+
+```powershell
+irm https://raw.githubusercontent.com/mcampbellr/vector/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 --version v0.1.0
+```
+
+Override the install directory with `$env:VECTOR_INSTALL_DIR`. If the install directory is not on
+your `PATH`, the script prints a one-line command to add it (no automatic `PATH` changes).
 
 ### Binary
 
