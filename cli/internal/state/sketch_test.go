@@ -77,7 +77,7 @@ func TestAttachSketchPersistsAndProjects(t *testing.T) {
 	}
 
 	created := fixedNow().Add(time.Hour)
-	if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: "board.excalidraw", CreatedAt: created}); err != nil {
+	if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: "board.excalidraw", CreatedAt: created}, "cli"); err != nil {
 		t.Fatalf("AttachSketch: %v", err)
 	}
 
@@ -109,6 +109,45 @@ func TestAttachSketchPersistsAndProjects(t *testing.T) {
 	}
 }
 
+// TestAttachSketchEmitsEvent verifies AttachSketch appends a sketch.attached event
+// to the activity log so the attach leaves a trace (state-sync-discipline).
+func TestAttachSketchEmitsEvent(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	if _, err := store.CreateSpec(CreateSpecParams{Title: "Alpha", Body: "x", Now: fixedNow()}); err != nil {
+		t.Fatalf("CreateSpec: %v", err)
+	}
+	created := fixedNow().Add(time.Hour)
+	if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: "board.excalidraw", CreatedAt: created}, "cli"); err != nil {
+		t.Fatalf("AttachSketch: %v", err)
+	}
+
+	events, err := store.ReadEvents()
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	var found *Event
+	for i := range events {
+		if events[i].Type == EvtSketchAttached {
+			found = &events[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no sketch.attached event emitted; events = %+v", events)
+	}
+	if found.SpecID != "alpha" || found.Actor != "cli" || !found.TS.Equal(created.UTC()) {
+		t.Errorf("event fields = specId %q actor %q ts %v", found.SpecID, found.Actor, found.TS)
+	}
+	var data SketchAttachedData
+	if err := json.Unmarshal(found.Data, &data); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if data.Name != "board.excalidraw" {
+		t.Errorf("payload Name = %q, want board.excalidraw", data.Name)
+	}
+}
+
 // TestAttachSketchReAttachOverwrites verifies re-attaching the same name overwrites
 // the file and refreshes the ref rather than duplicating it.
 func TestAttachSketchReAttachOverwrites(t *testing.T) {
@@ -118,12 +157,12 @@ func TestAttachSketchReAttachOverwrites(t *testing.T) {
 		t.Fatalf("CreateSpec: %v", err)
 	}
 	ref := SketchRef{Name: "s.excalidraw", CreatedAt: fixedNow()}
-	if err := store.AttachSketch("alpha", []byte(sampleSketch), ref); err != nil {
+	if err := store.AttachSketch("alpha", []byte(sampleSketch), ref, "cli"); err != nil {
 		t.Fatalf("AttachSketch 1: %v", err)
 	}
 	updated := `{"type":"excalidraw","version":2,"elements":[1]}`
 	ref.CreatedAt = fixedNow().Add(2 * time.Hour)
-	if err := store.AttachSketch("alpha", []byte(updated), ref); err != nil {
+	if err := store.AttachSketch("alpha", []byte(updated), ref, "cli"); err != nil {
 		t.Fatalf("AttachSketch 2: %v", err)
 	}
 	spec, _ := store.ReadSpec("alpha")
@@ -144,12 +183,12 @@ func TestAttachSketchRejectsBadNameAndMissingSpec(t *testing.T) {
 		t.Fatalf("CreateSpec: %v", err)
 	}
 	for _, name := range []string{"", ".", "..", "a/b.excalidraw", "../escape"} {
-		if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: name, CreatedAt: fixedNow()}); err == nil {
+		if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: name, CreatedAt: fixedNow()}, "cli"); err == nil {
 			t.Errorf("AttachSketch name %q: want error", name)
 		}
 	}
 	// Unknown spec → error (ReadSpec wraps fs.ErrNotExist).
-	if err := store.AttachSketch("ghost", []byte(sampleSketch), SketchRef{Name: "s.excalidraw", CreatedAt: fixedNow()}); err == nil {
+	if err := store.AttachSketch("ghost", []byte(sampleSketch), SketchRef{Name: "s.excalidraw", CreatedAt: fixedNow()}, "cli"); err == nil {
 		t.Error("AttachSketch on missing spec: want error")
 	}
 }

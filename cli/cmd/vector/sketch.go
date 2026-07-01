@@ -60,7 +60,7 @@ func runSpecAttachSketch(args []string) error {
 		return err
 	}
 	ref := state.SketchRef{Name: sketchName, CreatedAt: time.Now().UTC()}
-	if err := store.AttachSketch(id, data, ref); err != nil {
+	if err := store.AttachSketch(id, data, ref, resolveActor()); err != nil {
 		return err
 	}
 

@@ -12,20 +12,21 @@ const EventVersion = 1
 type EventType string
 
 const (
-	EvtSpecCreated   EventType = "spec.created"
-	EvtSpecLinked    EventType = "spec.linked"
-	EvtSpecRelated   EventType = "spec.related" // cause→bug relation recorded on a spec
-	EvtStatusChanged EventType = "status.changed"
-	EvtNoteAdded     EventType = "note.added"
-	EvtReminderSet   EventType = "reminder.set"
-	EvtSpecProposed  EventType = "spec.proposed"
-	EvtSpecApplied   EventType = "spec.applied"
-	EvtSpecFixed     EventType = "spec.fixed" // a /vector:fix correction (additive; never transitions)
-	EvtSpecClosed    EventType = "spec.closed"
-	EvtSpecArchived  EventType = "spec.archived"
-	EvtBoardMoved    EventType = "board.moved"
-	EvtAgentRouted   EventType = "agent.routed" // feeds the Token Savings Meter
-	EvtWorkLogged    EventType = "work.logged"  // enriched apply trace for the standup digest
+	EvtSpecCreated    EventType = "spec.created"
+	EvtSpecLinked     EventType = "spec.linked"
+	EvtSpecRelated    EventType = "spec.related" // cause→bug relation recorded on a spec
+	EvtStatusChanged  EventType = "status.changed"
+	EvtNoteAdded      EventType = "note.added"
+	EvtReminderSet    EventType = "reminder.set"
+	EvtSpecProposed   EventType = "spec.proposed"
+	EvtSpecApplied    EventType = "spec.applied"
+	EvtSpecFixed      EventType = "spec.fixed" // a /vector:fix correction (additive; never transitions)
+	EvtSpecClosed     EventType = "spec.closed"
+	EvtSpecArchived   EventType = "spec.archived"
+	EvtBoardMoved     EventType = "board.moved"
+	EvtAgentRouted    EventType = "agent.routed"    // feeds the Token Savings Meter
+	EvtWorkLogged     EventType = "work.logged"     // enriched apply trace for the standup digest
+	EvtSketchAttached EventType = "sketch.attached" // a UI wireframe was attached to a spec
 )
 
 // Event is one line of .vector/local/activity.jsonl (append-only, gitignored,
@@ -105,6 +106,13 @@ type SpecLinkedData struct {
 	Key      string         `json:"key"`
 	URL      string         `json:"url"`
 	Auto     bool           `json:"auto"`
+}
+
+// SketchAttachedData is the payload for EvtSketchAttached: a UI wireframe attached
+// to a spec via Store.AttachSketch. Purely additive for the timeline/standup; a
+// consumer that does not know sketch.attached ignores it.
+type SketchAttachedData struct {
+	Name string `json:"name"`
 }
 
 // AgentRoutedData is the payload for EvtAgentRouted — the commercialization
