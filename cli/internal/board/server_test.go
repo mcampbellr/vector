@@ -200,6 +200,35 @@ func TestHandleFileServesMarkdown(t *testing.T) {
 	}
 }
 
+// TestHandleFileServesSketchAsDownload verifies a sketch is served as a binary
+// download (octet-stream + Content-Disposition attachment with the stored name).
+func TestHandleFileServesSketchAsDownload(t *testing.T) {
+	sketch := []byte(`{"type":"excalidraw","version":2,"elements":[]}`)
+	src := fakeSource{
+		specs: []*state.SpecState{{
+			ID: "alpha", Status: state.StatusInProgress,
+			Sketches: []state.SketchRef{{Name: "board.excalidraw"}},
+		}},
+		artifacts: map[string][]byte{"alpha/sketch": sketch},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/file?spec=alpha&artifact=sketch", nil)
+	rec := httptest.NewRecorder()
+	NewServer(src, "demo").Routes(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/octet-stream" {
+		t.Errorf("content-type = %q, want application/octet-stream", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="board.excalidraw"` {
+		t.Errorf("content-disposition = %q, want attachment with the sketch name", cd)
+	}
+	if body := rec.Body.String(); body != string(sketch) {
+		t.Errorf("body = %q, want the raw sketch bytes", body)
+	}
+}
+
 func TestHandleFileBadParams(t *testing.T) {
 	src := fakeSource{specs: []*state.SpecState{{ID: "alpha", Status: state.StatusOpen}}}
 	for _, path := range []string{

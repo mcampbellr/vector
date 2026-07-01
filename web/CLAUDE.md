@@ -28,8 +28,11 @@ usuario.
 
 - `vector serve --port 8787` (API+SSE) **+** `npm run dev` (Vite 5173, proxy `/api` → 8787).
 - Alternativa: `npm run build` y `vector serve --web-dir web/dist`.
-- Build embebido (release): `npm run build` → copiar `web/dist` a `cli/internal/webui/dist/`
-  antes de compilar el binario. El `index.html` placeholder mantiene válido el `embed`.
+- Build embebido: `npm run build` → copiar `web/dist` a `cli/internal/webui/dist/` **antes** de
+  compilar/reinstalar el binario. **Obligatorio en TODO cambio de web** (no solo en release):
+  `go build` no rebuildea el frontend, así que un binario recompilado sin re-embeber sirve el UI
+  viejo **silenciosamente**. Flujo completo y modo de fallo en
+  `architecture/distribution-packaging.md` (§Flujo de edición del frontend).
 
 ## Depende de / es dependido por
 

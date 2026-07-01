@@ -144,6 +144,13 @@ type SpecState struct {
 	// compatible (omitempty) so specs without it read/serialize byte-identically.
 	QuickWin bool `json:"quickWin,omitempty"`
 
+	// Sketches records the Excalidraw design wireframes attached to this spec
+	// (produced by /vector:raw and /vector:research via the vector-ui-ux-designer
+	// agent, written by `vector spec attach-sketch`). Optional and omitempty, so
+	// specs without a sketch read/serialize byte-identically. SchemaVersion stays 1:
+	// a legacy SpecState deserializes with Sketches == nil (no migration).
+	Sketches []SketchRef `json:"sketches,omitempty"`
+
 	Ticket   *Ticket    `json:"ticket,omitempty"`
 	OpenSpec *OpenSpec  `json:"openspec,omitempty"`
 	Flag     *Attention `json:"needsAttention,omitempty"`
@@ -171,6 +178,14 @@ type RelatedItem struct {
 	Kind   RelatedKind   `json:"kind"`
 	Ref    string        `json:"ref"`
 	Source RelatedSource `json:"source"`
+}
+
+// SketchRef is one Excalidraw wireframe attached to a spec. Name is the file's
+// basename under .vector/specs/<id>/sketches/ (sanitized by attach-sketch: no
+// path separators, no traversal). CreatedAt is when the sketch was attached.
+type SketchRef struct {
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // Ticket links a spec to an external tracker.

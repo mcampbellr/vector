@@ -596,7 +596,7 @@ func humanizeSlug(slug string) string {
 
 func runSpec(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route> ...")
+		return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
 	}
 	switch args[0] {
 	case "create":
@@ -627,6 +627,8 @@ func runSpec(args []string) error {
 		return runSpecSummarize(args[1:])
 	case "route":
 		return runSpecRoute(args[1:])
+	case "attach-sketch":
+		return runSpecAttachSketch(args[1:])
 	default:
 		return fmt.Errorf("unknown spec subcommand %q", args[0])
 	}
@@ -1116,6 +1118,7 @@ usage:
   vector spec worklog <id> [--files a.go,b.go] [--tasks "DTO mapper"] [--note "..."] [--json]
   vector spec summarize <id> [--json]
   vector spec summarize commit <id> --action <name> --summary-file -|path [--json]
+  vector spec attach-sketch <id> --file path.excalidraw [--name name] [--json]
   vector spec list [--json]
   vector detect-ticket [--repo-root path] [--text-file -|path] [--json]
   vector version

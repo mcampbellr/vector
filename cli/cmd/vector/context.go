@@ -22,14 +22,19 @@ import (
 // summary of the repo's stack and workspaces (class-C cache); it is additive and
 // omitted for callers that don't consume it (backward-compat).
 type ContextOutput struct {
-	ExamplePath    string        `json:"examplePath"`
-	Language       string        `json:"language"`
-	BuildCmd       string        `json:"buildCmd"`
-	LintCmd        string        `json:"lintCmd"`
-	TestCmd        string        `json:"testCmd"`
-	ApplyMode      string        `json:"applyMode"`
-	TicketDetected bool          `json:"ticketDetected"`
-	Intel          *IntelSummary `json:"intel,omitempty"`
+	ExamplePath    string `json:"examplePath"`
+	Language       string `json:"language"`
+	BuildCmd       string `json:"buildCmd"`
+	LintCmd        string `json:"lintCmd"`
+	TestCmd        string `json:"testCmd"`
+	ApplyMode      string `json:"applyMode"`
+	TicketDetected bool   `json:"ticketDetected"`
+	// SketchEnabled reports whether the opt-in Excalidraw sketch step at the tail of
+	// /vector:raw and /vector:research is enabled for this repo (true unless
+	// sketchEnabled is explicitly false in config). The command skips the sketch
+	// prompt when this is false, without re-reading config.json itself.
+	SketchEnabled bool          `json:"sketchEnabled"`
+	Intel         *IntelSummary `json:"intel,omitempty"`
 }
 
 // IntelSummary is the compact repo-intel projection embedded in ContextOutput:
@@ -175,6 +180,7 @@ func runContext(args []string) error {
 		TestCmd:        testCmd,
 		ApplyMode:      string(cfg.ResolvedApplyMode()),
 		TicketDetected: cfg.ResolvedDefaultTicketProvider() != "",
+		SketchEnabled:  cfg.IsSketchEnabled(),
 	}
 
 	// Validate (and lazily regenerate) the full intel cache, attaching a compact
@@ -203,6 +209,7 @@ func runContext(args []string) error {
 	fmt.Printf("%-16s %s\n", "testCmd", strOr(out.TestCmd, "(none)"))
 	fmt.Printf("%-16s %s\n", "applyMode", out.ApplyMode)
 	fmt.Printf("%-16s %v\n", "ticketDetected", out.TicketDetected)
+	fmt.Printf("%-16s %v\n", "sketchEnabled", out.SketchEnabled)
 	return nil
 }
 

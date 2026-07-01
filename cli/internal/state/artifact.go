@@ -62,6 +62,14 @@ func artifactRelPath(spec *SpecState, artifact string) (string, error) {
 			return "", fmt.Errorf("spec %q has no %s artifact: %w", spec.ID, artifact, fs.ErrNotExist)
 		}
 		return filepath.ToSlash(filepath.Join("openspec", "changes", spec.OpenSpec.Change, artifact+".md")), nil
+	case "sketch":
+		// V1 serves the first sketch; it lives under the spec's own
+		// .vector/specs/<id>/sketches/ shard, already covered by verifyArtifactPath's
+		// allowed prefix. No sketch → fs.ErrNotExist (handler maps to 404).
+		if len(spec.Sketches) == 0 {
+			return "", fmt.Errorf("spec %q has no sketch: %w", spec.ID, fs.ErrNotExist)
+		}
+		return filepath.ToSlash(filepath.Join(".vector", "specs", spec.ID, "sketches", spec.Sketches[0].Name)), nil
 	default:
 		return "", fmt.Errorf("unknown artifact %q: %w", artifact, fs.ErrNotExist)
 	}

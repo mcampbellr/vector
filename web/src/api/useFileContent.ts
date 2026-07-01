@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 
-/** The artifact keys the /api/file endpoint accepts (mirrors the Go enum). */
-export type ArtifactKey = 'spec' | 'proposal' | 'design' | 'tasks'
+/** The artifact keys the /api/file endpoint accepts (mirrors the Go enum).
+ *  'sketch' is download-only (a binary .excalidraw), never fetched as text by
+ *  this hook — it is served through a native `<a href download>`. */
+export type ArtifactKey = 'spec' | 'proposal' | 'design' | 'tasks' | 'sketch'
 
 export interface FileContentState {
   data: string | null

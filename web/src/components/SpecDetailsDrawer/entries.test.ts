@@ -60,6 +60,39 @@ describe('entriesFor', () => {
   it('returns no entries when there is no spec doc and no artifacts', () => {
     expect(entriesFor(makeCard({}))).toEqual([])
   })
+
+  it('adds a download entry per sketch', () => {
+    const entries = entriesFor(
+      makeCard({
+        specDoc: '.vector/specs/my-spec/spec.md',
+        sketches: [{ name: 'board.excalidraw', createdAt: '2026-06-27T00:00:00Z' }],
+      }),
+    )
+    expect(entries).toEqual([
+      { key: 'spec', label: 'spec.md' },
+      { key: 'sketch', label: 'board.excalidraw', download: true },
+    ])
+  })
+
+  it('emits one entry per sketch when several are attached', () => {
+    const entries = entriesFor(
+      makeCard({
+        sketches: [
+          { name: 'board.excalidraw', createdAt: '2026-06-27T00:00:00Z' },
+          { name: 'drawer.excalidraw', createdAt: '2026-06-27T01:00:00Z' },
+        ],
+      }),
+    )
+    expect(entries).toEqual([
+      { key: 'sketch', label: 'board.excalidraw', download: true },
+      { key: 'sketch', label: 'drawer.excalidraw', download: true },
+    ])
+  })
+
+  it('adds no sketch entries when the card has none', () => {
+    const entries = entriesFor(makeCard({ specDoc: '.vector/specs/my-spec/spec.md' }))
+    expect(entries.some((entry) => entry.key === 'sketch')).toBe(false)
+  })
 })
 
 describe('basename', () => {

@@ -30,10 +30,11 @@ func Open(repoRoot string) (*Store, error) {
 	return &Store{root: root}, nil
 }
 
-func (s *Store) specDir(id string) string   { return filepath.Join(s.root, "specs", id) }
-func (s *Store) statePath(id string) string { return filepath.Join(s.specDir(id), "state.json") }
-func (s *Store) bodyPath(id string) string  { return filepath.Join(s.specDir(id), "spec.md") }
-func (s *Store) activityPath() string       { return filepath.Join(s.root, "local", "activity.jsonl") }
+func (s *Store) specDir(id string) string     { return filepath.Join(s.root, "specs", id) }
+func (s *Store) statePath(id string) string   { return filepath.Join(s.specDir(id), "state.json") }
+func (s *Store) bodyPath(id string) string    { return filepath.Join(s.specDir(id), "spec.md") }
+func (s *Store) sketchesDir(id string) string { return filepath.Join(s.specDir(id), "sketches") }
+func (s *Store) activityPath() string         { return filepath.Join(s.root, "local", "activity.jsonl") }
 
 // StatePath returns the absolute path to a spec's state.json (for reporting).
 func (s *Store) StatePath(id string) string { return s.statePath(id) }
@@ -527,6 +528,48 @@ func (s *Store) FixSpec(id, classification, validationResult string, artifacts, 
 		return nil, err
 	}
 	return spec, nil
+}
+
+// AttachSketch persists an Excalidraw wireframe to a spec: lock → read → write the
+// file bytes under .vector/specs/<id>/sketches/<ref.Name> → append (or refresh) the
+// ref on the spec → atomic state.json write. It is the sole writer of the sketch
+// artifact and its state, mirroring RouteAgent/CreateSpec — it makes no LLM calls
+// (the binary computes nothing here beyond I/O). Re-attaching the same file name
+// overwrites the file and refreshes the ref's timestamp rather than duplicating it,
+// matching file-overwrite semantics. ref.CreatedAt drives the spec's UpdatedAt so
+// the `vector serve` watcher observes a fresh state.json and broadcasts over SSE.
+func (s *Store) AttachSketch(id string, file []byte, ref SketchRef) error {
+	if ref.Name == "" || ref.Name != filepath.Base(ref.Name) || ref.Name == "." || ref.Name == ".." || strings.ContainsAny(ref.Name, `/\`) {
+		return fmt.Errorf("invalid sketch name %q: must be a bare file name", ref.Name)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return err // ReadSpec wraps a missing spec as fs.ErrNotExist
+	}
+
+	if err := os.MkdirAll(s.sketchesDir(id), 0o755); err != nil {
+		return fmt.Errorf("create sketches dir: %w", err)
+	}
+	if err := writeFileAtomic(filepath.Join(s.sketchesDir(id), ref.Name), file); err != nil {
+		return err
+	}
+
+	replaced := false
+	for i := range spec.Sketches {
+		if spec.Sketches[i].Name == ref.Name {
+			spec.Sketches[i] = ref
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		spec.Sketches = append(spec.Sketches, ref)
+	}
+	spec.UpdatedAt = ref.CreatedAt.UTC()
+	return writeSpecFile(s.statePath(id), spec)
 }
 
 // setStatusTimestamp stamps the lifecycle timestamp implied by a status, without
