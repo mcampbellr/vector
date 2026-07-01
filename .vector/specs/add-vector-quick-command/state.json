@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "add-vector-quick-command",
   "title": "Comando /vector:quick para cambios pequeños en una corrida",
-  "status": "review",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-vector-quick-command/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-27T20:07:23.479367Z",
   "startedAt": "2026-06-28T18:51:46.115147Z",
   "reviewAt": "2026-06-28T19:00:25.718277Z",
-  "updatedAt": "2026-06-28T19:00:25.718277Z"
+  "closedAt": "2026-07-01T09:32:58.500147Z",
+  "updatedAt": "2026-07-01T09:32:58.500147Z"
 }

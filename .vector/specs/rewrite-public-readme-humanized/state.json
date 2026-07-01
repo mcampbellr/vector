@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "rewrite-public-readme-humanized",
   "title": "Reescribir el README público en inglés, humanizado y bien explicado",
-  "status": "review",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/rewrite-public-readme-humanized/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-28T04:23:14.666909Z",
   "startedAt": "2026-06-29T15:54:09.77127Z",
   "reviewAt": "2026-06-29T15:56:24.136164Z",
-  "updatedAt": "2026-06-29T15:56:24.136164Z"
+  "closedAt": "2026-07-01T09:32:58.60513Z",
+  "updatedAt": "2026-07-01T09:32:58.60513Z"
 }

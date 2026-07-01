@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "add-repo-intel-cache",
   "title": "Cache de inteligencia de repo (clase C) con invalidación por fingerprint por dominio",
-  "status": "review",
+  "status": "closed",
   "priority": "high",
   "repo": "",
   "specDoc": ".vector/specs/add-repo-intel-cache/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-28T08:57:36.244785Z",
   "startedAt": "2026-06-28T18:36:38.005921Z",
   "reviewAt": "2026-06-28T18:51:20.149679Z",
-  "updatedAt": "2026-06-28T18:51:20.149679Z"
+  "closedAt": "2026-07-01T09:32:58.457127Z",
+  "updatedAt": "2026-07-01T09:32:58.457127Z"
 }

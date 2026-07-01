@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "add-resizable-markdown-preview-modal",
   "title": "Modal de lectura de markdown redimensionable desde los bordes derecho e inferior",
-  "status": "review",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-resizable-markdown-preview-modal/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-28T04:29:38.727364Z",
   "startedAt": "2026-06-28T19:05:27.272682Z",
   "reviewAt": "2026-06-28T19:09:14.952447Z",
-  "updatedAt": "2026-06-28T19:21:18.212375Z"
+  "closedAt": "2026-07-01T09:32:58.478496Z",
+  "updatedAt": "2026-07-01T09:32:58.478496Z"
 }

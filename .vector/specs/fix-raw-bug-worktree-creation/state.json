@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "fix-raw-bug-worktree-creation",
   "title": "Aislar cada spec en su worktree branch-per-spec al crearlo (/vector:raw y /vector:bug)",
-  "status": "review",
+  "status": "closed",
   "priority": "high",
   "repo": "",
   "specDoc": ".vector/specs/fix-raw-bug-worktree-creation/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-28T23:13:37.7545Z",
   "startedAt": "2026-06-30T22:39:07.231933Z",
   "reviewAt": "2026-06-30T22:48:28.913858Z",
-  "updatedAt": "2026-06-30T22:48:28.913858Z"
+  "closedAt": "2026-07-01T09:32:58.54169Z",
+  "updatedAt": "2026-07-01T09:32:58.54169Z"
 }

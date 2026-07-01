@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "add-windows-support-distribution",
   "title": "Agregar soporte Windows a GoReleaser e instalador PowerShell",
-  "status": "review",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/add-windows-support-distribution/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-29T19:03:29.5903Z",
   "startedAt": "2026-06-30T23:39:09.227072Z",
   "reviewAt": "2026-06-30T23:45:58.715521Z",
-  "updatedAt": "2026-06-30T23:45:58.715521Z"
+  "closedAt": "2026-07-01T09:32:58.521093Z",
+  "updatedAt": "2026-07-01T09:32:58.521093Z"
 }

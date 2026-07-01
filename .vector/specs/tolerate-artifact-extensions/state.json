@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "tolerate-artifact-extensions",
   "title": "Tolerar extensión .md y casing en el parseo de --artifacts (propose/fix)",
-  "status": "review",
+  "status": "closed",
   "priority": "normal",
   "repo": "",
   "specDoc": ".vector/specs/tolerate-artifact-extensions/spec.md",
@@ -17,5 +17,6 @@
   "createdAt": "2026-06-28T18:44:58.735726Z",
   "startedAt": "2026-06-28T19:36:32.055197Z",
   "reviewAt": "2026-06-28T19:39:15.308113Z",
-  "updatedAt": "2026-06-28T19:39:15.308113Z"
+  "closedAt": "2026-07-01T09:32:58.628845Z",
+  "updatedAt": "2026-07-01T09:32:58.628845Z"
 }
