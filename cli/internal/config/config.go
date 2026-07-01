@@ -98,6 +98,15 @@ type Config struct {
 	BuildCmd string `json:"buildCmd,omitempty"`
 	LintCmd  string `json:"lintCmd,omitempty"`
 	TestCmd  string `json:"testCmd,omitempty"`
+	// BaseBranch is the fork point for new per-spec worktrees in bare+worktree
+	// layouts (the base passed to `git worktree add <path> -b <branch> <base>`).
+	// Empty defaults to "main". Consulted only when the repo declares a [branch]
+	// layout (HasBranchPlaceholder); additive and backward-compatible.
+	BaseBranch string `json:"baseBranch,omitempty"`
+	// BranchPrefix is the prefix for per-spec feature branch names in bare+worktree
+	// layouts ("feat/" → "feat/<slug>"). Empty defaults to "feat/". Consulted only
+	// when the repo declares a [branch] layout; additive and backward-compatible.
+	BranchPrefix string `json:"branchPrefix,omitempty"`
 	// SketchEnabled globally gates the opt-in Excalidraw sketch step at the tail of
 	// /vector:raw and /vector:research. nil (absent) or true = enabled (the command
 	// may prompt on a strong UI signal); only an explicit false suppresses the prompt
@@ -374,6 +383,54 @@ func (c *Config) changesTemplate() string {
 		return c.ChangesPath
 	}
 	return DefaultChangesPath
+}
+
+// Defaults for the per-spec worktree the /vector:raw and /vector:bug orchestration
+// creates on bare+worktree layouts.
+const (
+	DefaultBaseBranch   = "main"
+	DefaultBranchPrefix = "feat/"
+)
+
+// HasBranchPlaceholder reports whether the repo declares a bare+worktree layout:
+// the [branch] placeholder is present in the resolved spec-path or changes-path
+// template. This is the signal that gates the worktree-resolve/create step in
+// /vector:raw and /vector:bug; false means that step is inert (non-worktree repos).
+func (c *Config) HasBranchPlaceholder() bool {
+	return strings.Contains(c.SpecPath, branchPlaceholder) ||
+		strings.Contains(c.changesTemplate(), branchPlaceholder)
+}
+
+// WorktreeRoot returns the literal template prefix that precedes the [branch]
+// placeholder — the directory under which per-spec worktrees live (e.g. "code"
+// for a "code/[branch]/..." spec-path), with any trailing slash trimmed. Empty
+// when the repo declares no worktree layout. Prefers SpecPath, falling back to
+// the changes template (either may carry the placeholder).
+func (c *Config) WorktreeRoot() string {
+	for _, tmpl := range []string{c.SpecPath, c.changesTemplate()} {
+		if i := strings.Index(tmpl, branchPlaceholder); i >= 0 {
+			return strings.TrimRight(tmpl[:i], "/")
+		}
+	}
+	return ""
+}
+
+// BaseBranchOrDefault returns the configured base branch (worktree fork point) or
+// the "main" default.
+func (c *Config) BaseBranchOrDefault() string {
+	if b := strings.TrimSpace(c.BaseBranch); b != "" {
+		return b
+	}
+	return DefaultBaseBranch
+}
+
+// BranchPrefixOrDefault returns the configured per-spec branch prefix or the
+// "feat/" default.
+func (c *Config) BranchPrefixOrDefault() string {
+	if p := strings.TrimSpace(c.BranchPrefix); p != "" {
+		return p
+	}
+	return DefaultBranchPrefix
 }
 
 // Path returns the absolute path to a repo's .vector/config.json.

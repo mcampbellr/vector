@@ -664,3 +664,118 @@ func TestLoadLegacyConfigWithoutApplyModel(t *testing.T) {
 		t.Errorf("ResolvedApplyModel() on legacy = %q, want %q", got, ApplyModelOpus)
 	}
 }
+
+func TestHasBranchPlaceholder(t *testing.T) {
+	tests := []struct {
+		name        string
+		specPath    string
+		changesPath string
+		want        bool
+	}{
+		{"worktree spec-path", "code/[branch]/.vector/specs/<slug>/", "", true},
+		{"worktree changes-path only", "docs/specs/<slug>/", "code/[branch]/openspec/changes", true},
+		{"non-worktree", ".vector/specs/<slug>/", "", false},
+		{"non-worktree convention", "openspec/changes/<slug>/", "openspec/changes", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{SpecPath: tc.specPath, ChangesPath: tc.changesPath}
+			if got := c.HasBranchPlaceholder(); got != tc.want {
+				t.Errorf("HasBranchPlaceholder() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWorktreeRoot(t *testing.T) {
+	tests := []struct {
+		name        string
+		specPath    string
+		changesPath string
+		want        string
+	}{
+		{"spec-path prefix", "code/[branch]/.vector/specs/<slug>/", "", "code"},
+		{"nested prefix", "repos/wt/[branch]/specs/<slug>/", "", "repos/wt"},
+		{"falls back to changes-path", "docs/specs/<slug>/", "code/[branch]/openspec/changes", "code"},
+		{"non-worktree → empty", ".vector/specs/<slug>/", "", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{SpecPath: tc.specPath, ChangesPath: tc.changesPath}
+			if got := c.WorktreeRoot(); got != tc.want {
+				t.Errorf("WorktreeRoot() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBaseBranchAndPrefixDefaultsAndOverride(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		c := &Config{}
+		if got := c.BaseBranchOrDefault(); got != DefaultBaseBranch {
+			t.Errorf("BaseBranchOrDefault() = %q, want %q", got, DefaultBaseBranch)
+		}
+		if got := c.BranchPrefixOrDefault(); got != DefaultBranchPrefix {
+			t.Errorf("BranchPrefixOrDefault() = %q, want %q", got, DefaultBranchPrefix)
+		}
+	})
+	t.Run("override", func(t *testing.T) {
+		c := &Config{BaseBranch: "develop", BranchPrefix: "spec/"}
+		if got := c.BaseBranchOrDefault(); got != "develop" {
+			t.Errorf("BaseBranchOrDefault() = %q, want %q", got, "develop")
+		}
+		if got := c.BranchPrefixOrDefault(); got != "spec/" {
+			t.Errorf("BranchPrefixOrDefault() = %q, want %q", got, "spec/")
+		}
+	})
+	t.Run("whitespace-only treated as empty", func(t *testing.T) {
+		c := &Config{BaseBranch: "  ", BranchPrefix: "  "}
+		if got := c.BaseBranchOrDefault(); got != DefaultBaseBranch {
+			t.Errorf("BaseBranchOrDefault() = %q, want default", got)
+		}
+		if got := c.BranchPrefixOrDefault(); got != DefaultBranchPrefix {
+			t.Errorf("BranchPrefixOrDefault() = %q, want default", got)
+		}
+	})
+}
+
+func TestBaseBranchPrefixRoundTripAndLegacy(t *testing.T) {
+	root := t.TempDir()
+	// Override fields persist through Write→Load.
+	c := &Config{
+		SchemaVersion: SchemaVersion,
+		SpecPath:      "code/[branch]/.vector/specs/<slug>/",
+		SpecFilename:  "spec.md",
+		SpecStore:     StoreConvention,
+		Source:        SourceDefault,
+		BaseBranch:    "develop",
+		BranchPrefix:  "spec/",
+	}
+	if err := Write(root, c); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.BaseBranch != "develop" || loaded.BranchPrefix != "spec/" {
+		t.Errorf("round-trip = (%q, %q), want (develop, spec/)", loaded.BaseBranch, loaded.BranchPrefix)
+	}
+
+	// A legacy config without the fields loads cleanly and resolves to defaults.
+	legacy := `{"schemaVersion":1,"specPath":"code/[branch]/.vector/specs/<slug>/","specFilename":"spec.md","specStore":"convention","source":"default"}`
+	if err := os.WriteFile(Path(root), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = Load(root)
+	if err != nil {
+		t.Fatalf("Load legacy: %v", err)
+	}
+	if loaded.BaseBranch != "" || loaded.BranchPrefix != "" {
+		t.Errorf("legacy fields = (%q, %q), want empty", loaded.BaseBranch, loaded.BranchPrefix)
+	}
+	if loaded.BaseBranchOrDefault() != DefaultBaseBranch || loaded.BranchPrefixOrDefault() != DefaultBranchPrefix {
+		t.Errorf("legacy defaults = (%q, %q), want (%q, %q)",
+			loaded.BaseBranchOrDefault(), loaded.BranchPrefixOrDefault(), DefaultBaseBranch, DefaultBranchPrefix)
+	}
+}

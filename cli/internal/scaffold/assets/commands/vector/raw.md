@@ -50,11 +50,17 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    Extract from `CONTEXT`:
    - `SPEC_EXAMPLE_PATH` ← `CONTEXT.examplePath` (the first spec doc found, sorted lexicographically)
    - `SPEC_LANGUAGE` ← `CONTEXT.language` (the configured prose language, if set)
+   - `WT_LAYOUT` ← `CONTEXT.worktree.layout` (true when the repo declares a bare+worktree layout —
+     the `[branch]` placeholder is present in `spec-path`/`changes-path`)
+   - `WT_ROOT` ← `CONTEXT.worktree.root` (literal prefix before `[branch]`, e.g. `code`)
+   - `WT_BASE` ← `CONTEXT.worktree.baseBranch` (fork point for new worktrees, default `main`)
+   - `WT_PREFIX` ← `CONTEXT.worktree.branchPrefix` (feature-branch prefix, default `feat/`)
 
    **Fallback when `vector context` fails** (binary not in PATH or exits 1): emit a one-line
    warning to stderr, then fall back to the previous behavior — glob the configured `specPath`
    directory and common locations (`docs/specs/**`, `openspec/changes/*/spec.md`, `specs/**`)
-   to find an example spec; detect `SPEC_LANGUAGE` from that example (default English).
+   to find an example spec; detect `SPEC_LANGUAGE` from that example (default English). Treat
+   `WT_LAYOUT` as `false` (the worktree step in step 9 stays inert) when context is unavailable.
 
    If `SPEC_LANGUAGE` is empty after the context call (not configured), detect it from the
    example spec found above (default English).
@@ -115,8 +121,40 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    - `BLOCK` → fix the required items (ask the user if a fix needs info). Re-validate. **Cap 3 cycles**;
      if still blocked, surface the report verbatim and stop without registering.
 
-9. **Register the draft card** — pass the validated spec to the binary via file path. The binary
-   reads the doc from `SPEC_PATH` and creates the card in `draft`:
+9. **Register the draft card**.
+
+   a. **Ensure the spec's worktree exists** (bare+worktree layouts only). When `WT_LAYOUT` is
+      true, the binary resolves the spec doc under `<WT_ROOT>/<SPEC_ID>/…`, so that per-spec git
+      worktree must exist **before** `vector spec create` writes the doc — otherwise the doc lands
+      as a loose, untracked `<WT_ROOT>/<SPEC_ID>/` directory (the bug this command guards against).
+      Run, from `REPO_ROOT`:
+
+      ```bash
+      if [ "$WT_LAYOUT" = "true" ]; then
+        WT_PATH="$WT_ROOT/$SPEC_ID"                      # e.g. code/<slug>
+        WT_BRANCH="$WT_PREFIX$SPEC_ID"                   # e.g. feat/<slug>
+        if git -C "$REPO_ROOT" worktree list --porcelain | grep -Fqx "worktree $REPO_ROOT/$WT_PATH"; then
+          echo "reusing existing worktree $WT_PATH"      # idempotent: never recreate
+        else
+          git -C "$REPO_ROOT" worktree add "$WT_PATH" -b "$WT_BRANCH" "$WT_BASE"
+        fi
+      fi
+      ```
+
+      - **Inert on non-worktree repos**: `WT_LAYOUT` false → skip entirely; behavior identical to
+        today (e.g. Vector's own repo, `.vector/specs/<slug>/`).
+      - **Idempotent**: if `git worktree list` already lists `<WT_ROOT>/<SPEC_ID>`, reuse it — no
+        recreation, no error.
+      - **Conflict → abort, never auto-delete**: if `git worktree add` fails (a loose
+        non-worktree directory or a stale `<WT_PREFIX><SPEC_ID>` branch already occupies the path),
+        surface git's error **verbatim** plus the manual fix (remove/relocate the loose
+        `<WT_ROOT>/<SPEC_ID>/` stub, or `git worktree add` it by hand) and **stop without
+        registering the card**. Do not delete or overwrite the user's files. Cleanup of pre-existing
+        stubs is out of scope (the user's responsibility).
+
+   b. **Create the card** — pass the validated spec to the binary via file path. The binary reads
+      the doc from `SPEC_PATH` and creates the card in `draft` (writing the doc inside the worktree
+      created in 9a, so it stays tracked on the `<WT_PREFIX><SPEC_ID>` branch):
 
    ```bash
    vector spec create \
