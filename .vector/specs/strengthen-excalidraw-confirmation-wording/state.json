@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "strengthen-excalidraw-confirmation-wording",
+  "title": "Strengthen Excalidraw wireframe confirmation to explicit two-option AskUserQuestion",
+  "status": "in-progress",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/strengthen-excalidraw-confirmation-wording/spec.md",
+  "quickWin": true,
+  "createdAt": "2026-07-01T12:39:54.048036Z",
+  "startedAt": "2026-07-01T12:39:54.048036Z",
+  "updatedAt": "2026-07-01T12:39:54.048036Z"
+}

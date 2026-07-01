@@ -224,9 +224,13 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
        A single loose keyword is a **weak** signal → skip silently (a false negative is preferred
        over prompting on a non-UI spec). No strong signal → skip silently.
 
-    c. **Confirm.** On a strong signal, ask via `AskUserQuestion` whether to generate an Excalidraw
-       wireframe for the spec. **Decline → end the command cleanly** (the spec stays a draft with no
-       sketch). **Confirm → continue.**
+    c. **Confirm.** On a strong signal, ask via `AskUserQuestion` — a single **selection** question
+       with **two explicit options**, never a free-text prompt:
+       - **Generate wireframe** → continue to step 12.d.
+       - **Skip** → **end the command cleanly** (the spec stays a draft with no sketch).
+
+       Present it exactly as a bounded choice (same select-style question the user answers for spec
+       clarifications); do not phrase it as an open prompt the user has to type a reply to.
 
     d. **Spawn the designer (async) + register routing.** Spawn the **`vector-ui-ux-designer`**
        subagent (**model: sonnet**) as a **fresh async agent** and return immediately — do not wait
