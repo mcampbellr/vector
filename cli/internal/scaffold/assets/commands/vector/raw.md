@@ -169,6 +169,50 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
     the next step: **`/vector:propose`** generates the OpenSpec change (proposal/design/tasks)
     and moves the card from `draft` to `open`.
 
+12. **Sketch Excalidraw (opt-in)** — after the report, offer a design wireframe when the spec is
+    UI-facing. This step is optional and Sonnet-costly, so it only fires on a strong UI signal and
+    with the user's confirmation; it never blocks the draft (already registered in step 9).
+
+    a. **Opt-out check.** Skip this step **silently** (no prompt, no mention) if the user passed
+       `--no-sketch` **or** `CONTEXT.sketchEnabled === false` (from step 3). Otherwise continue.
+
+    b. **UI heuristic** over the composed spec (the `specDoc` written in step 9). A **strong signal**
+       is present iff **either**:
+       - the spec's §12 **"Estados de UI"** section is non-empty (i.e. it describes real UI states,
+         not just `No aplica` / `N/A`); **or**
+       - **≥ 2** distinct layer keywords appear in the title + body: `board`, `drawer`, `modal`,
+         `web/`, `component`, `componente`, `UI`, `pantalla`, `formulario`, `card`.
+
+       A single loose keyword is a **weak** signal → skip silently (a false negative is preferred
+       over prompting on a non-UI spec). No strong signal → skip silently.
+
+    c. **Confirm.** On a strong signal, ask via `AskUserQuestion` whether to generate an Excalidraw
+       wireframe for the spec. **Decline → end the command cleanly** (the spec stays a draft with no
+       sketch). **Confirm → continue.**
+
+    d. **Spawn the designer (async) + register routing.** Spawn the **`vector-ui-ux-designer`**
+       subagent (**model: sonnet**) as a **fresh async agent** and return immediately — do not wait
+       for it (the draft is already on the board; the sketch attaches later via SSE). Pass it:
+
+       ```
+       SPEC_PATH:   <abs path to specDoc from step 9>
+       SPEC_ID:     <id>
+       OUTPUT_PATH: <REPO_ROOT>/.vector/tmp/<id>/sketch.excalidraw
+       REPO_ROOT:   <REPO_ROOT>
+       ```
+
+       The agent writes the `.excalidraw` JSON to `OUTPUT_PATH` and calls
+       `vector spec attach-sketch <id> --file <OUTPUT_PATH>` itself — the binary validates and
+       persists it (CLI-owns-writes); a malformed sketch is silently rejected (the spec stays clean).
+
+       Then register the **estimated** routing for the meter (the command does not wait for the
+       agent's real token counts):
+
+       ```bash
+       vector spec route <id> --model sonnet --baseline opus --task "generate ui sketch" \
+         --tokens-in <est> --tokens-out <est> --precision estimated
+       ```
+
 ## Notes
 
 - `draft` = spec authored, **no OpenSpec change yet**. The change is created later at

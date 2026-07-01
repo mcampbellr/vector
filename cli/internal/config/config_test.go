@@ -604,6 +604,27 @@ func TestResolvedApplyModel(t *testing.T) {
 	}
 }
 
+func TestIsSketchEnabled(t *testing.T) {
+	tr, fa := true, false
+	tests := []struct {
+		name string
+		val  *bool
+		want bool
+	}{
+		{"nil (absent) defaults to enabled", nil, true},
+		{"explicit true", &tr, true},
+		{"explicit false disables", &fa, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{SketchEnabled: tc.val}
+			if got := c.IsSketchEnabled(); got != tc.want {
+				t.Errorf("IsSketchEnabled() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsInvalidApplyModel(t *testing.T) {
 	root := t.TempDir()
 	// Write a config with an invalid applyModel value directly (bypassing Write,

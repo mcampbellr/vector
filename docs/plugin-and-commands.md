@@ -105,6 +105,15 @@ kit/                              # fuente versionada en el repo Vector
 `vector init` la escribe en `<repo>/.claude/commands/vector/`. (`init` no vive aquí: es
 subcomando del binario, no un slash command.)
 
+Los **agentes** distribuibles viven en `kit/agents/` (mismo embed): refiners, validators,
+writers, evaluators y `vector-ui-ux-designer`. Este último es un agente **Sonnet** que
+`/vector:raw` y `/vector:research` lanzan (opt-in) al final del flujo, sobre una señal fuerte de
+UI, para emitir un wireframe **Excalidraw** (`.excalidraw`); el agente escribe el JSON a un temp y
+llama a **`vector spec attach-sketch <id> --file <path>`**, que valida el shape
+(`{type, version, elements}`) y persiste el sketch en `.vector/specs/<id>/sketches/` (CLI-owns-writes).
+El board lo muestra como **descarga** (`GET /api/file?spec=<id>&artifact=sketch`), sin render inline.
+Opt-out por `--no-sketch` (por run) o `sketchEnabled: false` en `.vector/config.json`.
+
 ## Distribución (V1): instalación **por proyecto**, igual que OpenSpec
 
 Dos artefactos con ciclo de vida distinto:

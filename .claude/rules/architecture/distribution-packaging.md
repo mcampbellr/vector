@@ -57,6 +57,32 @@ Flujo canónico para propagar un cambio:
 `TestAssetsMatchKit` (en `cli/internal/scaffold/scaffold_test.go`) detecta drift entre `kit/`
 y `assets/` antes del merge. Ver comentario de paquete en `cli/internal/scaffold/scaffold.go`.
 
+### Flujo de edición del frontend (web → embed → binario) — OBLIGATORIO
+
+> **Regla dura: todo cambio en `web/` exige re-embeber ANTES de reconstruir el binario.**
+> El binario embebe `cli/internal/webui/dist/` vía `embed.FS`; ese dist es un **snapshot** del
+> último `npm run build`. Recompilar el binario **no** rebuildea `web/` — si editas `web/` y solo
+> corres `go build`, el binario sirve el **frontend viejo** de forma **silenciosa** (sin error, sin
+> warning). Fue exactamente el bug de `add-ui-sketch-generation`: el sketch se generaba y persistía
+> bien, pero el board no mostraba la entrada de descarga porque el dist embebido era anterior al
+> cambio de web.
+
+Flujo canónico cada vez que se toca `web/` (antes de reinstalar el binario global):
+
+1. `npm --prefix web run build` → regenera `web/dist`.
+2. Re-embeber en el snapshot que compila el binario:
+   ```bash
+   rm -rf cli/internal/webui/dist/assets cli/internal/webui/dist/index.html
+   cp -R web/dist/. cli/internal/webui/dist/
+   ```
+3. `go -C cli build -o ~/.local/bin/vector ./cmd/vector` (o el reinstall de la Memory).
+4. **Reiniciar cualquier `vector serve` en marcha** — un server ya corriendo tiene el binario
+   viejo en memoria y sigue sirviendo el frontend anterior hasta reiniciarse.
+
+`cli/internal/webui/dist/assets/` está **gitignored** (se regenera en cada build); solo
+`index.html` se rastrea. Verificar que no haya drift: `ls cli/internal/webui/dist/assets` debe
+igualar `ls web/dist/assets`. Ver también la Memory `reinstall-vector-binary-after-changes`.
+
 > Estado: el mecanismo de embed (`//go:generate` + `embed.FS` + `SeedCommands`) ya está activo.
 > Pendiente: layout del pipeline de release y script de instalación de un paso. Ver nota de
 > distribución en `docs/vision.md` (§Techstack).

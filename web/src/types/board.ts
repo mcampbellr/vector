@@ -36,6 +36,13 @@ export interface RelatedItem {
   source: RelatedSource
 }
 
+/** An Excalidraw wireframe attached to a spec; mirrors Go state.SketchRef.
+ *  Served download-only via GET /api/file?spec=<id>&artifact=sketch. */
+export interface SketchRef {
+  name: string
+  createdAt: string
+}
+
 export interface Card {
   id: string
   title: string
@@ -56,6 +63,8 @@ export interface Card {
   needsUat?: boolean
   /** /vector:quick one-run change; rendered as a read-only badge. */
   quickWin?: boolean
+  /** Attached Excalidraw wireframes; each is a download-only artifact entry. */
+  sketches?: SketchRef[]
   savedUsd: number
   routes: number
   tokensIn: number

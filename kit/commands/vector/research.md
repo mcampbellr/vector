@@ -256,6 +256,42 @@ writes the doc to the repo's configured location and creates the draft card.
     it. Note the token routing (refiner = Haiku, lenses + composer + validator = Sonnet,
     orchestration = main loop) and that **the binary owns every state write** (CLI-owns-writes).
 
+15. **Sketch Excalidraw (opt-in)** — after the report, offer a design wireframe when the spec is
+    UI-facing. Same tail step as `/vector:raw` step 12: optional, Sonnet-costly, fires only on a
+    strong UI signal with the user's confirmation; it never blocks the draft (registered in step 12).
+
+    a. **Opt-out check.** Skip **silently** (no prompt, no mention) if the user passed `--no-sketch`
+       **or** `CONTEXT.sketchEnabled === false` (from step 0). Otherwise continue.
+
+    b. **UI heuristic** over the composed spec (the `specDoc` from step 10). **Strong signal** iff
+       **either** the spec's §12 **"Estados de UI"** section is non-empty (real UI states, not
+       `No aplica` / `N/A`) **or** **≥ 2** distinct layer keywords appear in title + body: `board`,
+       `drawer`, `modal`, `web/`, `component`, `componente`, `UI`, `pantalla`, `formulario`, `card`.
+       A single loose keyword is weak → skip silently. No strong signal → skip silently.
+
+    c. **Confirm** via `AskUserQuestion` whether to generate the wireframe. **Decline → end cleanly**
+       (spec stays a draft, no sketch). **Confirm → continue.**
+
+    d. **Spawn the designer (async) + register routing.** Spawn the **`vector-ui-ux-designer`**
+       subagent (**model: sonnet**) as a **fresh async agent** and return immediately (the sketch
+       attaches later via SSE). Pass it:
+
+       ```
+       SPEC_PATH:   <abs path to specDoc from step 10>
+       SPEC_ID:     <id>
+       OUTPUT_PATH: <REPO_ROOT>/.vector/tmp/<id>/sketch.excalidraw
+       REPO_ROOT:   <REPO_ROOT>
+       ```
+
+       The agent writes the `.excalidraw` JSON and calls `vector spec attach-sketch <id> --file
+       <OUTPUT_PATH>` itself (the binary validates + persists; a malformed sketch is silently
+       rejected). Then register the **estimated** routing for the meter:
+
+       ```bash
+       vector spec route <id> --model sonnet --baseline opus --task "generate ui sketch" \
+         --tokens-in <est> --tokens-out <est> --precision estimated
+       ```
+
 ## Notes
 
 - `draft` = spec authored, **no OpenSpec change yet**. The change is created at `/vector:propose`;

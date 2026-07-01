@@ -189,15 +189,43 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not read artifact")
 		return
 	}
-	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	if artifact == "sketch" {
+		// A sketch is a binary design artifact, served as a download rather than
+		// inline Markdown. The stored file name is looked up from committed state;
+		// the internal absolute path is never leaked in the header.
+		w.Header().Set("Content-Type", "application/octet-stream")
+		if name := s.sketchFileName(specID); name != "" {
+			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		} else {
+			w.Header().Set("Content-Disposition", "attachment")
+		}
+	} else {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(b)
+}
+
+// sketchFileName resolves the first sketch's stored file name for a spec (V1 serves
+// spec.Sketches[0]), for the download's Content-Disposition. It reads committed
+// state through the board Source; "" when the spec has no sketch or is unknown.
+func (s *Server) sketchFileName(specID string) string {
+	specs, err := s.src.ListSpecs()
+	if err != nil {
+		return ""
+	}
+	for _, sp := range specs {
+		if sp.ID == specID && len(sp.Sketches) > 0 {
+			return sp.Sketches[0].Name
+		}
+	}
+	return ""
 }
 
 // validArtifact gates the artifact query parameter to the known enum.
 func validArtifact(artifact string) bool {
 	switch artifact {
-	case "spec", "proposal", "design", "tasks":
+	case "spec", "proposal", "design", "tasks", "sketch":
 		return true
 	}
 	return false

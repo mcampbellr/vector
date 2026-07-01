@@ -4,6 +4,9 @@ import type { ArtifactKey } from '../../api/useFileContent'
 export interface ArtifactEntry {
   key: ArtifactKey
   label: string
+  /** When true the entry is a binary download (a native `<a download>`), not a
+   *  Markdown preview opened in a modal. Set for sketch artifacts. */
+  download?: boolean
 }
 
 // basename returns the trailing path segment for the spec-doc label, falling
@@ -30,5 +33,9 @@ export function entriesFor(card: Card): ArtifactEntry[] {
   if (card.artifacts?.proposal) entries.push({ key: 'proposal', label: 'proposal.md' })
   if (card.artifacts?.design) entries.push({ key: 'design', label: 'design.md' })
   if (card.artifacts?.tasks) entries.push({ key: 'tasks', label: 'tasks.md' })
+  // Attached Excalidraw wireframes are download-only entries (one per sketch).
+  for (const sketch of card.sketches ?? []) {
+    entries.push({ key: 'sketch', label: sketch.name, download: true })
+  }
   return entries
 }

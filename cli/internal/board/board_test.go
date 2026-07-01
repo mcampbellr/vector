@@ -228,6 +228,35 @@ func TestBuildProjectsQuickWin(t *testing.T) {
 	}
 }
 
+// TestBuildProjectsSketches verifies the Card projection carries sketches when the
+// spec has them, and omits the field (omitempty) when it has none.
+func TestBuildProjectsSketches(t *testing.T) {
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	src := fakeSource{specs: []*state.SpecState{{
+		ID: "add-ui", Title: "Add UI", Status: state.StatusInProgress, Priority: state.PriorityNormal,
+		Sketches: []state.SketchRef{{Name: "board.excalidraw", CreatedAt: now}}, UpdatedAt: now,
+	}}}
+	b, err := Build(src, "demo", now)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	card := columnByStatus(t, b, "in-progress").Cards[0]
+	if len(card.Sketches) != 1 || card.Sketches[0].Name != "board.excalidraw" {
+		t.Fatalf("card.Sketches = %+v, want one board.excalidraw", card.Sketches)
+	}
+
+	// A card without sketches must omit the field from the JSON contract.
+	plain := fakeSource{specs: []*state.SpecState{{ID: "p", Title: "P", Status: state.StatusOpen, Priority: state.PriorityNormal, UpdatedAt: now}}}
+	pb, _ := Build(plain, "demo", now)
+	raw, err := json.Marshal(columnByStatus(t, pb, "open").Cards[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsField(raw, "sketches") {
+		t.Errorf("sketches present for a card with none: %s", raw)
+	}
+}
+
 func containsField(b []byte, field string) bool {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err != nil {

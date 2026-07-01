@@ -98,6 +98,20 @@ type Config struct {
 	BuildCmd string `json:"buildCmd,omitempty"`
 	LintCmd  string `json:"lintCmd,omitempty"`
 	TestCmd  string `json:"testCmd,omitempty"`
+	// SketchEnabled globally gates the opt-in Excalidraw sketch step at the tail of
+	// /vector:raw and /vector:research. nil (absent) or true = enabled (the command
+	// may prompt on a strong UI signal); only an explicit false suppresses the prompt
+	// repo-wide. A pointer so absent and false are distinguishable; additive and
+	// backward-compatible (a legacy config loads it as nil = enabled). Not written by
+	// vector init/update — set it manually to opt out.
+	SketchEnabled *bool `json:"sketchEnabled,omitempty"`
+}
+
+// IsSketchEnabled reports whether the tail sketch step is enabled for this repo:
+// true unless SketchEnabled is explicitly false. nil (absent) defaults to enabled,
+// so the feature is on by default and only an explicit opt-out disables it.
+func (c *Config) IsSketchEnabled() bool {
+	return c.SketchEnabled == nil || *c.SketchEnabled
 }
 
 // ApplyMode controls /vector:apply autonomy (docs/apply-design.md §3).

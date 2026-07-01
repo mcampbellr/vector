@@ -66,6 +66,7 @@ type SpecState struct {
 	Labels        []string `json:"labels,omitempty"`
 	EstimateMin   int      `json:"estimateMinutes,omitempty"`
 	QuickWin      bool     `json:"quickWin,omitempty"`   // /vector:quick one-run change marker
+	Sketches      []SketchRef `json:"sketches,omitempty"` // Excalidraw wireframes (/vector:raw + /vector:research)
 
 	Ticket    *Ticket       `json:"ticket,omitempty"`
 	RelatedTo []RelatedItem `json:"relatedTo,omitempty"`     // cause→bug trace (/vector:bug)
@@ -96,6 +97,16 @@ type RelatedItem struct {
 	Kind   RelatedKind   `json:"kind"`   // "spec" | "ticket" (commit/pr fuera de V1)
 	Ref    string        `json:"ref"`    // spec id (kind=spec) o provider:key (kind=ticket)
 	Source RelatedSource `json:"source"` // "blame" (deducido por git) | "manual"
+}
+
+// SketchRef es un wireframe Excalidraw adjunto a un spec, generado por el agente
+// vector-ui-ux-designer al final de `/vector:raw` y `/vector:research` y persistido por
+// `vector spec attach-sketch`. Optional + omitempty → specs sin sketch serializan idéntico
+// (backward-compatible; SchemaVersion sigue en 1, sin migración). El archivo vive en
+// .vector/specs/<id>/sketches/<name>; se sirve como descarga en `GET /api/file?artifact=sketch`.
+type SketchRef struct {
+	Name      string    `json:"name"`      // basename bajo .vector/specs/<id>/sketches/ (saneado)
+	CreatedAt time.Time `json:"createdAt"` // cuándo se adjuntó
 }
 
 type OpenSpec struct {
