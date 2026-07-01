@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/mariocampbell/vector/internal/config"
 	"github.com/mariocampbell/vector/internal/intel"
+	"github.com/spf13/cobra"
 )
 
 // ContextOutput is the JSON output of `vector context --json`. It bundles
@@ -121,18 +121,35 @@ var tierDomains = map[validationTier][]intel.Domain{
 //
 // Exit 0 on success; exit 1 with an actionable message on stderr when
 // .vector/config.json is absent or malformed. Never calls config.Write.
-func runContext(args []string) error {
-	fs := flag.NewFlagSet("context", flag.ContinueOnError)
-	repoRoot := fs.String("repo-root", "", "repo root (defaults to git toplevel or cwd)")
-	jsonOut := fs.Bool("json", true, "emit JSON output (default true)")
-	refresh := fs.Bool("refresh", false, "force full regeneration of the repo-intel cache")
-	forCmd := fs.String("for", "", "project only the context slice a given /vector command consumes")
-	_ = fs.Bool("dry-run", false, "no-op; present for interface consistency")
-	if err := fs.Parse(args); err != nil {
-		return err
+func newContextCmd() *cobra.Command {
+	var (
+		repoRoot string
+		jsonOut  bool
+		refresh  bool
+		forCmd   string
+		dryRun   bool
+	)
+	cmd := &cobra.Command{
+		Use:   "context",
+		Short: "print repo setup context (example path, language, build/lint/test commands)",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runContextBody(repoRoot, forCmd, jsonOut, refresh)
+		},
 	}
+	f := cmd.Flags()
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&jsonOut, "json", true, "emit JSON output (default true)")
+	f.BoolVar(&refresh, "refresh", false, "force full regeneration of the repo-intel cache")
+	f.StringVar(&forCmd, "for", "", "project only the context slice a given /vector command consumes")
+	f.BoolVar(&dryRun, "dry-run", false, "no-op; present for interface consistency")
+	return cmd
+}
 
-	root, err := resolveRepoRoot(*repoRoot)
+// runContextBody holds the context business logic, unchanged from the pre-cobra
+// implementation except that flag values arrive as parameters.
+func runContextBody(repoRoot, forCmd string, jsonOut, refresh bool) error {
+	root, err := resolveRepoRoot(repoRoot)
 	if err != nil {
 		return err
 	}
@@ -144,8 +161,8 @@ func runContext(args []string) error {
 	}
 
 	// Scoped projection: --for <command> returns only that command's slice.
-	if *forCmd != "" {
-		return runContextFor(cfg, root, *forCmd, *refresh, *jsonOut)
+	if forCmd != "" {
+		return runContextFor(cfg, root, forCmd, refresh, jsonOut)
 	}
 
 	// Resolve examplePath and (optionally) build commands concurrently: the
@@ -207,13 +224,13 @@ func runContext(args []string) error {
 	// Validate (and lazily regenerate) the full intel cache, attaching a compact
 	// summary. Best-effort: a cache failure warns and omits intel rather than
 	// breaking the backward-compatible output.
-	if cache, err := intel.Resolve(root, version, intel.AllDomains, *refresh); err != nil {
+	if cache, err := intel.Resolve(root, version, intel.AllDomains, refresh); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: repo-intel cache: %v\n", err)
 	} else {
 		out.Intel = &IntelSummary{Stack: stackSummary(cache.RepoIntel), Workspaces: workspaceSummaries(cache.Structure)}
 	}
 
-	if *jsonOut {
+	if jsonOut {
 		b, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {
 			return fmt.Errorf("marshal json: %w", err)

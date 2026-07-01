@@ -27,19 +27,30 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
   (`/api/board`) y el stream SSE (`/api/events`). Con tests.
 - `internal/webui` — embebe la SPA buildada de `web/` (`embed.FS` de `dist/`) y la sirve como
   SPA (fallback a `index.html`); `--web-dir` sirve desde disco en dev.
-- `cmd/vector` — entrypoint: `vector init` (siembra motor + config + esqueleto de estado),
-  `vector update` (re-siembra el kit preservando config/state, version stamp),
-  `vector sync` (proyecta changes de OpenSpec al board, idempotente/aditivo),
+- `internal/ui` — capa de **presentación de terminal** (análogo de `internal/webui` para el CLI):
+  wrappers lipgloss (`Bold/Green/Red/Dim/Cyan`, `Success/Info/Warning/Error`, `Table`, `KeyValue`)
+  + `ApplyCustomHelp` (help estilizado de cobra). Se aplica **solo en la rama humana**, nunca dentro
+  de un branch `if jsonOut` (garantía byte-idéntico del `--json`). Con tests.
+- `cmd/vector` — entrypoint sobre **cobra** (`newRootCmd` arma un árbol fresco por llamada;
+  `newXxxCmd()` factories con los flags 1:1 y el cuerpo en `RunE`): `vector init` (siembra motor +
+  config + esqueleto de estado), `vector update` (re-siembra el kit preservando config/state,
+  version stamp), `vector sync` (proyecta changes de OpenSpec al board, idempotente/aditivo),
   `vector serve` (panel local: API+SSE+UI embebida, puerto auto, watcher por polling),
-  `vector spec create|list|propose|apply|status|close|archive|next`, `vector version`.
+  `vector spec create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch`,
+  `vector standup (+commit)`, `vector detect-ticket`, `vector completion <shell>`, `vector version`
+  (`-v`/`--version` en cualquier posición). Suite golden (`golden_test.go` + `testdata/golden/`)
+  fija el `--json` byte-idéntico como gate.
 - Pendiente: detección/reorg de repo en `init` (pregunta abierta), endpoints HTTP de escritura
   (para drag-and-drop del board; hoy las transiciones son por CLI), `vector:link/status/close/
   archive/daily` (commands del resto del contrato; el binario ya soporta las transiciones).
 
 ## Stack
 
-- Go (módulo único, stdlib, sin deps externas). Layout `cmd/` + `internal/`. Frontend de
-  `web/` se embeberá vía `embed.FS`.
+- Go (módulo único). Layout `cmd/` + `internal/`. Frontend de `web/` se embebe vía `embed.FS`.
+  Deps externas (las **primeras** del módulo): **cobra** (`spf13/cobra`, Apache-2.0) para el árbol
+  de comandos + completions, y **lipgloss** (`charmbracelet/lipgloss`, MIT) para el output humano
+  estilizado; ambas compatibles con la distribución comercial. Sin `huh`/`bubbletea` (el CLI es no
+  interactivo). El resto del código sigue siendo stdlib.
 
 ## Depende de / es dependido por
 

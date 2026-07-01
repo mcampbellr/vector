@@ -1,0 +1,20 @@
+{
+  "command": "apply",
+  "tier": "full-validate",
+  "validatedDomains": [
+    "build",
+    "stack",
+    "deps"
+  ],
+  "buildCmd": "go build ./...",
+  "lintCmd": "golangci-lint run",
+  "testCmd": "go test ./...",
+  "stack": {
+    "packageManager": "go-modules",
+    "runtime": {
+      "name": "go",
+      "version": "1.26"
+    },
+    "frameworks": []
+  }
+}

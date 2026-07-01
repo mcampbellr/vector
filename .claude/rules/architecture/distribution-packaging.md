@@ -14,6 +14,15 @@ Cada decisión de arquitectura se evalúa contra el costo de instalación.
 - **Instalación de un paso**: objetivo `curl … | install.sh` (o equivalente) desde GitHub,
   sin pasos manuales. Cualquier dependencia de runtime adicional rompe este objetivo y debe
   justificarse.
+- **Deps del binario (ya no 100% stdlib)**: el CLI adopta **cobra** (`spf13/cobra`, Apache-2.0)
+  para el árbol de comandos + `vector completion <shell>` (scripts generados on-the-fly, nada
+  embebido) y **lipgloss** (`charmbracelet/lipgloss`, MIT) para el output humano estilizado y el
+  `--help` auto-generado; son las **primeras** deps externas del módulo, ambas compile-time (no
+  runtime), estáticas y con licencias compatibles con la distribución comercial. Sin
+  `huh`/`bubbletea` (el CLI es no interactivo). Costo de peso medido (build release-equivalent
+  `CGO_ENABLED=0 -ldflags "-s -w"`): ~6.6 → ~8.0 MiB (+~1.4 MiB, +~22%); sin umbral duro. El
+  `--json` consumido por los `/vector:*` permanece **byte-idéntico** (gate: suite golden en
+  `cli/cmd/vector/`).
 - **Panel web local efímero**: se levanta en un puerto disponible y poco usado solo cuando el
   dev administra Vector; no es un servicio permanente.
 - **El kit son project commands, no un plugin**: los `/vector:*` son archivos markdown en

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "alpha",
+    "priority": "normal",
+    "status": "open",
+    "title": "Alpha feature"
+  },
+  {
+    "id": "beta",
+    "priority": "normal",
+    "status": "draft",
+    "title": "Beta"
+  }
+]

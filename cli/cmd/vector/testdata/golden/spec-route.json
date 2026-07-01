@@ -1,0 +1,9 @@
+{
+  "baseline": "opus",
+  "costUsd": "0.003500",
+  "model": "haiku",
+  "precision": "estimated",
+  "savedUsd": "0.014000",
+  "tokensIn": "1000",
+  "tokensOut": "500"
+}
