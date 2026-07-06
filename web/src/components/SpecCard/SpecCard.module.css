@@ -157,3 +157,9 @@
   padding: 2px 7px;
   border-radius: var(--radius-pill);
 }
+
+.sketch {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-tertiary);
+}
