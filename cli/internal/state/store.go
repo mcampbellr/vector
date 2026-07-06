@@ -530,31 +530,41 @@ func (s *Store) FixSpec(id, classification, validationResult string, artifacts, 
 	return spec, nil
 }
 
-// AttachSketch persists an Excalidraw wireframe to a spec: lock → read → write the
-// file bytes under .vector/specs/<id>/sketches/<ref.Name> → append (or refresh) the
-// ref on the spec → atomic state.json write. It is the sole writer of the sketch
-// artifact and its state, mirroring RouteAgent/CreateSpec — it makes no LLM calls
-// (the binary computes nothing here beyond I/O). Re-attaching the same file name
-// overwrites the file and refreshes the ref's timestamp rather than duplicating it,
-// matching file-overwrite semantics. ref.CreatedAt drives the spec's UpdatedAt so
-// the `vector serve` watcher observes a fresh state.json and broadcasts over SSE.
-func (s *Store) AttachSketch(id string, file []byte, ref SketchRef, actor string) error {
-	if ref.Name == "" || ref.Name != filepath.Base(ref.Name) || ref.Name == "." || ref.Name == ".." || strings.ContainsAny(ref.Name, `/\`) {
-		return fmt.Errorf("invalid sketch name %q: must be a bare file name", ref.Name)
-	}
+// AttachSketch persists an Excalidraw wireframe to a spec: lock → read → name →
+// write the file bytes under .vector/specs/<id>/sketches/<ref.Name> → append (or
+// refresh) the ref on the spec → atomic state.json write. It is the sole writer of
+// the sketch artifact and its state, mirroring RouteAgent/CreateSpec — it makes no
+// LLM calls (the binary computes nothing here beyond I/O).
+//
+// Naming is binary-authoritative (CLI-owns-writes): when ref.Name is empty the store
+// derives a canonical name from the spec (see canonicalSketchName). A caller-supplied
+// name (attach-sketch --name) overrides but must be a bare file name. Re-attaching the
+// same name overwrites the file and refreshes the ref's timestamp rather than
+// duplicating it; the canonical path never collides, so it always appends a fresh
+// suffixed sketch. ref.CreatedAt drives the spec's UpdatedAt so the `vector serve`
+// watcher observes a fresh state.json and broadcasts over SSE. It returns the resolved
+// stored name (canonical or the --name override) so the caller can report it.
+func (s *Store) AttachSketch(id string, file []byte, ref SketchRef, actor string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	spec, err := s.ReadSpec(id)
 	if err != nil {
-		return err // ReadSpec wraps a missing spec as fs.ErrNotExist
+		return "", err // ReadSpec wraps a missing spec as fs.ErrNotExist
+	}
+
+	if ref.Name == "" {
+		ref.Name = canonicalSketchName(spec)
+	}
+	if ref.Name != filepath.Base(ref.Name) || ref.Name == "." || ref.Name == ".." || strings.ContainsAny(ref.Name, `/\`) {
+		return "", fmt.Errorf("invalid sketch name %q: must be a bare file name", ref.Name)
 	}
 
 	if err := os.MkdirAll(s.sketchesDir(id), 0o755); err != nil {
-		return fmt.Errorf("create sketches dir: %w", err)
+		return "", fmt.Errorf("create sketches dir: %w", err)
 	}
 	if err := writeFileAtomic(filepath.Join(s.sketchesDir(id), ref.Name), file); err != nil {
-		return err
+		return "", err
 	}
 
 	replaced := false
@@ -570,14 +580,14 @@ func (s *Store) AttachSketch(id string, file []byte, ref SketchRef, actor string
 	}
 	spec.UpdatedAt = ref.CreatedAt.UTC()
 	if err := writeSpecFile(s.statePath(id), spec); err != nil {
-		return err
+		return "", err
 	}
 
 	data, err := json.Marshal(SketchAttachedData{Name: ref.Name})
 	if err != nil {
-		return fmt.Errorf("marshal sketch.attached data: %w", err)
+		return "", fmt.Errorf("marshal sketch.attached data: %w", err)
 	}
-	return s.appendEvent(Event{
+	if err := s.appendEvent(Event{
 		V:      EventVersion,
 		TS:     ref.CreatedAt.UTC(),
 		Type:   EvtSketchAttached,
@@ -585,7 +595,59 @@ func (s *Store) AttachSketch(id string, file []byte, ref SketchRef, actor string
 		Repo:   spec.Repo,
 		Actor:  actor,
 		Data:   data,
-	})
+	}); err != nil {
+		return "", err
+	}
+	return ref.Name, nil
+}
+
+// canonicalSketchName derives the stored file name for a new sketch attached to spec
+// from its id, optional ticket key, and existing sketch count:
+//
+//	<id>{-<ticketKey>}-sketch{-<n>}.excalidraw
+//
+// The first sketch is unsuffixed (evolvs-pdp-editorial-sketch.excalidraw); the nth
+// (n>0) carries "-<n>" (…-sketch-1.excalidraw), and a ticket key sits between the id
+// and "-sketch" (…-EV-398-sketch.excalidraw). n starts at the current sketch count
+// and is bumped past any name already present, so an unusual state never overwrites.
+// The id is already a safe slug and the ticket key is sanitized, so the result is a
+// bare, traversal-free file name.
+func canonicalSketchName(spec *SpecState) string {
+	base := spec.ID
+	if spec.Ticket != nil {
+		if key := sanitizeNamePart(spec.Ticket.Key); key != "" {
+			base += "-" + key
+		}
+	}
+	base += "-sketch"
+
+	existing := make(map[string]bool, len(spec.Sketches))
+	for _, sk := range spec.Sketches {
+		existing[sk.Name] = true
+	}
+	for n := len(spec.Sketches); ; n++ {
+		name := base + ".excalidraw"
+		if n > 0 {
+			name = fmt.Sprintf("%s-%d.excalidraw", base, n)
+		}
+		if !existing[name] {
+			return name
+		}
+	}
+}
+
+// sanitizeNamePart strips a raw ticket key down to file-name-safe characters
+// (alphanumerics, '-', '_'), dropping separators and dots so the canonical sketch
+// name stays a bare basename regardless of the tracker's key format.
+func sanitizeNamePart(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // setStatusTimestamp stamps the lifecycle timestamp implied by a status, without

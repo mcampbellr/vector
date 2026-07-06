@@ -37,23 +37,24 @@ func TestValidateExcalidraw(t *testing.T) {
 
 func TestSanitizeSketchName(t *testing.T) {
 	tests := []struct {
-		nameFlag, file, want string
-		wantErr              bool
+		nameFlag, want string
+		wantErr        bool
 	}{
-		{"", "/tmp/x/board.excalidraw", "board.excalidraw", false},
-		{"custom.excalidraw", "/tmp/x/board.excalidraw", "custom.excalidraw", false},
-		{"../escape.excalidraw", "/tmp/x/b.excalidraw", "", true},
-		{"a/b.excalidraw", "/tmp/x/b.excalidraw", "", true},
-		{"..", "/tmp/x/b.excalidraw", "", true},
+		{"", "", false}, // empty → let AttachSketch derive the canonical name
+		{"  ", "", false},
+		{"custom.excalidraw", "custom.excalidraw", false},
+		{"../escape.excalidraw", "", true},
+		{"a/b.excalidraw", "", true},
+		{"..", "", true},
 	}
 	for _, tt := range tests {
-		got, err := sanitizeSketchName(tt.nameFlag, tt.file)
+		got, err := sanitizeSketchName(tt.nameFlag)
 		if (err != nil) != tt.wantErr {
-			t.Errorf("sanitizeSketchName(%q,%q) err = %v, wantErr = %v", tt.nameFlag, tt.file, err, tt.wantErr)
+			t.Errorf("sanitizeSketchName(%q) err = %v, wantErr = %v", tt.nameFlag, err, tt.wantErr)
 			continue
 		}
 		if !tt.wantErr && got != tt.want {
-			t.Errorf("sanitizeSketchName(%q,%q) = %q, want %q", tt.nameFlag, tt.file, got, tt.want)
+			t.Errorf("sanitizeSketchName(%q) = %q, want %q", tt.nameFlag, got, tt.want)
 		}
 	}
 }
@@ -104,7 +105,8 @@ func TestRunSpecAttachSketch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadSpec: %v", err)
 	}
-	if len(spec.Sketches) != 1 || spec.Sketches[0].Name != "sketch.excalidraw" {
+	// No --name was passed, so the binary named it canonically from the spec id.
+	if len(spec.Sketches) != 1 || spec.Sketches[0].Name != "add-ui-sketch.excalidraw" {
 		t.Fatalf("Sketches = %+v", spec.Sketches)
 	}
 }
