@@ -7,55 +7,99 @@
 
 .header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  max-width: 760px;
 }
 
 .title {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--color-text);
+}
+
+.headerMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 
 .period {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: 12px;
   color: var(--color-text-secondary);
 }
 
-.global {
-  margin: 0 0 var(--space-3);
-  max-width: 720px;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--color-text);
-  white-space: pre-wrap;
+.dot {
+  color: var(--color-border-strong);
 }
 
-.totals {
+/* Optional non-grouping summary line (usually empty). Sits above the per-item
+   list as a quiet lead, never replacing the individual paragraphs. */
+.global {
   margin: 0 0 var(--space-4);
-  font-size: 12px;
-  color: var(--color-text-tertiary);
+  max-width: 760px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
 }
 
 .specs {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: 720px;
+  max-width: 760px;
 }
 
+/* Each work item is a self-standing block with a left accent bar keyed to its
+   status, so the reader scans state at a glance. */
 .specRow {
+  position: relative;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  padding-left: calc(var(--space-4) + 3px);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.specRow::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius-card) 0 0 var(--radius-card);
+  background: var(--accent, var(--color-border-strong));
+}
+
+.specRow[data-status='draft'] { --accent: var(--status-draft-fg); }
+.specRow[data-status='open'] { --accent: var(--status-open-fg); }
+.specRow[data-status='in-progress'] { --accent: var(--status-progress-fg); }
+.specRow[data-status='review'] { --accent: var(--status-review-fg); }
+.specRow[data-status='closed'] { --accent: var(--status-closed-fg); }
+
+/* A blocked item is the one the reader must not miss: stronger bar + tinted bg. */
+.specRow[data-status='needs-attention'] {
+  --accent: var(--status-attention-fg);
+  border-color: var(--status-attention-fg);
+  background: color-mix(in srgb, var(--status-attention-bg) 45%, var(--color-surface));
+}
+
+.specRow:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-raised);
 }
 
 .specHead {
@@ -69,13 +113,6 @@
   min-width: 0;
 }
 
-.specTitle {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
 .specIdRow {
   display: flex;
   align-items: center;
@@ -83,22 +120,55 @@
   flex-wrap: wrap;
 }
 
+/* Ticket key — the primary identifier, monospaced and accented, a real link. */
+.ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.ticket:hover {
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-accent-bg));
+}
+
+.ticket:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Slug when a ticket leads — secondary, monospaced for scannability. */
 .specId {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 11px;
   color: var(--color-text-tertiary);
 }
 
-.ticket {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-  font-size: 11px;
+/* Slug as the primary identifier when there is no ticket. */
+.specIdLead {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
+  color: var(--color-text);
+}
+
+.specTitle {
+  margin: var(--space-1) 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--color-text-tertiary);
 }
 
 .specMeta {
@@ -106,6 +176,7 @@
   align-items: center;
   gap: var(--space-2);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .changeCount {
@@ -113,11 +184,12 @@
   color: var(--color-text-tertiary);
 }
 
+/* The summary IS the standup content — the most readable element in the row. */
 .specSummary {
   margin: var(--space-2) 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--color-text);
 }
 
 .state {
@@ -153,11 +225,17 @@
 .retry {
   border: none;
   background: none;
-  padding: 0;
+  padding: 2px 4px;
+  border-radius: var(--radius-button);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-accent);
   text-decoration: underline;
+}
+
+.retry:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

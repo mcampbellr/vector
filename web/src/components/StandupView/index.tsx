@@ -42,22 +42,24 @@ export function StandupView() {
     <section className={styles.view}>
       <header className={styles.header}>
         <h2 className={styles.title}>Standup</h2>
-        {data.since && (
-          <span className={styles.period}>
-            <CalendarClock size={13} strokeWidth={2} />
-            since {relativeTime(data.since, now)}
-          </span>
-        )}
+        <span className={styles.headerMeta}>
+          {data.since && (
+            <span className={styles.period}>
+              <CalendarClock size={13} strokeWidth={2} aria-hidden />
+              since {relativeTime(data.since, now)}
+            </span>
+          )}
+          {data.since && data.totals && <span className={styles.dot}>·</span>}
+          {data.totals && (
+            <span>
+              {data.totals.specs} {data.totals.specs === 1 ? 'spec' : 'specs'} · {data.totals.changes}{' '}
+              {data.totals.changes === 1 ? 'change' : 'changes'}
+            </span>
+          )}
+        </span>
       </header>
 
       {data.global && <p className={styles.global}>{data.global}</p>}
-
-      {data.totals && (
-        <p className={styles.totals}>
-          {data.totals.specs} {data.totals.specs === 1 ? 'spec' : 'specs'} · {data.totals.changes}{' '}
-          {data.totals.changes === 1 ? 'change' : 'changes'}
-        </p>
-      )}
 
       <div className={styles.specs}>
         {(data.perSpec ?? []).map((spec) => (
