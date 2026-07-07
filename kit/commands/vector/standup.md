@@ -37,22 +37,31 @@ is the prose. If step 1's JSON carried a non-empty `language`, prepend the direc
 absent or empty, add no directive and the agent falls back to the conversation language. It returns:
 
 ```json
-{ "global": "<1–3 paragraphs>", "perSpec": [ { "id": "...", "summary": "<1–2 sentences>" } ] }
+{ "global": "", "perSpec": [ { "id": "...", "summary": "<one identifier-led paragraph>" } ] }
 ```
+
+The **per-spec paragraphs are the standup** — one work item per paragraph, never grouped.
+`global` is an optional non-grouping summary and is usually empty.
 
 ## 2a. Validate the digest (shape-gate)
 
 Before piping the digest to the binary, validate that the agent output is well-formed **and**
-follows the deterministic per-spec format. A valid response meets **all** of:
+follows the deterministic engineering-standup format. A valid response meets **all** of:
 
 - Parseable as JSON.
-- `global` is a non-empty string.
+- `global` is a string. It **may be empty** (the norm); when non-empty it is a single
+  non-grouping line (see the grouping check below). Exception: on an empty period it is exactly
+  `no activity since last standup`.
 - `perSpec` is an array (may be `[]` when the projection's `perSpec` was empty).
 - Every `perSpec[]` entry has an `id` that matches an `id` from step 1's projection (same set,
-  no invented specs), and a non-empty `summary`.
+  no invented specs, one entry per spec), and a non-empty `summary`.
 - Every `summary` is a **single plain paragraph in the template shape**: it contains no markdown
   bullets or list markers (`- `, `* `, `•`, `1.`), no emojis, and **begins with that spec's
   identifier** — the projection's `ticket.key` when the spec has one, otherwise its slug `id`.
+- **No grouping anywhere** (Rule 7): neither `global` nor any `summary` lumps or counts work
+  items together. Reject any of these shapes (case-insensitive, any language): `all <N> specs`,
+  `several`, `multiple`, `various`, `a batch of`, `this period`, `this release`, `<N> specs
+  closed/completed/advanced`. Grouped state belongs in the individual paragraphs.
 
 **If valid on attempt 1:** proceed to §3.
 
@@ -93,9 +102,12 @@ rebuilds the structural fields from a fresh projection, writes
 
 ## 4. Report
 
-Print the **global digest** and the counts (e.g. `5 specs, 12 changes since the last standup`),
-then point the user at the board: "open the Standup view to see the per-spec breakdown and each
-card's activity timeline." On macOS you can offer `| pbcopy` to copy the digest.
+The standup **is** the per-spec paragraphs — print them in `perSpec` order, one paragraph per
+work item (each already leads with its ticket/slug identifier), separated by a blank line. If
+`global` is non-empty, print it as a final line **after** the per-ticket paragraphs (it never
+leads and never replaces them). Then the counts (e.g. `5 specs, 12 changes since the last
+standup`) and point the user at the board: "open the Standup view for each card's activity
+timeline." On macOS offer `| pbcopy` to copy the per-ticket paragraphs (the Slack-ready update).
 
 ## Notes
 

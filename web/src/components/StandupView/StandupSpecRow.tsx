@@ -15,21 +15,36 @@ function isStatus(value: string): value is Status {
   return (KNOWN_STATUSES as string[]).includes(value)
 }
 
+// StandupSpecRow renders one work item as a self-standing block: the identifier
+// leads (ticket key as a link when linked, else the slug), the status shows as a
+// pill plus a left accent bar keyed off data-status, and the summary is the
+// engineering-standup paragraph. One work item, one block — never grouped.
 export function StandupSpecRow({ spec }: StandupSpecRowProps) {
+  const ticket = spec.ticket?.key ? spec.ticket : undefined
   return (
-    <article className={styles.specRow}>
+    <article className={styles.specRow} data-status={spec.status}>
       <header className={styles.specHead}>
         <div className={styles.specHeading}>
-          <h3 className={styles.specTitle}>{spec.title || spec.id}</h3>
           <div className={styles.specIdRow}>
-            <span className={styles.specId}>{spec.id}</span>
-            {spec.ticket && (
-              <span className={styles.ticket} title={spec.ticket.url}>
-                <Tag size={11} strokeWidth={2} />
-                {spec.ticket.key}
-              </span>
+            {ticket ? (
+              <>
+                <a
+                  className={styles.ticket}
+                  href={ticket.url || undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={ticket.url || ticket.key}
+                >
+                  <Tag size={11} strokeWidth={2.25} aria-hidden />
+                  {ticket.key}
+                </a>
+                <span className={styles.specId}>{spec.id}</span>
+              </>
+            ) : (
+              <span className={styles.specIdLead}>{spec.id}</span>
             )}
           </div>
+          {spec.title && spec.title !== spec.id && <h3 className={styles.specTitle}>{spec.title}</h3>}
         </div>
         <div className={styles.specMeta}>
           {isStatus(spec.status) && <StatusPill status={spec.status} />}
