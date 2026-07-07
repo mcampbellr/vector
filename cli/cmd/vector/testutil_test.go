@@ -61,6 +61,7 @@ func runSync(args []string) error     { return runViaCmd(newSyncCmd, args) }
 func runStandup(args []string) error  { return runViaCmd(newStandupCmd, args) }
 func runSpecFix(args []string) error  { return runViaCmd(newSpecFixCmd, args) }
 func runSpecLink(args []string) error { return runViaCmd(newSpecLinkCmd, args) }
+func runSpecPR(args []string) error   { return runViaCmd(newSpecPRCmd, args) }
 
 // runStandupCommit drives the standup `commit` child.
 func runStandupCommit(args []string) error {

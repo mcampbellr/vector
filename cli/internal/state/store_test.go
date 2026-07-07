@@ -525,6 +525,77 @@ func TestLinkSpecValidates(t *testing.T) {
 	}
 }
 
+func TestRecordPR(t *testing.T) {
+	root := t.TempDir()
+	store, _ := Open(root)
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "feat", Title: "Feat", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// First record writes the PR and emits pr.opened; status is untouched.
+	changed, err := store.RecordPR("feat", "https://github.com/acme/api/pull/7", 7, true, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("RecordPR: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true on first record")
+	}
+	onDisk, _ := store.ReadSpec("feat")
+	if onDisk.PR == nil || onDisk.PR.URL != "https://github.com/acme/api/pull/7" || onDisk.PR.Number != 7 || !onDisk.PR.Draft {
+		t.Fatalf("PR not persisted: %+v", onDisk.PR)
+	}
+	if onDisk.Status != StatusDraft {
+		t.Errorf("RecordPR must not transition status; got %q", onDisk.Status)
+	}
+
+	// Idempotent: same URL is a no-op (no event, changed=false).
+	changed, err = store.RecordPR("feat", "https://github.com/acme/api/pull/7", 7, true, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("RecordPR idempotent: %v", err)
+	}
+	if changed {
+		t.Fatal("expected changed=false re-recording the same URL")
+	}
+
+	// A different URL replaces the record and emits a second pr.opened.
+	changed, err = store.RecordPR("feat", "https://github.com/acme/api/pull/9", 9, false, "tester", fixedNow())
+	if err != nil {
+		t.Fatalf("RecordPR replace: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true replacing with a different URL")
+	}
+	onDisk, _ = store.ReadSpec("feat")
+	if onDisk.PR.URL != "https://github.com/acme/api/pull/9" || onDisk.PR.Draft {
+		t.Errorf("PR not replaced: %+v", onDisk.PR)
+	}
+
+	// Two pr.opened events (idempotent record emits nothing).
+	events := readEvents(t, filepath.Join(root, ".vector", "local", "activity.jsonl"))
+	opened := 0
+	for _, e := range events {
+		if e.Type == EvtPROpened {
+			opened++
+		}
+	}
+	if opened != 2 {
+		t.Errorf("pr.opened event count = %d, want 2", opened)
+	}
+}
+
+func TestRecordPRValidates(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "feat", Title: "Feat", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RecordPR("feat", "", 0, false, "t", fixedNow()); err == nil {
+		t.Error("expected error recording a PR with an empty url")
+	}
+	if _, err := store.RecordPR("missing", "https://github.com/acme/api/pull/1", 1, false, "t", fixedNow()); err == nil {
+		t.Error("expected error recording a PR on a nonexistent spec")
+	}
+}
+
 func TestCreateSpecWithRelated(t *testing.T) {
 	root := t.TempDir()
 	store, _ := Open(root)

@@ -195,3 +195,49 @@ func TestContextWorktreeBlock(t *testing.T) {
 		}
 	})
 }
+
+// TestContextShipBlock verifies the ship block is present only when the repo
+// configured `ship`, with the base-branch fallback applied.
+func TestContextShipBlock(t *testing.T) {
+	// Absent by default (no ship config).
+	root := seedContextRepo(t)
+	out := captureStdout(t, func() error {
+		return runContext([]string{"--repo-root", root, "--json"})
+	})
+	var co ContextOutput
+	if err := json.Unmarshal([]byte(out), &co); err != nil {
+		t.Fatalf("output not valid JSON: %v\n%s", err, out)
+	}
+	if co.Ship != nil {
+		t.Errorf("ship should be absent without a ship config, got %+v", co.Ship)
+	}
+
+	// Present when configured; empty base branch falls back to the worktree default.
+	cfg := config.Resolve(root)
+	cfg.Ship = &config.ShipConfig{Mode: config.ShipModeAuto, ExcludeGlobs: []string{"dist/"}}
+	if err := config.Write(root, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	out = captureStdout(t, func() error {
+		return runContext([]string{"--repo-root", root, "--json"})
+	})
+	if err := json.Unmarshal([]byte(out), &co); err != nil {
+		t.Fatalf("output not valid JSON: %v\n%s", err, out)
+	}
+	if co.Ship == nil {
+		t.Fatal("ship should be present when configured")
+	}
+	if co.Ship.Mode != "auto" {
+		t.Errorf("ship.mode = %q, want auto", co.Ship.Mode)
+	}
+	if co.Ship.BaseBranch != co.Worktree.BaseBranch {
+		t.Errorf("ship.baseBranch = %q, want worktree fallback %q", co.Ship.BaseBranch, co.Worktree.BaseBranch)
+	}
+	if !co.Ship.Draft {
+		t.Error("ship.draft should default to true")
+	}
+	// ExcludeGlobs folds in the static default ahead of the configured extra.
+	if len(co.Ship.ExcludeGlobs) != 2 || co.Ship.ExcludeGlobs[0] != "openspec/" || co.Ship.ExcludeGlobs[1] != "dist/" {
+		t.Errorf("ship.excludeGlobs = %v, want [openspec/ dist/]", co.Ship.ExcludeGlobs)
+	}
+}

@@ -633,7 +633,7 @@ func newSpecCmd() *cobra.Command {
 		Use:   "spec",
 		Short: "create and transition specs on the board",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
+			return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|pr|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
 		},
 	}
 	cmd.AddCommand(
@@ -643,6 +643,7 @@ func newSpecCmd() *cobra.Command {
 		newSpecApplyCmd(),
 		newSpecFixCmd(),
 		newSpecLinkCmd(),
+		newSpecPRCmd(),
 		newSpecRelateCmd(),
 		newSpecStatusCmd(),
 		newSpecCloseCmd(),
@@ -1164,6 +1165,7 @@ usage:
   vector init [--repo-root path] [--force] [--language lang] [--dry-run] [--json]
   vector update [--repo-root path] [--language lang] [--dry-run] [--json]
   vector context [--repo-root path] [--json]   print repo setup context (example path, language, build/lint/test commands)
+  vector config set-ship [--base-branch b] [--mode ask|auto] [--draft true|false] [--exclude glob,glob] [--auth-bootstrap spec] [--json]
   vector sync [--repo-root path] [--reconcile] [--dry-run] [--json]
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector standup [--since 24h|today|7d] [--json]
@@ -1172,6 +1174,7 @@ usage:
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
   vector spec link <id> <ref> [--provider jira|linear|github|other] [--json]
+  vector spec pr <id> <url> [--number N] [--draft] [--json]
   vector spec relate <id> --kind spec|ticket --ref <ref> [--source blame|manual] [--json]
   vector spec status <id> <status> [--reason ...] [--json]
   vector spec close <id> [--json]

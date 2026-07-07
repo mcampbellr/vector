@@ -779,3 +779,109 @@ func TestBaseBranchPrefixRoundTripAndLegacy(t *testing.T) {
 			loaded.BaseBranchOrDefault(), loaded.BranchPrefixOrDefault(), DefaultBaseBranch, DefaultBranchPrefix)
 	}
 }
+
+func TestShipConfigRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	draft := false
+	cfg := &Config{
+		SchemaVersion: SchemaVersion,
+		SpecPath:      VectorFallbackSpecPath,
+		SpecFilename:  "spec.md",
+		SpecStore:     StoreVector,
+		Source:        SourceDefault,
+		Ship: &ShipConfig{
+			BaseBranch:    "develop",
+			Mode:          ShipModeAuto,
+			Draft:         &draft,
+			ExcludeGlobs:  []string{"dist/", "*.snap"},
+			AuthBootstrap: "~/.config/ship-auth",
+		},
+	}
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Ship == nil {
+		t.Fatal("Ship not persisted")
+	}
+	if loaded.Ship.BaseBranch != "develop" || loaded.Ship.Mode != ShipModeAuto || loaded.Ship.AuthBootstrap != "~/.config/ship-auth" {
+		t.Errorf("Ship round-trip mismatch: %+v", loaded.Ship)
+	}
+	if loaded.Ship.Draft == nil || *loaded.Ship.Draft != false {
+		t.Errorf("Ship.Draft round-trip mismatch: %+v", loaded.Ship.Draft)
+	}
+	if !reflect.DeepEqual(loaded.Ship.ExcludeGlobs, []string{"dist/", "*.snap"}) {
+		t.Errorf("Ship.ExcludeGlobs round-trip mismatch: %+v", loaded.Ship.ExcludeGlobs)
+	}
+}
+
+func TestShipConfigOmittedLoadsNil(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(Path(root)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A legacy config with no ship block loads with Ship == nil and no error.
+	if err := os.WriteFile(Path(root),
+		[]byte(`{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specFilename":"spec.md","specStore":"vector","source":"default"}`),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Ship != nil {
+		t.Errorf("Ship should be nil for a legacy config, got %+v", loaded.Ship)
+	}
+}
+
+func TestShipResolversNilSafe(t *testing.T) {
+	// A nil Ship resolves to every default.
+	nilShip := &Config{}
+	if nilShip.ResolvedShipMode() != ShipModeAsk {
+		t.Errorf("nil ResolvedShipMode = %q, want ask", nilShip.ResolvedShipMode())
+	}
+	if !nilShip.ResolvedShipDraft() {
+		t.Error("nil ResolvedShipDraft = false, want true")
+	}
+	if got := nilShip.ResolvedShipExcludeGlobs(); !reflect.DeepEqual(got, []string{"openspec/"}) {
+		t.Errorf("nil ResolvedShipExcludeGlobs = %v, want [openspec/]", got)
+	}
+	if got := nilShip.ResolvedShipBaseBranch("develop"); got != "develop" {
+		t.Errorf("nil ResolvedShipBaseBranch(develop) = %q, want develop", got)
+	}
+	if got := nilShip.ResolvedShipBaseBranch(""); got != DefaultBaseBranch {
+		t.Errorf("nil ResolvedShipBaseBranch(\"\") = %q, want %q", got, DefaultBaseBranch)
+	}
+	if nilShip.ResolvedShipAuthBootstrap() != "" {
+		t.Errorf("nil ResolvedShipAuthBootstrap = %q, want empty", nilShip.ResolvedShipAuthBootstrap())
+	}
+
+	// A partial Ship: configured base branch wins over the fallback; extra globs fold
+	// in on top of the static default, de-duped.
+	partial := &Config{Ship: &ShipConfig{BaseBranch: "release", ExcludeGlobs: []string{"openspec/", "dist/"}}}
+	if got := partial.ResolvedShipBaseBranch("develop"); got != "release" {
+		t.Errorf("partial ResolvedShipBaseBranch = %q, want release", got)
+	}
+	if got := partial.ResolvedShipExcludeGlobs(); !reflect.DeepEqual(got, []string{"openspec/", "dist/"}) {
+		t.Errorf("partial ResolvedShipExcludeGlobs = %v, want [openspec/ dist/]", got)
+	}
+}
+
+func TestLoadRejectsInvalidShipMode(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(Path(root)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(root),
+		[]byte(`{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default","ship":{"mode":"bogus"}}`),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "ship.mode") {
+		t.Errorf("expected invalid ship.mode error, got %v", err)
+	}
+}

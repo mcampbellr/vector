@@ -114,6 +114,12 @@ type Config struct {
 	// backward-compatible (a legacy config loads it as nil = enabled). Not written by
 	// vector init/update — set it manually to opt out.
 	SketchEnabled *bool `json:"sketchEnabled,omitempty"`
+	// Ship carries the /vector:ship orchestration knobs (base branch, ask|auto mode,
+	// default draft-PR, extra commit-exclude globs, opt-in auth bootstrap). Optional
+	// and omitempty — a legacy config loads it as nil and every resolver below is
+	// nil-safe. Written only by `vector config set-ship` (strictly opt-in, never by
+	// init/update). SchemaVersion stays 1 (additive).
+	Ship *ShipConfig `json:"ship,omitempty"`
 }
 
 // IsSketchEnabled reports whether the tail sketch step is enabled for this repo:
@@ -179,6 +185,115 @@ func (c *Config) ResolvedApplyModel() ApplyModel {
 		return c.ApplyModel
 	}
 	return ApplyModelOpus
+}
+
+// ShipMode controls whether /vector:ship opens the pull request after confirmation
+// ("ask") or without prompting ("auto"). Empty resolves to ShipModeAsk.
+type ShipMode string
+
+const (
+	ShipModeAsk  ShipMode = "ask"  // confirm before opening the PR (default)
+	ShipModeAuto ShipMode = "auto" // open the PR without prompting
+)
+
+// Valid reports whether m is a known ship mode.
+func (m ShipMode) Valid() bool {
+	switch m {
+	case ShipModeAsk, ShipModeAuto:
+		return true
+	}
+	return false
+}
+
+// DefaultShipExcludeGlobs is the static set of paths /vector:ship never commits
+// when shipping a spec — OpenSpec change artifacts are shipped separately from the
+// implementation. The spec's own authored doc is excluded dynamically (resolved via
+// SpecDocPath), not listed here. Extra globs come from ShipConfig.ExcludeGlobs.
+var DefaultShipExcludeGlobs = []string{"openspec/"}
+
+// ShipConfig holds the /vector:ship orchestration knobs. Every field is optional
+// (pass-through, merged incrementally by `vector config set-ship`); the resolvers on
+// Config apply the defaults, so a nil ShipConfig behaves as all-defaults. Draft is a
+// pointer so an explicit false is distinguishable from "unset" (which defaults true).
+type ShipConfig struct {
+	// BaseBranch overrides the branch a PR targets and is rebased onto. Empty falls
+	// back to the worktree base branch (see ResolvedShipBaseBranch).
+	BaseBranch string `json:"baseBranch,omitempty"`
+	// Mode is ask|auto (see ShipMode). Empty defaults to ShipModeAsk.
+	Mode ShipMode `json:"mode,omitempty"`
+	// Draft, when set, forces the PR's draft state; nil defaults to true (open drafts).
+	Draft *bool `json:"draft,omitempty"`
+	// ExcludeGlobs are extra commit-exclude globs added on top of DefaultShipExcludeGlobs.
+	ExcludeGlobs []string `json:"excludeGlobs,omitempty"`
+	// AuthBootstrap is an opt-in spec (a path to source or an SSH alias) that /vector:ship
+	// uses to resolve git/gh auth in a non-interactive shell. Empty = never bootstrap.
+	AuthBootstrap string `json:"authBootstrap,omitempty"`
+}
+
+// ResolvedShipMode returns the configured ship mode or the ShipModeAsk default.
+// Nil-safe: a nil Ship resolves to ask.
+func (c *Config) ResolvedShipMode() ShipMode {
+	if c.Ship != nil && c.Ship.Mode.Valid() {
+		return c.Ship.Mode
+	}
+	return ShipModeAsk
+}
+
+// ResolvedShipDraft reports whether /vector:ship opens the PR as a draft. Nil-safe:
+// an unset Ship or Ship.Draft defaults to true (drafts by default).
+func (c *Config) ResolvedShipDraft() bool {
+	if c.Ship != nil && c.Ship.Draft != nil {
+		return *c.Ship.Draft
+	}
+	return true
+}
+
+// ResolvedShipExcludeGlobs returns the effective commit-exclude globs: the static
+// DefaultShipExcludeGlobs plus any configured extras, de-duplicated and trimmed. A
+// nil Ship yields exactly the static defaults (["openspec/"]). The result is a fresh
+// slice — the caller may not mutate DefaultShipExcludeGlobs through it.
+func (c *Config) ResolvedShipExcludeGlobs() []string {
+	out := make([]string, 0, len(DefaultShipExcludeGlobs)+2)
+	seen := map[string]bool{}
+	add := func(glob string) {
+		if glob = strings.TrimSpace(glob); glob != "" && !seen[glob] {
+			seen[glob] = true
+			out = append(out, glob)
+		}
+	}
+	for _, glob := range DefaultShipExcludeGlobs {
+		add(glob)
+	}
+	if c.Ship != nil {
+		for _, glob := range c.Ship.ExcludeGlobs {
+			add(glob)
+		}
+	}
+	return out
+}
+
+// ResolvedShipBaseBranch returns the branch a PR targets: the configured ship base
+// branch, else the provided fallback (typically the worktree base branch), else the
+// "main" default. Nil-safe.
+func (c *Config) ResolvedShipBaseBranch(fallback string) string {
+	if c.Ship != nil {
+		if b := strings.TrimSpace(c.Ship.BaseBranch); b != "" {
+			return b
+		}
+	}
+	if b := strings.TrimSpace(fallback); b != "" {
+		return b
+	}
+	return DefaultBaseBranch
+}
+
+// ResolvedShipAuthBootstrap returns the configured opt-in auth bootstrap spec, or ""
+// when none is set (ship never bootstraps auth implicitly). Nil-safe.
+func (c *Config) ResolvedShipAuthBootstrap() string {
+	if c.Ship != nil {
+		return strings.TrimSpace(c.Ship.AuthBootstrap)
+	}
+	return ""
 }
 
 // ResolvedLanguage returns the configured prose language trimmed of surrounding
@@ -475,6 +590,9 @@ func Load(repoRoot string) (*Config, error) {
 	}
 	if c.ApplyModel != "" && !c.ApplyModel.Valid() {
 		return nil, fmt.Errorf("invalid applyModel %q: allowed opus,sonnet,conditional", c.ApplyModel)
+	}
+	if c.Ship != nil && c.Ship.Mode != "" && !c.Ship.Mode.Valid() {
+		return nil, fmt.Errorf("invalid ship.mode %q: allowed ask,auto", c.Ship.Mode)
 	}
 	return &c, nil
 }
