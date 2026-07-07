@@ -63,6 +63,14 @@ type SpecActivity struct {
 	// the caller (enrichProjection) as context for the digest agent. Project stays
 	// store-free, so Project never sets it.
 	PriorSummary string `json:"priorSummary,omitempty"`
+	// NeedsUAT, Assignee and AttentionReason are deterministic signals the digest
+	// agent needs to compose the fixed per-spec template (the review/UAT suffix and
+	// the blocked clause) without inventing PR/merge facts Vector does not track.
+	// All three are caller-enriched (enrichProjection) from the spec's state.json;
+	// Project stays store-free, so it never sets them.
+	NeedsUAT        bool   `json:"needsUat,omitempty"`
+	Assignee        string `json:"assignee,omitempty"`
+	AttentionReason string `json:"attentionReason,omitempty"`
 }
 
 // Totals are the period-wide counters.

@@ -127,6 +127,15 @@ func enrichProjection(store *state.Store, proj *standup.Projection) {
 		if sum, err := store.ReadSummary(sa.ID); err == nil && sum != nil {
 			sa.PriorSummary = sum.Summary
 		}
+		// Surface the deterministic signals the digest template depends on: the
+		// review/UAT distinction (needsUat), the spec's owner (assignee) and the
+		// blocked reason (needs-attention flag). All additive; the join key stays
+		// sa.ID and unset fields serialize away via omitempty.
+		sa.NeedsUAT = spec.NeedsUAT
+		sa.Assignee = spec.Assignee
+		if spec.Flag != nil {
+			sa.AttentionReason = spec.Flag.Reason
+		}
 	}
 }
 
