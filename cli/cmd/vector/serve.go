@@ -107,6 +107,17 @@ func runServeLoop(root string, httpServer *http.Server, listener net.Listener, u
 		fmt.Fprintf(os.Stderr, "note: serving web/dist from disk (embedded UI is stale); re-embed and recompile to bake it into the binary.\n")
 	} else if uiSource != "embedded" {
 		fmt.Printf("  ui:     %s\n", uiSource)
+	} else if missing := webui.EmbeddedAssetsMissing(); len(missing) > 0 {
+		// The embed is broken: index.html references assets that were never built
+		// into the binary (built from a worktree with no web build — dist/assets is
+		// gitignored). Warn LOUD instead of serving a blank board silently.
+		fmt.Fprintf(os.Stderr, "\nWARNING: the embedded board is broken — index.html references assets not in this binary:\n")
+		for _, ref := range missing {
+			fmt.Fprintf(os.Stderr, "           %s\n", ref)
+		}
+		fmt.Fprintf(os.Stderr, "         The board will render BLANK. Rebuild the web panel and re-embed before reinstalling:\n")
+		fmt.Fprintf(os.Stderr, "           npm --prefix web run build && rm -rf cli/internal/webui/dist/assets cli/internal/webui/dist/index.html && cp -R web/dist/. cli/internal/webui/dist/\n")
+		fmt.Fprintf(os.Stderr, "         then rebuild the binary. (See .claude/rules/architecture/distribution-packaging.md.)\n\n")
 	}
 	fmt.Println("\nPress Ctrl-C to stop.")
 

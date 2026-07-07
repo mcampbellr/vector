@@ -13,11 +13,54 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 //go:embed all:dist
 var embedded embed.FS
+
+// assetRefRe extracts the hashed asset paths (/assets/index-XXXX.js|css) that
+// index.html loads. It underpins ValidateAssets — the guard against shipping a
+// binary whose embedded index references assets that were never built into the
+// embed (the classic "blank board from a fresh worktree" break: dist/assets is
+// gitignored, so `go build` in a worktree with no web build embeds only index.html).
+var assetRefRe = regexp.MustCompile(`/assets/[A-Za-z0-9._-]+\.(?:js|css)`)
+
+// ValidateAssets reports the /assets/* paths that index.html references but that are
+// absent from fsys — i.e. the frontend the binary would serve is broken (the browser
+// would receive the SPA index.html in place of the missing JS/CSS and render blank).
+// An empty result means the embed is internally consistent. A missing/unreadable
+// index.html returns nil (nothing to validate — the caller decides if that matters).
+func ValidateAssets(fsys fs.FS) []string {
+	index, err := fs.ReadFile(fsys, "index.html")
+	if err != nil {
+		return nil
+	}
+	var missing []string
+	seen := map[string]bool{}
+	for _, ref := range assetRefRe.FindAllString(string(index), -1) {
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		if _, err := fs.Stat(fsys, strings.TrimPrefix(ref, "/")); err != nil {
+			missing = append(missing, ref)
+		}
+	}
+	return missing
+}
+
+// EmbeddedAssetsMissing runs ValidateAssets against the embedded dist — the guard
+// `vector serve` calls at startup so a binary built without a web build fails LOUD
+// (a warning to rebuild web) instead of silently serving a blank board.
+func EmbeddedAssetsMissing() []string {
+	sub, err := fs.Sub(embedded, "dist")
+	if err != nil {
+		return nil
+	}
+	return ValidateAssets(sub)
+}
 
 // Handler serves the panel. When dir is non-empty it serves from that directory
 // on disk (development: a freshly built web/dist without recompiling the binary);
@@ -85,7 +128,16 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.fsys.Open(name)
 	if err != nil {
-		// Unknown path → SPA entry point (client router resolves it).
+		// A missing static asset must fail LOUD (real 404), never fall back to
+		// index.html: serving HTML where the browser requested /assets/*.js renders
+		// the board blank with a 200 and no error — the exact silent break a
+		// stale/empty embed causes. SPA fallback is only for app routes (no /assets/
+		// prefix), so client-side routing still works.
+		if strings.HasPrefix(name, "assets/") {
+			http.NotFound(w, r)
+			return
+		}
+		// Unknown app path → SPA entry point (client router resolves it).
 		h.serveFile(w, r, "index.html")
 		return
 	}

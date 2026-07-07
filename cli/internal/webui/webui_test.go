@@ -1,6 +1,8 @@
 package webui
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,4 +128,58 @@ func TestResolve(t *testing.T) {
 			t.Errorf("source = %q, want %q", source, "embedded")
 		}
 	})
+}
+
+// TestValidateAssetsDetectsMissing verifies ValidateAssets flags a referenced asset
+// that is absent from the filesystem (the mechanism behind the serve-startup guard).
+func TestValidateAssetsDetectsMissing(t *testing.T) {
+	dir := t.TempDir()
+	// index.html references an asset that does not exist on disk.
+	if err := os.WriteFile(filepath.Join(dir, "index.html"),
+		[]byte(`<script src="/assets/index-DEADBEEF.js"></script>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missing := ValidateAssets(os.DirFS(dir))
+	if len(missing) != 1 || !strings.Contains(missing[0], "index-DEADBEEF.js") {
+		t.Fatalf("expected the missing asset to be flagged, got %v", missing)
+	}
+
+	// With the asset present, validation passes.
+	if err := os.MkdirAll(filepath.Join(dir, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets", "index-DEADBEEF.js"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if missing := ValidateAssets(os.DirFS(dir)); len(missing) != 0 {
+		t.Fatalf("expected no missing assets, got %v", missing)
+	}
+}
+
+// TestAssetPathNeverFallsBackToIndex verifies a missing /assets/* request returns a
+// real 404 instead of the SPA index.html — so a broken embed fails loud in the
+// browser console, not as HTML masquerading as JS with a 200.
+func TestAssetPathNeverFallsBackToIndex(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html>app</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := Handler(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/assets/index-MISSING.js", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing asset status = %d, want 404 (no SPA fallback)", rec.Code)
+	}
+
+	// An app route (no /assets/ prefix) still falls back to index.html.
+	req = httptest.NewRequest("GET", "/some/app/route", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "app") {
+		t.Fatalf("app route should serve index.html; status=%d body=%q", rec.Code, rec.Body.String())
+	}
 }
