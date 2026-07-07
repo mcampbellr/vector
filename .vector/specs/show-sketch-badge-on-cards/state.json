@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "show-sketch-badge-on-cards",
+  "title": "Show sketch indicator icon on board cards",
+  "status": "review",
+  "priority": "normal",
+  "repo": "",
+  "specDoc": ".vector/specs/show-sketch-badge-on-cards/spec.md",
+  "quickWin": true,
+  "createdAt": "2026-07-01T17:42:13.443618Z",
+  "startedAt": "2026-07-01T17:42:13.443618Z",
+  "reviewAt": "2026-07-01T17:47:30.788712Z",
+  "updatedAt": "2026-07-01T17:47:30.788712Z"
+}

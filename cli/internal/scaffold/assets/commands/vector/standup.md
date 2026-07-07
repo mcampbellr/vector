@@ -42,12 +42,17 @@ absent or empty, add no directive and the agent falls back to the conversation l
 
 ## 2a. Validate the digest (shape-gate)
 
-Before piping the digest to the binary, validate that the agent output is well-formed. A valid
-response meets **all** of:
+Before piping the digest to the binary, validate that the agent output is well-formed **and**
+follows the deterministic per-spec format. A valid response meets **all** of:
 
 - Parseable as JSON.
 - `global` is a non-empty string.
 - `perSpec` is an array (may be `[]` when the projection's `perSpec` was empty).
+- Every `perSpec[]` entry has an `id` that matches an `id` from step 1's projection (same set,
+  no invented specs), and a non-empty `summary`.
+- Every `summary` is a **single plain paragraph in the template shape**: it contains no markdown
+  bullets or list markers (`- `, `* `, `•`, `1.`), no emojis, and **begins with that spec's
+  identifier** — the projection's `ticket.key` when the spec has one, otherwise its slug `id`.
 
 **If valid on attempt 1:** proceed to §3.
 
@@ -61,9 +66,11 @@ Then re-spawn the `vector-standup-writer` subagent (same Haiku tier) with the sa
 JSON **plus** a correction directive prepended to the prompt (above the JSON):
 
 ```
-The previous attempt returned malformed or invalid JSON.
+The previous attempt returned malformed JSON or a summary that broke the format.
 Return ONLY a valid JSON object matching exactly:
 {"global": "<string>", "perSpec": [{"id": "<string>", "summary": "<string>"}]}
+Each summary must be one plain paragraph that starts with the spec's identifier
+(ticket key if present, else the slug), with no bullets, markdown or emojis.
 No preface, no code fences, no trailing text.
 ```
 

@@ -157,6 +157,46 @@ func TestStandupJSONSurfacesLanguage(t *testing.T) {
 	}
 }
 
+// TestEnrichProjectionSetsReviewAndBlockedSignals asserts enrichProjection copies
+// the deterministic template signals: needsUat for a review card, and the
+// needs-attention reason for a blocked card. A plain card carries neither.
+func TestEnrichProjectionSetsReviewAndBlockedSignals(t *testing.T) {
+	root := t.TempDir()
+	store, err := state.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	// A review card awaiting UAT (needsUat is only honored at review).
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "reviewing", Title: "Reviewing", Status: state.StatusReview, NeedsUAT: true, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	// A blocked card: created in-progress, then flagged needs-attention with a reason.
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "blocked", Title: "Blocked", Status: state.StatusInProgress, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetStatus("blocked", state.StatusNeedsAttention, "waiting on the upstream API", "tester", now); err != nil {
+		t.Fatal(err)
+	}
+	// A plain in-progress card with neither signal.
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "plain", Title: "Plain", Status: state.StatusInProgress, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	proj := standup.Projection{PerSpec: []standup.SpecActivity{{ID: "reviewing"}, {ID: "blocked"}, {ID: "plain"}}}
+	enrichProjection(store, &proj)
+
+	if !proj.PerSpec[0].NeedsUAT {
+		t.Errorf("reviewing needsUat = false, want true")
+	}
+	if got := proj.PerSpec[1].AttentionReason; got != "waiting on the upstream API" {
+		t.Errorf("blocked attentionReason = %q, want the flag reason", got)
+	}
+	if proj.PerSpec[2].NeedsUAT || proj.PerSpec[2].AttentionReason != "" {
+		t.Errorf("plain card leaked signals: needsUat=%v reason=%q", proj.PerSpec[2].NeedsUAT, proj.PerSpec[2].AttentionReason)
+	}
+}
+
 func writeTempDigest(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "digest.json")

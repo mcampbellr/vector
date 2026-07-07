@@ -52,7 +52,7 @@ func newSpecAttachSketchCmd() *cobra.Command {
 				return err
 			}
 
-			sketchName, err := sanitizeSketchName(name, file)
+			sketchName, err := sanitizeSketchName(name)
 			if err != nil {
 				return err
 			}
@@ -62,21 +62,22 @@ func newSpecAttachSketchCmd() *cobra.Command {
 				return err
 			}
 			ref := state.SketchRef{Name: sketchName, CreatedAt: time.Now().UTC()}
-			if err := store.AttachSketch(id, data, ref, resolveActor()); err != nil {
+			storedName, err := store.AttachSketch(id, data, ref, resolveActor())
+			if err != nil {
 				return err
 			}
 
 			if jsonOut {
-				return printJSON(map[string]string{"id": id, "sketch": sketchName})
+				return printJSON(map[string]string{"id": id, "sketch": storedName})
 			}
-			fmt.Printf("attached sketch %q to spec %q\n", sketchName, id)
+			fmt.Printf("attached sketch %q to spec %q\n", storedName, id)
 			return nil
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&idFlag, "id", "", "spec id to attach the sketch to (optional; or pass it as the first argument)")
 	f.StringVar(&file, "file", "", "path to the .excalidraw JSON to attach (required)")
-	f.StringVar(&name, "name", "", "stored file name (defaults to the base name of --file)")
+	f.StringVar(&name, "name", "", "stored file name override (defaults to a canonical <slug>{-<ticket>}-sketch{-<n>}.excalidraw)")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
@@ -107,17 +108,17 @@ func validateExcalidraw(data []byte) error {
 	return nil
 }
 
-// sanitizeSketchName resolves the stored file name from --name (or the base name of
-// --file) and rejects anything that is not a bare, safe file name (no separators,
-// no traversal). The store re-validates under its lock; this surfaces a clear error
-// before any I/O.
-func sanitizeSketchName(nameFlag, file string) (string, error) {
+// sanitizeSketchName resolves the explicit --name override. An empty flag returns an
+// empty name, signalling AttachSketch to derive the canonical, binary-authoritative
+// name from the spec (id + ticket + count). A supplied name must be a bare, safe file
+// name (no separators, no traversal); the store re-validates under its lock, but this
+// surfaces a clear error before any I/O.
+func sanitizeSketchName(nameFlag string) (string, error) {
 	name := strings.TrimSpace(nameFlag)
 	if name == "" {
-		name = filepath.Base(file)
+		return "", nil
 	}
-	base := filepath.Base(name)
-	if name != base || name == "." || name == ".." || name == "" || strings.ContainsAny(name, `/\`) {
+	if name != filepath.Base(name) || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
 		return "", fmt.Errorf("invalid --name %q: must be a bare file name (no path separators)", nameFlag)
 	}
 	return name, nil

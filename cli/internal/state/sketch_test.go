@@ -77,7 +77,7 @@ func TestAttachSketchPersistsAndProjects(t *testing.T) {
 	}
 
 	created := fixedNow().Add(time.Hour)
-	if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: "board.excalidraw", CreatedAt: created}, "cli"); err != nil {
+	if _, err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: "board.excalidraw", CreatedAt: created}, "cli"); err != nil {
 		t.Fatalf("AttachSketch: %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestAttachSketchEmitsEvent(t *testing.T) {
 		t.Fatalf("CreateSpec: %v", err)
 	}
 	created := fixedNow().Add(time.Hour)
-	if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: "board.excalidraw", CreatedAt: created}, "cli"); err != nil {
+	if _, err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: "board.excalidraw", CreatedAt: created}, "cli"); err != nil {
 		t.Fatalf("AttachSketch: %v", err)
 	}
 
@@ -157,12 +157,12 @@ func TestAttachSketchReAttachOverwrites(t *testing.T) {
 		t.Fatalf("CreateSpec: %v", err)
 	}
 	ref := SketchRef{Name: "s.excalidraw", CreatedAt: fixedNow()}
-	if err := store.AttachSketch("alpha", []byte(sampleSketch), ref, "cli"); err != nil {
+	if _, err := store.AttachSketch("alpha", []byte(sampleSketch), ref, "cli"); err != nil {
 		t.Fatalf("AttachSketch 1: %v", err)
 	}
 	updated := `{"type":"excalidraw","version":2,"elements":[1]}`
 	ref.CreatedAt = fixedNow().Add(2 * time.Hour)
-	if err := store.AttachSketch("alpha", []byte(updated), ref, "cli"); err != nil {
+	if _, err := store.AttachSketch("alpha", []byte(updated), ref, "cli"); err != nil {
 		t.Fatalf("AttachSketch 2: %v", err)
 	}
 	spec, _ := store.ReadSpec("alpha")
@@ -182,15 +182,70 @@ func TestAttachSketchRejectsBadNameAndMissingSpec(t *testing.T) {
 	if _, err := store.CreateSpec(CreateSpecParams{Title: "Alpha", Body: "x", Now: fixedNow()}); err != nil {
 		t.Fatalf("CreateSpec: %v", err)
 	}
-	for _, name := range []string{"", ".", "..", "a/b.excalidraw", "../escape"} {
-		if err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: name, CreatedAt: fixedNow()}, "cli"); err == nil {
+	// A non-empty --name override must be a bare file name (empty is not here: it
+	// means "let the binary name it canonically", covered by TestAttachSketchCanonicalName).
+	for _, name := range []string{".", "..", "a/b.excalidraw", "../escape"} {
+		if _, err := store.AttachSketch("alpha", []byte(sampleSketch), SketchRef{Name: name, CreatedAt: fixedNow()}, "cli"); err == nil {
 			t.Errorf("AttachSketch name %q: want error", name)
 		}
 	}
 	// Unknown spec → error (ReadSpec wraps fs.ErrNotExist).
-	if err := store.AttachSketch("ghost", []byte(sampleSketch), SketchRef{Name: "s.excalidraw", CreatedAt: fixedNow()}, "cli"); err == nil {
+	if _, err := store.AttachSketch("ghost", []byte(sampleSketch), SketchRef{Name: "s.excalidraw", CreatedAt: fixedNow()}, "cli"); err == nil {
 		t.Error("AttachSketch on missing spec: want error")
 	}
+}
+
+// TestAttachSketchCanonicalName verifies the binary-authoritative naming: an empty
+// ref.Name yields <id>{-<ticket>}-sketch{-<n>}.excalidraw, the first sketch is
+// unsuffixed, and the ticket key sits between the id and "-sketch".
+func TestAttachSketchCanonicalName(t *testing.T) {
+	t.Run("no ticket, first then second", func(t *testing.T) {
+		root := t.TempDir()
+		store, _ := Open(root)
+		if _, err := store.CreateSpec(CreateSpecParams{ID: "evolvs-pdp-editorial", Title: "PDP", Body: "x", Now: fixedNow()}); err != nil {
+			t.Fatalf("CreateSpec: %v", err)
+		}
+		first, err := store.AttachSketch("evolvs-pdp-editorial", []byte(sampleSketch), SketchRef{CreatedAt: fixedNow()}, "cli")
+		if err != nil {
+			t.Fatalf("AttachSketch 1: %v", err)
+		}
+		if first != "evolvs-pdp-editorial-sketch.excalidraw" {
+			t.Errorf("first name = %q, want evolvs-pdp-editorial-sketch.excalidraw", first)
+		}
+		second, err := store.AttachSketch("evolvs-pdp-editorial", []byte(sampleSketch), SketchRef{CreatedAt: fixedNow().Add(time.Hour)}, "cli")
+		if err != nil {
+			t.Fatalf("AttachSketch 2: %v", err)
+		}
+		if second != "evolvs-pdp-editorial-sketch-1.excalidraw" {
+			t.Errorf("second name = %q, want evolvs-pdp-editorial-sketch-1.excalidraw", second)
+		}
+		spec, _ := store.ReadSpec("evolvs-pdp-editorial")
+		if len(spec.Sketches) != 2 {
+			t.Fatalf("Sketches = %+v, want 2", spec.Sketches)
+		}
+		// The stored ref name matches the file actually written to disk.
+		if _, err := os.Stat(filepath.Join(root, ".vector", "specs", "evolvs-pdp-editorial", "sketches", second)); err != nil {
+			t.Errorf("second sketch file missing: %v", err)
+		}
+	})
+
+	t.Run("with ticket", func(t *testing.T) {
+		root := t.TempDir()
+		store, _ := Open(root)
+		if _, err := store.CreateSpec(CreateSpecParams{
+			ID: "evolvs-pdp-editorial", Title: "PDP", Body: "x", Now: fixedNow(),
+			Ticket: &Ticket{Provider: TicketJira, Key: "EV-398", URL: "https://example.test/EV-398"},
+		}); err != nil {
+			t.Fatalf("CreateSpec: %v", err)
+		}
+		name, err := store.AttachSketch("evolvs-pdp-editorial", []byte(sampleSketch), SketchRef{CreatedAt: fixedNow()}, "cli")
+		if err != nil {
+			t.Fatalf("AttachSketch: %v", err)
+		}
+		if name != "evolvs-pdp-editorial-EV-398-sketch.excalidraw" {
+			t.Errorf("name = %q, want evolvs-pdp-editorial-EV-398-sketch.excalidraw", name)
+		}
+	})
 }
 
 // bytesContains is a tiny substring check to avoid importing strings for one call.
