@@ -200,6 +200,7 @@ the commands call it rather than editing `.vector/` by hand.
 | `/vector:bug` | Turn a bug report into a validated spec, deducing the root cause from git history and recording it as a queryable relation. |
 | `/vector:propose` | Formalize a draft spec into an OpenSpec change (proposal, design, tasks) and move the card from draft to open. |
 | `/vector:apply` | Pick the next work-item by status and priority, start it, and implement the change. Autonomy is configurable. |
+| `/vector:ship` | Land a reviewed spec as a pull request: commit the implementation, rebase onto the base branch, generate the PR text, push, open a draft PR, and record it on the card. |
 | `/vector:fix` | Correct work already specified on the board (a missed detail, a UAT finding, a small course-correction) through the refiner and clarity gate. |
 | `/vector:quick` | Apply a small, low-risk change in a single run: register a quick-win card, implement it, run the gate, and land it in review. |
 | `/vector:comment` | Evaluate a review or ticket comment against the real diff with a skeptical agent, and implement only when the comment is valid and low-risk. |

@@ -157,6 +157,78 @@ func newSpecLinkCmd() *cobra.Command {
 	return cmd
 }
 
+// newSpecPRCmd records the pull request a spec was shipped as (/vector:ship opens
+// the PR and then calls this to persist the link). It takes `<id> <url>` positionals
+// (or --id/--url) plus --number/--draft, validates the id is kebab-case and the url
+// non-empty, and persists via Store.RecordPR — metadata only, no status change.
+// Idempotent on the PR URL (re-recording the same URL is a no-op).
+func newSpecPRCmd() *cobra.Command {
+	var (
+		idFlag   string
+		urlFlag  string
+		number   int
+		draft    bool
+		repoRoot string
+		jsonOut  bool
+	)
+	cmd := &cobra.Command{
+		Use:   "pr [id] [url]",
+		Short: "record the pull request a spec was shipped as (metadata only)",
+		RunE: func(_ *cobra.Command, args []string) error {
+			id, rest := leadingID(args)
+			// A second leading positional is the PR url (e.g. `spec pr feat https://…`).
+			var url string
+			if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+				url = rest[0]
+			}
+			if id == "" {
+				id = idFlag
+			}
+			if url == "" {
+				url = urlFlag
+			}
+			if id == "" || url == "" {
+				return errors.New("usage: vector spec pr <id> <url> [--number N] [--draft]")
+			}
+			if id != state.Slug(id) {
+				return fmt.Errorf("invalid spec id %q: must be kebab-case", id)
+			}
+
+			store, err := openStore(repoRoot)
+			if err != nil {
+				return err
+			}
+			changed, err := store.RecordPR(id, url, number, draft, resolveActor(), time.Now())
+			if err != nil {
+				return err
+			}
+			if jsonOut {
+				return printJSONValue(map[string]any{
+					"id":      id,
+					"url":     url,
+					"number":  number,
+					"draft":   draft,
+					"changed": changed,
+				})
+			}
+			if !changed {
+				fmt.Printf("spec %q already records PR %s (no change)\n", id, url)
+				return nil
+			}
+			fmt.Printf("recorded PR for spec %q → %s\n", id, url)
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&idFlag, "id", "", "spec id (or pass it as the first argument)")
+	f.StringVar(&urlFlag, "url", "", "pull request URL (or pass it as the second argument)")
+	f.IntVar(&number, "number", 0, "pull request number")
+	f.BoolVar(&draft, "draft", false, "the PR was opened as a draft")
+	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
+	return cmd
+}
+
 // runSpecRelate adds one cause→bug relation to a spec (/vector:bug records the
 // prior work that caused a bug). It is metadata only — like link, it never changes
 // the spec's lifecycle status. The relation is idempotent on {kind,ref}; a

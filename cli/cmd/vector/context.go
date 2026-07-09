@@ -35,7 +35,23 @@ type ContextOutput struct {
 	// prompt when this is false, without re-reading config.json itself.
 	SketchEnabled bool            `json:"sketchEnabled"`
 	Worktree      WorktreeContext `json:"worktree"`
-	Intel         *IntelSummary   `json:"intel,omitempty"`
+	// Ship carries the resolved /vector:ship knobs, present only when the repo
+	// configured a ship block (cfg.Ship != nil). Omitted otherwise so callers that
+	// don't ship read a byte-identical output (backward-compat).
+	Ship  *ShipContext  `json:"ship,omitempty"`
+	Intel *IntelSummary `json:"intel,omitempty"`
+}
+
+// ShipContext is the resolved /vector:ship configuration surfaced by `vector context
+// --json`, so the ship command reads base/mode/draft/excludeGlobs/authBootstrap from
+// one binary call. BaseBranch falls back to the worktree base branch when the ship
+// block leaves it empty; ExcludeGlobs already folds in the static defaults.
+type ShipContext struct {
+	BaseBranch    string   `json:"baseBranch"`
+	Mode          string   `json:"mode"`
+	Draft         bool     `json:"draft"`
+	ExcludeGlobs  []string `json:"excludeGlobs"`
+	AuthBootstrap string   `json:"authBootstrap,omitempty"`
 }
 
 // WorktreeContext describes the repo's bare+worktree layout for the /vector:raw
@@ -221,6 +237,18 @@ func runContextBody(repoRoot, forCmd string, jsonOut, refresh bool) error {
 		},
 	}
 
+	// Ship block: present only when the repo configured `ship`. BaseBranch falls
+	// back to the worktree base branch when the ship block leaves it empty.
+	if cfg.Ship != nil {
+		out.Ship = &ShipContext{
+			BaseBranch:    cfg.ResolvedShipBaseBranch(out.Worktree.BaseBranch),
+			Mode:          string(cfg.ResolvedShipMode()),
+			Draft:         cfg.ResolvedShipDraft(),
+			ExcludeGlobs:  cfg.ResolvedShipExcludeGlobs(),
+			AuthBootstrap: cfg.ResolvedShipAuthBootstrap(),
+		}
+	}
+
 	// Validate (and lazily regenerate) the full intel cache, attaching a compact
 	// summary. Best-effort: a cache failure warns and omits intel rather than
 	// breaking the backward-compatible output.
@@ -252,6 +280,11 @@ func runContextBody(repoRoot, forCmd string, jsonOut, refresh bool) error {
 		fmt.Printf("%-16s %s (base %s, prefix %s)\n", "worktree", out.Worktree.Root, out.Worktree.BaseBranch, out.Worktree.BranchPrefix)
 	} else {
 		fmt.Printf("%-16s %s\n", "worktree", "(none)")
+	}
+	if out.Ship != nil {
+		fmt.Printf("%-16s base %s, mode %s, draft %v\n", "ship", out.Ship.BaseBranch, out.Ship.Mode, out.Ship.Draft)
+	} else {
+		fmt.Printf("%-16s %s\n", "ship", "(none)")
 	}
 	return nil
 }

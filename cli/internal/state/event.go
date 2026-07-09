@@ -27,6 +27,7 @@ const (
 	EvtAgentRouted    EventType = "agent.routed"    // feeds the Token Savings Meter
 	EvtWorkLogged     EventType = "work.logged"     // enriched apply trace for the standup digest
 	EvtSketchAttached EventType = "sketch.attached" // a UI wireframe was attached to a spec
+	EvtPROpened       EventType = "pr.opened"       // a /vector:ship pull request (additive; never transitions)
 )
 
 // Event is one line of .vector/local/activity.jsonl (append-only, gitignored,
@@ -98,6 +99,15 @@ type SpecRelatedData struct {
 	Kind   RelatedKind   `json:"kind"`
 	Ref    string        `json:"ref"`
 	Source RelatedSource `json:"source"`
+}
+
+// PROpenedData is the payload for EvtPROpened: the pull request /vector:ship opened
+// for a spec. Purely additive — recording a PR never transitions status, so a
+// consumer that does not know pr.opened simply ignores it.
+type PROpenedData struct {
+	URL    string `json:"url"`
+	Number int    `json:"number,omitempty"`
+	Draft  bool   `json:"draft"`
 }
 
 // SpecLinkedData is the payload for EvtSpecLinked.

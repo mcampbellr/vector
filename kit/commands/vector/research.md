@@ -269,8 +269,13 @@ writes the doc to the repo's configured location and creates the draft card.
        `drawer`, `modal`, `web/`, `component`, `componente`, `UI`, `pantalla`, `formulario`, `card`.
        A single loose keyword is weak → skip silently. No strong signal → skip silently.
 
-    c. **Confirm** via `AskUserQuestion` whether to generate the wireframe. **Decline → end cleanly**
-       (spec stays a draft, no sketch). **Confirm → continue.**
+    c. **Confirm** via `AskUserQuestion` — a single **selection** question with **two explicit
+       options**, never a free-text prompt:
+       - **Generate wireframe** → continue to step 15.d.
+       - **Skip** → **end cleanly** (spec stays a draft, no sketch).
+
+       Present it exactly as a bounded choice (same select-style question the user answers for spec
+       clarifications); do not phrase it as an open prompt the user has to type a reply to.
 
     d. **Spawn the designer (async) + register routing.** Spawn the **`vector-ui-ux-designer`**
        subagent (**model: sonnet**) as a **fresh async agent** and return immediately (the sketch

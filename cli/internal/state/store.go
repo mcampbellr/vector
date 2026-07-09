@@ -375,6 +375,61 @@ func (s *Store) appendLinkedEvent(spec *SpecState, now time.Time, actor string) 
 	})
 }
 
+// RecordPR records the pull request a spec was shipped as: lock → read →
+// idempotency on the PR URL → atomic write + pr.opened event. Re-recording the same
+// URL is a no-op returning (false, nil) (no duplicate event); a different URL
+// replaces the record and emits a second pr.opened. The spec's lifecycle status is
+// untouched — recording a PR is metadata, not a transition (mirrors LinkSpec).
+func (s *Store) RecordPR(id, url string, number int, draft bool, actor string, now time.Time) (bool, error) {
+	if strings.TrimSpace(url) == "" {
+		return false, errors.New("record pr requires a non-empty url")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	spec, err := s.ReadSpec(id)
+	if err != nil {
+		return false, err
+	}
+	// Idempotent: an identical PR URL is a no-op (no re-emit).
+	if spec.PR != nil && spec.PR.URL == url {
+		return false, nil
+	}
+
+	now = now.UTC()
+	spec.PR = &PullRequest{URL: url, Number: number, Draft: draft, OpenedAt: now}
+	spec.UpdatedAt = now
+	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+		return false, err
+	}
+	if err := s.appendPROpenedEvent(spec, now, actor); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// appendPROpenedEvent appends a pr.opened event for spec.PR. The caller holds s.mu
+// (it runs inside RecordPR while the lock is held).
+func (s *Store) appendPROpenedEvent(spec *SpecState, now time.Time, actor string) error {
+	data, err := json.Marshal(PROpenedData{
+		URL:    spec.PR.URL,
+		Number: spec.PR.Number,
+		Draft:  spec.PR.Draft,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal pr.opened data: %w", err)
+	}
+	return s.appendEvent(Event{
+		V:      EventVersion,
+		TS:     now,
+		Type:   EvtPROpened,
+		SpecID: spec.ID,
+		Repo:   spec.Repo,
+		Actor:  actor,
+		Data:   data,
+	})
+}
+
 // ReconcileStatus updates a sync-owned spec's status and OpenSpec artifacts to
 // match its source change, appending a status.changed event (trigger "sync"). It
 // is a no-op returning (false, nil) when nothing differs.

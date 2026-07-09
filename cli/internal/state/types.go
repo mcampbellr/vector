@@ -155,6 +155,13 @@ type SpecState struct {
 	OpenSpec *OpenSpec  `json:"openspec,omitempty"`
 	Flag     *Attention `json:"needsAttention,omitempty"`
 
+	// PR records the pull request opened for this spec by /vector:ship. It is a
+	// distinct concept from Ticket (the operational tracker): a spec may have both.
+	// Optional and omitempty, so specs without a PR read/serialize byte-identically.
+	// Written only by Store.RecordPR (via `vector spec pr`); recording a PR never
+	// transitions the spec's status. SchemaVersion stays 1 (additive, no migration).
+	PR *PullRequest `json:"pr,omitempty"`
+
 	// RelatedTo records the prior work that caused this spec (used by /vector:bug
 	// to trace a bug to its root cause). Optional and omitempty, so specs without
 	// relations read/serialize byte-identically. Relating never changes status.
@@ -194,6 +201,17 @@ type Ticket struct {
 	Key      string         `json:"key"`
 	URL      string         `json:"url"`
 	Auto     bool           `json:"auto"` // true if auto-detected from raw text
+}
+
+// PullRequest records the pull request a spec was shipped as (opened by
+// /vector:ship, persisted via Store.RecordPR). URL is the identity used for
+// idempotency; Number and Draft are the GitHub PR number and draft state; OpenedAt
+// is when it was first recorded (RFC3339 UTC).
+type PullRequest struct {
+	URL      string    `json:"url"`
+	Number   int       `json:"number,omitempty"`
+	Draft    bool      `json:"draft"`
+	OpenedAt time.Time `json:"openedAt"`
 }
 
 // OpenSpec references the OpenSpec change a spec was applied to.
