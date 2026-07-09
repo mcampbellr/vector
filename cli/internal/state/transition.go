@@ -30,13 +30,66 @@ func CanTransition(from, to Status) bool {
 // transitionOpts configure a single state-machine move.
 type transitionOpts struct {
 	to        Status
-	trigger   string    // status.changed trigger: command | apply | hook
-	reason    string    // required when entering needs-attention
-	source    string    // needs-attention source: hook | command
-	extraType EventType // optional domain event emitted alongside status.changed
-	extraData any       // payload for extraType
+	trigger   string     // status.changed trigger: command | apply | hook
+	reason    string     // legacy free-text; used when entering needs-attention and att is nil
+	att       *Attention // structured needs-attention overlay; when set it wins over reason
+	source    string     // needs-attention source: hook | command
+	extraType EventType  // optional domain event emitted alongside status.changed
+	extraData any        // payload for extraType
 	actor     string
 	now       time.Time
+}
+
+// attentionSummaryMax bounds the one-liner summary derived from a legacy --reason
+// during on-write migration (the card renders it; the drawer shows the full detail).
+const attentionSummaryMax = 80
+
+// truncateAttentionSummary returns reason clipped to attentionSummaryMax runes,
+// appending an ellipsis only when it actually cut the string.
+func truncateAttentionSummary(reason string) string {
+	runes := []rune(reason)
+	if len(runes) <= attentionSummaryMax {
+		return reason
+	}
+	return string(runes[:attentionSummaryMax]) + "…"
+}
+
+// buildAttention constructs the needs-attention overlay from a transition.
+// Structured path (opts.att != nil): the caller supplies Category/Summary/Detail;
+// Category defaults to "other", Detail falls back to Summary, and Reason is fixed
+// equal to Summary. Legacy path (opts.reason only): migrate on write —
+// Category="other", Summary=truncated reason, Detail=Reason=reason.
+func buildAttention(opts transitionOpts, now time.Time) *Attention {
+	source := opts.source
+	if source == "" {
+		source = "command"
+	}
+	if opts.att != nil {
+		category := opts.att.Category
+		if category == "" {
+			category = AttentionOther
+		}
+		detail := opts.att.Detail
+		if detail == "" {
+			detail = opts.att.Summary
+		}
+		return &Attention{
+			Reason:   opts.att.Summary,
+			Category: category,
+			Summary:  opts.att.Summary,
+			Detail:   detail,
+			Since:    now,
+			Source:   source,
+		}
+	}
+	return &Attention{
+		Reason:   opts.reason,
+		Category: AttentionOther,
+		Summary:  truncateAttentionSummary(opts.reason),
+		Detail:   opts.reason,
+		Since:    now,
+		Source:   source,
+	}
 }
 
 // applyTransition is the shared write primitive for state-machine moves: it
@@ -61,8 +114,17 @@ func (s *Store) applyTransition(id string, opts transitionOpts) (*SpecState, err
 	if !CanTransition(from, opts.to) {
 		return nil, fmt.Errorf("illegal transition %q → %q for spec %q", from, opts.to, id)
 	}
-	if opts.to == StatusNeedsAttention && opts.reason == "" {
-		return nil, errors.New("entering needs-attention requires a reason")
+	if opts.to == StatusNeedsAttention {
+		if opts.att != nil {
+			if opts.att.Summary == "" {
+				return nil, errors.New("entering needs-attention requires a summary")
+			}
+			if opts.att.Category != "" && !opts.att.Category.Valid() {
+				return nil, fmt.Errorf("invalid attention category %q", opts.att.Category)
+			}
+		} else if opts.reason == "" {
+			return nil, errors.New("entering needs-attention requires a reason")
+		}
 	}
 
 	now := opts.now.UTC()
@@ -73,11 +135,7 @@ func (s *Store) applyTransition(id string, opts transitionOpts) (*SpecState, err
 	// Maintain the attention overlay: set on entry, clear on resolution.
 	switch {
 	case opts.to == StatusNeedsAttention:
-		source := opts.source
-		if source == "" {
-			source = "command"
-		}
-		spec.Flag = &Attention{Reason: opts.reason, Since: now, Source: source}
+		spec.Flag = buildAttention(opts, now)
 	case from == StatusNeedsAttention:
 		spec.Flag = nil
 	}
@@ -86,7 +144,11 @@ func (s *Store) applyTransition(id string, opts transitionOpts) (*SpecState, err
 		return nil, err
 	}
 
-	changed, err := json.Marshal(StatusChangedData{From: from, To: opts.to, Trigger: opts.trigger, Reason: opts.reason})
+	eventReason := opts.reason
+	if opts.att != nil {
+		eventReason = opts.att.Summary
+	}
+	changed, err := json.Marshal(StatusChangedData{From: from, To: opts.to, Trigger: opts.trigger, Reason: eventReason})
 	if err != nil {
 		return nil, fmt.Errorf("marshal status.changed data: %w", err)
 	}
@@ -165,6 +227,25 @@ func (s *Store) SetStatus(id string, to Status, reason, actor string, now time.T
 		to:      to,
 		trigger: "command",
 		reason:  reason,
+		source:  "command",
+		actor:   actor,
+		now:     now,
+	})
+}
+
+// SetStatusAttention is the structured needs-attention transition: instead of a
+// single free-text reason it carries a categorized, summarized, markdown-detailed
+// overlay. Only needs-attention is a valid target (the other moves have no
+// structured payload); it delegates to the same applyTransition as SetStatus, so
+// the state machine and Flag lifecycle are identical. att.Summary is required.
+func (s *Store) SetStatusAttention(id string, to Status, att Attention, actor string, now time.Time) (*SpecState, error) {
+	if to != StatusNeedsAttention {
+		return nil, errors.New("structured attention is only valid for the needs-attention transition")
+	}
+	return s.applyTransition(id, transitionOpts{
+		to:      to,
+		trigger: "command",
+		att:     &att,
 		source:  "command",
 		actor:   actor,
 		now:     now,

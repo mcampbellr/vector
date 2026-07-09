@@ -105,11 +105,16 @@ for the dev to review.
 The binary does **not** gate; the command does. Inspect the implementer's JSON:
 
 - `"blocked": true` **or** `"validation": "fail"` → do **not** transition to `review`. Move the
-  card to `needs-attention` with a concrete, actionable reason (what's pending + how to unblock):
+  card to `needs-attention` with the structured contract — a **`--category`**
+  (`dependency|env|decision|external|other`), a concrete one-liner **`--summary`** (what's pending),
+  and an optional markdown **`--detail`** / `--detail-file` (how/who unblocks it + PR ref):
 
   ```
-  vector spec status <id> needs-attention --reason "<reason>"
+  vector spec status <id> needs-attention --category <cat> --summary "<what's pending>" [--detail "<md>"]
   ```
+
+  The legacy `--reason "<text>"` still works (mutually exclusive with the structured flags,
+  auto-migrated to `category=other`), but prefer the structured contract.
 
   Then still record the fix (step 6) with `--validation-result fail` so the trace is honest, and
   stop — surface the blocker to the user.

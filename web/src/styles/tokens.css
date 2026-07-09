@@ -41,6 +41,18 @@
   --status-review-bg: #ede9fe;
   --status-closed-fg: #047857;
   --status-closed-bg: #d1fae5;
+  
+  /* Attention category palette (chips on needs-attention cards) */
+  --status-cat-dependency-fg: #1d4ed8;
+  --status-cat-dependency-bg: #dbeafe;
+  --status-cat-env-fg: #0f766e;
+  --status-cat-env-bg: #ccfbf1;
+  --status-cat-decision-fg: #a21caf;
+  --status-cat-decision-bg: #fae8ff;
+  --status-cat-external-fg: #c2410c;
+  --status-cat-external-bg: #ffedd5;
+  --status-cat-other-fg: #475569;
+  --status-cat-other-bg: #eef2f7;
 
   /* Priority */
   --priority-urgent: #dc2626;
@@ -116,6 +128,18 @@
   --status-review-bg: #312a46;
   --status-closed-fg: #50fa7b;
   --status-closed-bg: #1f3a2c;
+  
+  /* Attention category palette (chips on needs-attention cards) */
+  --status-cat-dependency-fg: #8be9fd;
+  --status-cat-dependency-bg: #17303a;
+  --status-cat-env-fg: #5eead4;
+  --status-cat-env-bg: #133433;
+  --status-cat-decision-fg: #ff79c6;
+  --status-cat-decision-bg: #3a2130;
+  --status-cat-external-fg: #ffb86c;
+  --status-cat-external-bg: #3a2c18;
+  --status-cat-other-fg: #c8cee0;
+  --status-cat-other-bg: #343746;
 
   /* Priority */
   --priority-urgent: #ff5555;
@@ -169,6 +193,18 @@
     --status-review-bg: #312a46;
     --status-closed-fg: #50fa7b;
     --status-closed-bg: #1f3a2c;
+    
+    /* Attention category palette (chips on needs-attention cards) */
+    --status-cat-dependency-fg: #8be9fd;
+    --status-cat-dependency-bg: #17303a;
+    --status-cat-env-fg: #5eead4;
+    --status-cat-env-bg: #133433;
+    --status-cat-decision-fg: #ff79c6;
+    --status-cat-decision-bg: #3a2130;
+    --status-cat-external-fg: #ffb86c;
+    --status-cat-external-bg: #3a2c18;
+    --status-cat-other-fg: #c8cee0;
+    --status-cat-other-bg: #343746;
 
     /* Priority */
     --priority-urgent: #ff5555;
@@ -213,6 +249,18 @@
   --status-review-bg: #ede9fe;
   --status-closed-fg: #047857;
   --status-closed-bg: #d1fae5;
+  
+  /* Attention category palette (chips on needs-attention cards) */
+  --status-cat-dependency-fg: #1d4ed8;
+  --status-cat-dependency-bg: #dbeafe;
+  --status-cat-env-fg: #0f766e;
+  --status-cat-env-bg: #ccfbf1;
+  --status-cat-decision-fg: #a21caf;
+  --status-cat-decision-bg: #fae8ff;
+  --status-cat-external-fg: #c2410c;
+  --status-cat-external-bg: #ffedd5;
+  --status-cat-other-fg: #475569;
+  --status-cat-other-bg: #eef2f7;
   --priority-urgent: #dc2626;
   --priority-high: #ea580c;
   --priority-normal: #6b7280;

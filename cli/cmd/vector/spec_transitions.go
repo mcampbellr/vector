@@ -302,6 +302,10 @@ func newSpecStatusCmd() *cobra.Command {
 	var (
 		statusFlag string
 		reason     string
+		category   string
+		summary    string
+		detail     string
+		detailFile string
 		repoRoot   string
 		jsonOut    bool
 	)
@@ -319,14 +323,24 @@ func newSpecStatusCmd() *cobra.Command {
 				target = statusFlag
 			}
 			if id == "" || target == "" {
-				return fmt.Errorf("usage: vector spec status <id> <status> [--reason ...]")
+				return fmt.Errorf("usage: vector spec status <id> <status> [--reason ... | --category <cat> --summary <text> [--detail <md> | --detail-file <path>]]")
 			}
 
 			store, err := openStore(repoRoot)
 			if err != nil {
 				return err
 			}
-			updated, err := store.SetStatus(id, state.Status(target), reason, resolveActor(), time.Now())
+
+			var updated *state.SpecState
+			if category != "" || summary != "" || detail != "" || detailFile != "" {
+				att, aErr := buildStructuredAttention(state.Status(target), reason, category, summary, detail, detailFile)
+				if aErr != nil {
+					return aErr
+				}
+				updated, err = store.SetStatusAttention(id, state.StatusNeedsAttention, att, resolveActor(), time.Now())
+			} else {
+				updated, err = store.SetStatus(id, state.Status(target), reason, resolveActor(), time.Now())
+			}
 			if err != nil {
 				return err
 			}
@@ -339,10 +353,51 @@ func newSpecStatusCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&statusFlag, "status", "", "target status")
-	f.StringVar(&reason, "reason", "", "reason (required when entering needs-attention)")
+	f.StringVar(&reason, "reason", "", "legacy free-text reason (entering needs-attention); mutually exclusive with --category/--summary/--detail")
+	f.StringVar(&category, "category", "", "needs-attention category: dependency|env|decision|external|other (default other)")
+	f.StringVar(&summary, "summary", "", "needs-attention one-liner (required on the structured path)")
+	f.StringVar(&detail, "detail", "", "needs-attention markdown detail (mutually exclusive with --detail-file)")
+	f.StringVar(&detailFile, "detail-file", "", "read the markdown detail from a file (mutually exclusive with --detail)")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
+}
+
+// buildStructuredAttention validates the structured needs-attention flag set and
+// returns the Attention overlay to persist. It enforces: the target must be
+// needs-attention; --reason is mutually exclusive with the structured flags;
+// --summary is required; --category (when set) must be a known enum; --detail and
+// --detail-file are mutually exclusive; --detail-file is read from disk. Category
+// defaulting to "other" and Detail falling back to Summary happen in the store.
+func buildStructuredAttention(target state.Status, reason, category, summary, detail, detailFile string) (state.Attention, error) {
+	if target != state.StatusNeedsAttention {
+		return state.Attention{}, fmt.Errorf("--category/--summary/--detail are only valid for the needs-attention transition")
+	}
+	if reason != "" {
+		return state.Attention{}, fmt.Errorf("--reason is mutually exclusive with --category/--summary/--detail")
+	}
+	if summary == "" {
+		return state.Attention{}, fmt.Errorf("--summary is required for the structured needs-attention transition")
+	}
+	if detail != "" && detailFile != "" {
+		return state.Attention{}, fmt.Errorf("--detail and --detail-file are mutually exclusive")
+	}
+	cat := state.AttentionOther
+	if category != "" {
+		cat = state.AttentionCategory(category)
+		if !cat.Valid() {
+			return state.Attention{}, fmt.Errorf("invalid --category %q (want dependency|env|decision|external|other)", category)
+		}
+	}
+	detailText := detail
+	if detailFile != "" {
+		contents, err := os.ReadFile(detailFile)
+		if err != nil {
+			return state.Attention{}, fmt.Errorf("read --detail-file: %w", err)
+		}
+		detailText = string(contents)
+	}
+	return state.Attention{Category: cat, Summary: summary, Detail: detailText}, nil
 }
 
 // newSpecCloseCmd / newSpecArchiveCmd are the closing transitions.

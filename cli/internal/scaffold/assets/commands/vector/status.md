@@ -10,7 +10,7 @@ commands don't cover — e.g. flagging `needs-attention`, returning `review → 
 resuming `needs-attention → in-progress`. **You never write Vector's state yourself** — you call
 `vector spec status`, which validates and flips the board state (CLI-owns-writes).
 
-**Input**: `$ARGUMENTS` = `<id> <status> [reason]`. Statuses: `open`, `in-progress`,
+**Input**: `$ARGUMENTS` = `<id> <status> [reason | --category/--summary/--detail]`. Statuses: `open`, `in-progress`,
 `needs-attention`, `review`, `closed`, `archived`. If id or status is missing, ask (show
 `vector spec list`).
 
@@ -19,17 +19,29 @@ resuming `needs-attention → in-progress`. **You never write Vector's state you
 Read `.vector/specs/<id>/state.json` for the current status. The binary enforces the LOCKED
 state machine; legal moves include: `in-progress ↔ review`, `* → needs-attention`,
 `needs-attention → in-progress|review`, and the closing moves. `draft → open` is **not** here —
-that's `/vector:propose`. Entering `needs-attention` **requires a reason**.
+that's `/vector:propose`. Entering `needs-attention` **requires a `--summary`** (structured path)
+or a `--reason` (legacy path).
 
 ## 2. Apply the transition
+
+For `needs-attention`, prefer the **structured contract** — a `--category`
+(`dependency|env|decision|external|other`, default `other`), a one-liner `--summary` (shown on the
+card), and an optional markdown `--detail` / `--detail-file` (rendered in the details drawer):
+
+```bash
+vector spec status <id> needs-attention --category <cat> --summary "<what's pending>" [--detail "<md>" | --detail-file <path>] --json
+```
+
+For every other transition (or the legacy needs-attention path):
 
 ```bash
 vector spec status <id> <status> [--reason "<why>"] --json
 ```
 
-`--reason` is required when `<status>` is `needs-attention` (it populates `needsAttention.reason`,
-surfaced on the card). The binary logs `status.changed` (`trigger:command`). An illegal move
-errors out — surface the error; do not edit `.vector/` by hand.
+`--summary` (structured) or `--reason` (legacy) is required when `<status>` is `needs-attention`;
+the two paths are **mutually exclusive** and a legacy `--reason` is auto-migrated to
+`category=other`. The binary logs `status.changed` (`trigger:command`). An illegal move errors out
+— surface the error; do not edit `.vector/` by hand.
 
 ## 3. Summarize what was done (post-action)
 
