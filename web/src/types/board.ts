@@ -59,7 +59,12 @@ export interface Card {
   /** repo-relative path to the authored spec doc; mirrors Go Card.SpecDoc. */
   specDoc?: string
   artifacts?: Artifacts
+  /** Needs-attention overlay. Legacy cards carry only attentionReason; structured
+   *  cards add the category/summary/detail triple (mirrors Go Card.Attention*). */
   attentionReason?: string
+  attentionCategory?: 'dependency' | 'env' | 'decision' | 'external' | 'other'
+  attentionSummary?: string
+  attentionDetail?: string
   needsUat?: boolean
   /** /vector:quick one-run change; rendered as a read-only badge. */
   quickWin?: boolean

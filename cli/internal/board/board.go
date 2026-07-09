@@ -38,30 +38,33 @@ type Column struct {
 // Card is a spec projected for display. Token economics churn per run and are
 // personal, so SavedUSD is derived from the activity log, not stored on state.
 type Card struct {
-	ID              string            `json:"id"`
-	Title           string            `json:"title"`
-	Status          string            `json:"status"`
-	Priority        string            `json:"priority"`
-	Repo            string            `json:"repo,omitempty"`
-	Stage           string            `json:"stage,omitempty"`
-	Assignee        string            `json:"assignee,omitempty"`
-	Labels          []string          `json:"labels,omitempty"`
-	EstimateMin     int               `json:"estimateMinutes,omitempty"`
-	Ticket          *Ticket           `json:"ticket,omitempty"`
-	RelatedTo       []RelatedItem     `json:"relatedTo,omitempty"`
-	HasOpenSpec     bool              `json:"hasOpenSpec"`
-	SpecDoc         string            `json:"specDoc,omitempty"` // repo-relative path to the authored spec doc
-	Artifacts       *Artifacts        `json:"artifacts,omitempty"`
-	AttentionReason string            `json:"attentionReason,omitempty"`
-	NeedsUAT        bool              `json:"needsUat,omitempty"` // review awaiting manual UAT
-	QuickWin        bool              `json:"quickWin,omitempty"` // /vector:quick one-run change
-	Sketches        []state.SketchRef `json:"sketches,omitempty"` // attached Excalidraw wireframes (download-only)
-	SavedUSD        float64           `json:"savedUsd"`
-	Routes          int               `json:"routes"`
-	TokensIn        int               `json:"tokensIn"`
-	TokensOut       int               `json:"tokensOut"`
-	ByModel         []ModelRollup     `json:"byModel,omitempty"` // this spec's per-model token breakdown
-	UpdatedAt       time.Time         `json:"updatedAt"`
+	ID                string            `json:"id"`
+	Title             string            `json:"title"`
+	Status            string            `json:"status"`
+	Priority          string            `json:"priority"`
+	Repo              string            `json:"repo,omitempty"`
+	Stage             string            `json:"stage,omitempty"`
+	Assignee          string            `json:"assignee,omitempty"`
+	Labels            []string          `json:"labels,omitempty"`
+	EstimateMin       int               `json:"estimateMinutes,omitempty"`
+	Ticket            *Ticket           `json:"ticket,omitempty"`
+	RelatedTo         []RelatedItem     `json:"relatedTo,omitempty"`
+	HasOpenSpec       bool              `json:"hasOpenSpec"`
+	SpecDoc           string            `json:"specDoc,omitempty"` // repo-relative path to the authored spec doc
+	Artifacts         *Artifacts        `json:"artifacts,omitempty"`
+	AttentionReason   string            `json:"attentionReason,omitempty"`
+	AttentionCategory string            `json:"attentionCategory,omitempty"`
+	AttentionSummary  string            `json:"attentionSummary,omitempty"`
+	AttentionDetail   string            `json:"attentionDetail,omitempty"`
+	NeedsUAT          bool              `json:"needsUat,omitempty"` // review awaiting manual UAT
+	QuickWin          bool              `json:"quickWin,omitempty"` // /vector:quick one-run change
+	Sketches          []state.SketchRef `json:"sketches,omitempty"` // attached Excalidraw wireframes (download-only)
+	SavedUSD          float64           `json:"savedUsd"`
+	Routes            int               `json:"routes"`
+	TokensIn          int               `json:"tokensIn"`
+	TokensOut         int               `json:"tokensOut"`
+	ByModel           []ModelRollup     `json:"byModel,omitempty"` // this spec's per-model token breakdown
+	UpdatedAt         time.Time         `json:"updatedAt"`
 }
 
 // Ticket mirrors the linked tracker (subset of state.Ticket for display).
@@ -250,6 +253,9 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 	}
 	if spec.Flag != nil {
 		card.AttentionReason = spec.Flag.Reason
+		card.AttentionCategory = string(spec.Flag.Category)
+		card.AttentionSummary = spec.Flag.Summary
+		card.AttentionDetail = spec.Flag.Detail
 	}
 	return card
 }

@@ -50,6 +50,8 @@
   border-radius: var(--radius-pill);
 }
 
+/* Legacy fallback: a card that carries only attentionReason (no structured
+   summary) keeps the red block, now single-line + ellipsis with a full title. */
 .attention {
   margin: 0;
   font-size: 12px;
@@ -58,6 +60,65 @@
   background: var(--status-attention-bg);
   padding: 6px 8px;
   border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Structured needs-attention: a category chip + a one-line summary. The summary
+   truncates responsively (CSS ellipsis) and exposes the full text via title. */
+.attentionRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.attentionSummary {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--status-attention-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.categoryChip {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.catDependency {
+  color: var(--status-cat-dependency-fg);
+  background: var(--status-cat-dependency-bg);
+}
+
+.catEnv {
+  color: var(--status-cat-env-fg);
+  background: var(--status-cat-env-bg);
+}
+
+.catDecision {
+  color: var(--status-cat-decision-fg);
+  background: var(--status-cat-decision-bg);
+}
+
+.catExternal {
+  color: var(--status-cat-external-fg);
+  background: var(--status-cat-external-bg);
+}
+
+.catOther {
+  color: var(--status-cat-other-fg);
+  background: var(--status-cat-other-bg);
 }
 
 .related {

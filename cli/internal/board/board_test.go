@@ -228,6 +228,61 @@ func TestBuildProjectsQuickWin(t *testing.T) {
 	}
 }
 
+// TestBuildProjectsAttention verifies toCard flattens a full structured Attention
+// into the four card fields, and that a legacy Attention (only Reason/Since/Source)
+// projects only attentionReason with the structured fields omitted from the JSON.
+func TestBuildProjectsAttention(t *testing.T) {
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	src := fakeSource{specs: []*state.SpecState{{
+		ID: "blocked", Title: "Blocked", Status: state.StatusNeedsAttention, Priority: state.PriorityNormal,
+		Flag: &state.Attention{
+			Reason:   "Zoho api_names pending creds",
+			Category: state.AttentionDependency,
+			Summary:  "Zoho api_names pending creds",
+			Detail:   "PR #367 open; fill `TODO(MH-1582)`",
+			Since:    now,
+			Source:   "command",
+		},
+		UpdatedAt: now,
+	}}}
+	b, err := Build(src, "demo", now)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	card := columnByStatus(t, b, "needs-attention").Cards[0]
+	if card.AttentionCategory != "dependency" || card.AttentionSummary != "Zoho api_names pending creds" {
+		t.Errorf("category/summary = %q/%q, want dependency/…", card.AttentionCategory, card.AttentionSummary)
+	}
+	if card.AttentionDetail != "PR #367 open; fill `TODO(MH-1582)`" {
+		t.Errorf("detail = %q, want the markdown detail", card.AttentionDetail)
+	}
+	if card.AttentionReason != "Zoho api_names pending creds" {
+		t.Errorf("reason = %q, want it kept for legacy readers", card.AttentionReason)
+	}
+
+	// A legacy Attention (pre-migration on disk: only Reason/Since/Source) projects
+	// just attentionReason; the structured fields stay omitted from the contract.
+	legacy := fakeSource{specs: []*state.SpecState{{
+		ID: "old", Title: "Old", Status: state.StatusNeedsAttention, Priority: state.PriorityNormal,
+		Flag:      &state.Attention{Reason: "blocked on DTO", Since: now, Source: "command"},
+		UpdatedAt: now,
+	}}}
+	lb, _ := Build(legacy, "demo", now)
+	lcard := columnByStatus(t, lb, "needs-attention").Cards[0]
+	if lcard.AttentionReason != "blocked on DTO" {
+		t.Errorf("legacy reason = %q, want blocked on DTO", lcard.AttentionReason)
+	}
+	raw, err := json.Marshal(lcard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"attentionCategory", "attentionSummary", "attentionDetail"} {
+		if containsField(raw, field) {
+			t.Errorf("%s present for a legacy attention card: %s", field, raw)
+		}
+	}
+}
+
 // TestBuildProjectsSketches verifies the Card projection carries sketches when the
 // spec has them, and omits the field (omitempty) when it has none.
 func TestBuildProjectsSketches(t *testing.T) {

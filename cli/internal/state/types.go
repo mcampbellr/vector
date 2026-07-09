@@ -209,9 +209,39 @@ type ArtifactSet struct {
 	Tasks    bool `json:"tasks"`
 }
 
-// Attention is set when Status is StatusNeedsAttention.
+// AttentionCategory classifies why a spec is blocked. Fixed enum for V1: the
+// producer (/vector:apply §6b, /vector:fix §5) already knows the category, so it
+// is emitted rather than inferred. Extending the enum is intentionally out of V1.
+type AttentionCategory string
+
+const (
+	AttentionDependency AttentionCategory = "dependency"
+	AttentionEnv        AttentionCategory = "env"
+	AttentionDecision   AttentionCategory = "decision"
+	AttentionExternal   AttentionCategory = "external"
+	AttentionOther      AttentionCategory = "other"
+)
+
+// Valid reports whether c is a known attention category.
+func (c AttentionCategory) Valid() bool {
+	switch c {
+	case AttentionDependency, AttentionEnv, AttentionDecision, AttentionExternal, AttentionOther:
+		return true
+	}
+	return false
+}
+
+// Attention is set when Status is StatusNeedsAttention. Category/Summary/Detail
+// are optional, additive fields (omitempty): a legacy spec on disk deserializes
+// them to "" with no SchemaVersion bump. On the structured path Reason is fixed
+// equal to Summary, so any legacy reader of `reason` still gets a one-liner and
+// board.go maps AttentionReason=Reason with no branching; on the legacy --reason
+// path the binary migrates on write (Category="other", Summary truncated, Detail=reason).
 type Attention struct {
-	Reason string    `json:"reason"`
-	Since  time.Time `json:"since"`
-	Source string    `json:"source,omitempty"` // "hook" | "command"
+	Reason   string            `json:"reason"`
+	Category AttentionCategory `json:"category,omitempty"`
+	Summary  string            `json:"summary,omitempty"`
+	Detail   string            `json:"detail,omitempty"`
+	Since    time.Time         `json:"since"`
+	Source   string            `json:"source,omitempty"` // "hook" | "command"
 }

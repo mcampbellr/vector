@@ -4,6 +4,7 @@ import type { Card } from '../../types/board'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
 import { ArtifactDot } from './ArtifactDot'
+import { AttentionCategoryChip } from './AttentionCategoryChip'
 import { CardNextCommand } from './CardNextCommand'
 import { CopyableSlug } from '../CopyableSlug/CopyableSlug'
 import { formatCompact, formatEstimate } from '../../lib/format'
@@ -49,7 +50,20 @@ export function SpecCard({ card, onSelect }: SpecCardProps) {
 
       <CopyableSlug slug={card.id} />
 
-      {card.attentionReason && <p className={styles.attention}>{card.attentionReason}</p>}
+      {card.attentionSummary ? (
+        <div className={styles.attentionRow}>
+          <AttentionCategoryChip category={card.attentionCategory} />
+          <span className={styles.attentionSummary} title={card.attentionSummary}>
+            {card.attentionSummary}
+          </span>
+        </div>
+      ) : (
+        card.attentionReason && (
+          <p className={styles.attention} title={card.attentionReason}>
+            {card.attentionReason}
+          </p>
+        )
+      )}
 
       {card.artifacts && (
         <div className={styles.artifacts}>

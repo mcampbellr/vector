@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { Tag, X } from 'lucide-react'
 import type { Card } from '../../types/board'
 import { useSpecSummary } from '../../api/useSpecSummary'
@@ -6,6 +6,7 @@ import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
 import { nextCommandFor } from '../SpecCard/nextCommandFor'
 import { RelatedChips } from '../SpecCard/RelatedChips'
+import { AttentionCategoryChip } from '../SpecCard/AttentionCategoryChip'
 import { SpecTimeline } from '../SpecTimeline'
 import { CopyableCommand } from './CopyableCommand'
 import { UsefulCommands } from './UsefulCommands'
@@ -14,6 +15,10 @@ import { CopyableSlug } from '../CopyableSlug/CopyableSlug'
 import { relativeTime } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
 import styles from './SpecDetailsDrawer.module.css'
+
+// MarkdownView (and its react-markdown dependency) is code-split out of the
+// board bundle; the drawer only pulls it in when it renders an attention detail.
+const MarkdownView = lazy(() => import('./MarkdownView'))
 
 interface SpecDetailsDrawerProps {
   card: Card
@@ -78,7 +83,23 @@ export function SpecDetailsDrawer({ card, onClose }: SpecDetailsDrawerProps) {
           )}
         </div>
 
-        {card.attentionReason && <p className={styles.attention}>{card.attentionReason}</p>}
+        {(card.attentionSummary || card.attentionReason) && (
+          <section className={styles.section}>
+            <div className={styles.attentionHeader}>
+              <AttentionCategoryChip category={card.attentionCategory} />
+              <p className={styles.attentionSummaryText}>
+                {card.attentionSummary ?? card.attentionReason}
+              </p>
+            </div>
+            {card.attentionDetail && (
+              <Suspense fallback={<p className={styles.muted}>loading detail…</p>}>
+                <div className={styles.markdown}>
+                  <MarkdownView source={card.attentionDetail} />
+                </div>
+              </Suspense>
+            )}
+          </section>
+        )}
 
         {card.relatedTo && card.relatedTo.length > 0 && (
           <section className={styles.section}>

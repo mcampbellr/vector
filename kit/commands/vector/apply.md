@@ -145,9 +145,11 @@ conventions — Vector is **agnostic to the user's code** and imposes no archite
   If you still cannot determine the commands, **ask** via `AskUserQuestion`. Keep the gate green.
 - **Do not auto-commit by default** — leave the working tree for the user to review (apply
   implements; it doesn't ship). Mention this in the report.
-- If a question blocks you that you can't resolve, set
-  `vector spec status <id> needs-attention --reason "<what's ambiguous>"` and stop with the
-  question surfaced.
+- If a question blocks you that you can't resolve, flag it with the structured needs-attention
+  contract and stop with the question surfaced:
+  ```
+  vector spec status <id> needs-attention --category decision --summary "<the open question>" [--detail "<md context>"]
+  ```
 
 ## 5. Log the work (enriches the standup trace)
 
@@ -201,8 +203,8 @@ filter is the test-only/cosmetic guard. Inspect and judge — don't grep-and-fla
 
 > **Auditable heuristic.** This differs from the §4 hard-stop: there the implementation **stopped**
 > because something was ambiguous; here the implementation **finished** but is gated on an external
-> dependency. Both route to `needs-attention --reason`; this one fires at the close of a completed
-> run, automatically.
+> dependency. Both route to `needs-attention` (structured `--category`/`--summary`/`--detail`); this
+> one fires at the close of a completed run, automatically.
 
 ### 6b. Transition
 
@@ -211,16 +213,24 @@ filter is the test-only/cosmetic guard. Inspect and judge — don't grep-and-fla
   workflow choice, so do **not** ask for confirmation even under `ask`/`always-ask`:
 
   ```
-  vector spec status <id> needs-attention --reason "<reason>"
+  vector spec status <id> needs-attention \
+    --category <dependency|env|decision|external|other> \
+    --summary "<one-liner: what's pending>" \
+    --detail "<markdown: how/who unblocks it + open PR ref>"
   ```
 
-  The **reason** must be concrete and actionable: **what's pending** + **how/who unblocks it** +
-  **the open PR ref** if any. Lead with the runtime-governing blocker; emit **one** transition and
-  **one** reason per run (enumerate multiple blockers within that single reason). Never leak a
-  secret value into the reason — describe the missing thing without its value (the reason is
-  committed in `state.json` and shown on the board/standup, so treat it as public). Example:
-  `Zoho CRM api_names pending settings-read credentials; unblock by providing creds to fill
-  TODO(MH-1582); PR #367 open`.
+  Pick the **`--category`** that fits the blocker (`dependency` for a third-party
+  credential/service, `external` for data another team owns, `decision` for an open product/design
+  call, `env` for missing local/CI setup, else `other`; defaults to `other`). The **`--summary`**
+  is the one-liner the card shows — concrete and short. The optional **`--detail`** (markdown, or
+  `--detail-file <path>`) carries the actionable body: **what's pending** + **how/who unblocks it** +
+  **the open PR ref**. Lead with the runtime-governing blocker; emit **one** transition per run
+  (enumerate multiple blockers within the detail). Never leak a secret value — describe the missing
+  thing without its value (summary + detail are committed in `state.json` and shown on the
+  board/standup, so treat them as public). The legacy `--reason "<text>"` still works (mutually
+  exclusive with the structured flags, auto-migrated to `category=other`), but prefer the structured
+  contract. Example: `--category dependency --summary "Zoho CRM api_names pending settings-read
+  credentials" --detail "Unblock by providing creds to fill \`TODO(MH-1582)\`; PR #367 open"`.
 
   Edge cases: if the card is **already** in `needs-attention` (e.g. flagged in §4), refresh the
   reason with the live blocker — the binary validates the transition. If `tasks.md` is absent or
