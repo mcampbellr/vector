@@ -92,6 +92,19 @@ Flujo canónico cada vez que se toca `web/` (antes de reinstalar el binario glob
 `index.html` se rastrea. Verificar que no haya drift: `ls cli/internal/webui/dist/assets` debe
 igualar `ls web/dist/assets`. Ver también la Memory `reinstall-vector-binary-after-changes`.
 
+**Guard de runtime contra el board en blanco** (`internal/webui`): construir el binario desde un
+worktree sin `web build` embebe un `index.html` que referencia `/assets/*` inexistentes → board en
+blanco **silencioso** (200 con HTML servido donde el browser pide JS). Para que nunca vuelva a pasar
+en silencio:
+- `webui.ValidateAssets(fsys)` / `webui.EmbeddedAssetsMissing()` reportan los `/assets/*` que el
+  `index.html` referencia pero no están en el embed.
+- `vector serve` imprime un **WARNING ruidoso** a stderr al arrancar cuando el board embebido está
+  roto, con el comando exacto para rebuildear+re-embeber (en vez de servir el board en blanco).
+- `spaHandler` devuelve un **404 real** para `/assets/*` faltantes (sin fallback a `index.html`), de
+  modo que la ruptura aparece en la consola del browser, no como HTML disfrazado de JS con 200.
+El guard es de **runtime** a propósito: un test de build no puede distinguir "web aún no buildeado"
+(checkout limpio / job `go` de CI) de "embed roto", así que el CI job `go` sigue verde sin `web build`.
+
 > Estado: el mecanismo de embed (`//go:generate` + `embed.FS` + `SeedCommands`) ya está activo.
 > Pendiente: layout del pipeline de release y script de instalación de un paso. Ver nota de
 > distribución en `docs/vision.md` (§Techstack).
