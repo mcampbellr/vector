@@ -885,3 +885,121 @@ func TestLoadRejectsInvalidShipMode(t *testing.T) {
 		t.Errorf("expected invalid ship.mode error, got %v", err)
 	}
 }
+
+// writeStore materializes a .vector directory under dir, with a valid config.json
+// when body is non-empty and a stray (config-less) store when it is empty.
+func writeStore(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".vector"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if body == "" {
+		return
+	}
+	if err := os.WriteFile(Path(dir), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const validConfigBody = `{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default"}`
+
+func TestFindAncestorConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		// stores maps a path relative to the temp root to its config body ("" = stray).
+		stores map[string]string
+		// start is the walk's starting point, relative to the temp root.
+		start      string
+		wantRoot   string // relative to the temp root; "" means not found
+		wantStrays []string
+		wantFound  bool
+	}{
+		{
+			name:      "ancestor found from a nested subdirectory",
+			stores:    map[string]string{".": validConfigBody},
+			start:     "website/src",
+			wantRoot:  ".",
+			wantFound: true,
+		},
+		{
+			name:      "start dir itself is the canonical root",
+			stores:    map[string]string{".": validConfigBody},
+			start:     ".",
+			wantRoot:  ".",
+			wantFound: true,
+		},
+		{
+			name:       "stray is skipped and the walk keeps going up",
+			stores:     map[string]string{".": validConfigBody, "website": ""},
+			start:      "website/src",
+			wantRoot:   ".",
+			wantStrays: []string{"website"},
+			wantFound:  true,
+		},
+		{
+			name:       "several strays on the way up are all reported",
+			stores:     map[string]string{".": validConfigBody, "a": "", "a/b": ""},
+			start:      "a/b/c",
+			wantRoot:   ".",
+			wantStrays: []string{"a/b", "a"},
+			wantFound:  true,
+		},
+		{
+			name:      "no ancestor store stops at the filesystem root",
+			stores:    map[string]string{},
+			start:     "website/src",
+			wantFound: false,
+		},
+		{
+			name:       "unparseable config is a stray, not an anchor",
+			stores:     map[string]string{".": validConfigBody, "website": "{not json"},
+			start:      "website/src",
+			wantRoot:   ".",
+			wantStrays: []string{"website"},
+			wantFound:  true,
+		},
+		{
+			name:      "nearest store wins over the one above it",
+			stores:    map[string]string{".": validConfigBody, "code/main": validConfigBody},
+			start:     "code/main/cli",
+			wantRoot:  "code/main",
+			wantFound: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// The temp dir is resolved through symlinks: on macOS t.TempDir() lives
+			// under /var, a symlink to /private/var, and filepath.Abs does not resolve
+			// it — the walked paths would never compare equal.
+			base, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for rel, body := range tc.stores {
+				writeStore(t, filepath.Join(base, rel), body)
+			}
+			start := filepath.Join(base, tc.start)
+			if err := os.MkdirAll(start, 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			root, strays, found := FindAncestorConfig(start)
+			if found != tc.wantFound {
+				t.Fatalf("found = %v, want %v (root %q)", found, tc.wantFound, root)
+			}
+			if tc.wantFound {
+				if want := filepath.Join(base, tc.wantRoot); root != want {
+					t.Errorf("root = %q, want %q", root, want)
+				}
+			}
+			var wantStrays []string
+			for _, rel := range tc.wantStrays {
+				wantStrays = append(wantStrays, filepath.Join(base, rel))
+			}
+			if !reflect.DeepEqual(strays, wantStrays) {
+				t.Errorf("strays = %v, want %v", strays, wantStrays)
+			}
+		})
+	}
+}

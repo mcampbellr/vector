@@ -17,6 +17,11 @@ Go/TS. Es lo que materializa la propuesta "ecosistema que estandariza la organiz
 - **Rules/memorias** plantilla que Vector siembra en el repo del usuario.
 - **`devup`** — herramienta existente del usuario, unificada aquí (lanzar dev local vía bloque
   `run:` en `.project-structure`).
+- **Invariante de raíz única**: un repo tiene **un** store `.vector/`. Los comandos anclan al
+  ancestro más cercano con `config.json` válido, y `vector init` **rechaza** crear uno anidado
+  por debajo de otro (override deliberado con `--force`). El snippet
+  `agents/_shared/root-anchoring-guardrail.md` es la versión para agentes; `vector doctor`
+  consolida strays preexistentes.
 
 ## Depende de / es dependido por
 
