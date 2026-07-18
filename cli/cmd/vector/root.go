@@ -67,6 +67,7 @@ func newRootCmd() *cobra.Command {
 		newStandupCmd(),
 		newSpecCmd(),
 		newDetectTicketCmd(),
+		newDoctorCmd(),
 		newVersionCmd(),
 		newCompletionCmd(),
 	)

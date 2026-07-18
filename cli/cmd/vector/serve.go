@@ -42,10 +42,11 @@ func newServeCmd() *cobra.Command {
 			// back silently or hard-fail on a bind error.
 			portSet := cmd.Flags().Changed("port")
 
-			root, err := resolveRepoRoot(repoRoot)
+			root, strays, err := resolveRepoRootStrays(repoRoot)
 			if err != nil {
 				return err
 			}
+			warnStrayStores(strays, root) // serve has no --json branch
 			store, err := state.Open(root)
 			if err != nil {
 				return err

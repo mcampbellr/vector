@@ -36,6 +36,9 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    (written by `vector init`, migrated from `.project-structure`). If it is missing, run
    `vector init` first (or tell the user to), so the spec lands in the repo's convention
    instead of the `.vector/` fallback. Note the resolved `specPath` for the report.
+   Before running it, apply `.claude/agents/_shared/root-anchoring-guardrail.md`: if a `.vector/`
+   already exists at an ancestor directory, that store is the base — never `vector init` a nested
+   one, and never pass `--force` to silence the guard.
 
 3. **Get repo context** — fetch the setup context from the binary in one call:
 

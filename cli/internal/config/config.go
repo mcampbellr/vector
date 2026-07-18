@@ -575,6 +575,41 @@ func Exists(repoRoot string) bool {
 	return err == nil
 }
 
+// FindAncestorConfig walks up from startDir looking for the nearest directory
+// that holds a valid .vector/config.json — the canonical store to anchor to. The
+// walk starts at startDir itself and stops at the filesystem root.
+//
+// A .vector/ directory WITHOUT a loadable config.json is a stray: it is recorded
+// in strayDirs (so the caller can warn) but never adopted, and the walk keeps
+// going up — an intermediate stray must not hide the real ancestor.
+//
+// Nearest wins: in a bare+worktree layout where a worktree carries its own
+// .vector/config.json under a workspace that also has one, a command run inside
+// the worktree anchors to the worktree, never to the workspace above it.
+//
+// It is read-only: no writes, no side effects, and no opinion on git/worktree
+// boundaries. When nothing is found it returns ("", strayDirs, false) and the
+// caller keeps its existing resolution.
+func FindAncestorConfig(startDir string) (root string, strayDirs []string, found bool) {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", nil, false
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".vector")); err == nil {
+			if _, err := Load(dir); err == nil {
+				return dir, strayDirs, true
+			}
+			strayDirs = append(strayDirs, dir)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", strayDirs, false
+		}
+		dir = parent
+	}
+}
+
 // Load reads an existing config.
 func Load(repoRoot string) (*Config, error) {
 	b, err := os.ReadFile(Path(repoRoot))
