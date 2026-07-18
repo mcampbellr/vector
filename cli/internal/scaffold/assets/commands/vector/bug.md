@@ -86,6 +86,9 @@ The `vector` binary is the sole writer of `.vector` state. Never edit state file
 
 - No implementation in this command.
 - New cards always end `open`; never create a holding lifecycle state.
+- **If a `.vector/` exists at an ancestor directory, that store is the base** — never
+  `vector init` a nested one, and never pass `--force` to silence the guard. See
+  `.claude/agents/_shared/root-anchoring-guardrail.md`.
 - Artifact generation is part of authoring. It is not a user-visible follow-up step.
 - Re-running the same report may create another distinct bug card when the derived id differs;
   do not silently merge incidents.
