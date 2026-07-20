@@ -30,18 +30,30 @@
 }
 
 .title {
+  /* min-width:0 lets the title flex item shrink under a long title instead of
+     shoving the ticket badge past the card's right edge; overflow-wrap keeps an
+     unbroken long word wrapping within the shrunk column rather than overflowing
+     (mirrors the min-width:0 pattern of .attentionSummary). */
+  min-width: 0;
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--color-text);
+  overflow-wrap: anywhere;
 }
 
 .ticket {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  /* Keep intrinsic width (title yields first via min-width:0), never break the
+     key on its hyphen (MH-1814 → MH-), and cap + clip only as a safety net for
+     an extreme key length — the same overflow guard as .relation. */
   flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-secondary);

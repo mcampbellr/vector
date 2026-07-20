@@ -74,6 +74,32 @@ describe('SpecCard needs-attention', () => {
   })
 })
 
+describe('SpecCard ticket badge', () => {
+  it('renders the full ticket key intact alongside a very long title', () => {
+    render(
+      <SpecCard
+        card={makeCard({
+          title:
+            'Reparar clipping del badge de ticket en el encabezado de la tarjeta de spec del board kanban',
+          ticket: {
+            provider: 'linear',
+            key: 'MH-1814',
+            url: 'https://linear.app/acme/issue/MH-1814',
+          },
+        })}
+        onSelect={() => {}}
+      />,
+    )
+
+    // The key must exist as a single, complete text node — not split at the
+    // hyphen (MH-) nor clipped away. CSS-level visual truncation can't be
+    // asserted in jsdom, so we assert full DOM presence + the title fallback.
+    const badge = screen.getByTitle('https://linear.app/acme/issue/MH-1814')
+    expect(badge.textContent).toContain('MH-1814')
+    expect(screen.getByText('MH-1814')).toBeTruthy()
+  })
+})
+
 describe('SpecCard quick-win badge', () => {
   it('renders the read-only Quick Win badge when quickWin is set', () => {
     render(<SpecCard card={makeCard({ quickWin: true })} onSelect={() => {}} />)
