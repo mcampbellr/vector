@@ -2,6 +2,7 @@ import { Layers } from 'lucide-react'
 import type { ConnectionState } from '../../api/useBoard'
 import { relativeTime } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
+import { PaletteTrigger } from './PaletteTrigger'
 import { ThemeControl } from './ThemeControl'
 import styles from './BoardHeader.module.css'
 
@@ -10,6 +11,7 @@ interface BoardHeaderProps {
   specCount: number
   updatedAt: string
   connection: ConnectionState
+  onOpenPalette: () => void
 }
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
@@ -19,7 +21,13 @@ const CONNECTION_LABEL: Record<ConnectionState, string> = {
   error: 'offline',
 }
 
-export function BoardHeader({ repo, specCount, updatedAt, connection }: BoardHeaderProps) {
+export function BoardHeader({
+  repo,
+  specCount,
+  updatedAt,
+  connection,
+  onOpenPalette,
+}: BoardHeaderProps) {
   const now = useNow()
   const freshness = updatedAt ? relativeTime(updatedAt, now) : null
 
@@ -42,6 +50,7 @@ export function BoardHeader({ repo, specCount, updatedAt, connection }: BoardHea
           <span className={styles.dot} />
           {CONNECTION_LABEL[connection]}
         </span>
+        <PaletteTrigger onOpen={onOpenPalette} />
         <ThemeControl />
       </div>
     </header>

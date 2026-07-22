@@ -1,0 +1,123 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  /* Above the drawer's overlay (z-index: 50) so the palette stacks on top
+     when both are open. */
+  z-index: 60;
+  background: rgba(16, 24, 40, 0.32);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(560px, 92vw);
+  max-height: 60vh;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-raised);
+}
+
+.input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-button);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.priorityFilter {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.chip,
+.chipActive {
+  padding: 2px var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.chip:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+
+.chipActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+}
+
+.counter {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.empty {
+  color: var(--color-text-tertiary);
+}
+
+.results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-y: auto;
+}
+
+.row,
+.rowHighlighted {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--color-surface-muted);
+}
+
+.rowHighlighted {
+  background: var(--color-accent-bg);
+}
+
+.rowTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rowSlug {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}

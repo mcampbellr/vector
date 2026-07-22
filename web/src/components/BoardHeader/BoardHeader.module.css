@@ -74,6 +74,30 @@
   background: var(--conn-error);
 }
 
+.paletteTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.paletteTrigger:hover {
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+}
+
+.paletteTrigger:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .themeControl {
   display: inline-flex;
   align-items: center;
