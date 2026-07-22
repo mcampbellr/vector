@@ -23,9 +23,10 @@ read-only addition — no new endpoint, no SSE contract change, no new dependenc
   reset logic.
 - **Literal substring matching (web)** — `CommandPalette/matchCards.ts`, a pure function
   `matchCards(cards, query, priorities)` matching case-insensitively over a
-  `title + id + priority + status` haystack with `.includes()` — **no `RegExp`**, so user-typed
-  regex metacharacters (`.`, `*`, `(`, `[`) are literal text. Input order is preserved; no relevance
-  scoring.
+  `title + id + ticket key + priority + status` haystack with `.includes()` — **no `RegExp`**, so
+  user-typed regex metacharacters (`.`, `*`, `(`, `[`) are literal text. `card.ticket?.key` is
+  included when present so a query like `"BB-"` matches cards linked to `BB-6`, `BB-32`, etc.;
+  cards without a linked ticket are unaffected. Input order is preserved; no relevance scoring.
 - **Two triggers (web)** — an icon button in `BoardHeader` (`Search` from the already-present
   `lucide-react`, rendered in `styles.actions` immediately before `<ThemeControl />`), and the `/`
   key captured on `window` by a new standalone hook `web/src/lib/useCommandPaletteTrigger.ts` that
@@ -47,9 +48,10 @@ read-only addition — no new endpoint, no SSE contract change, no new dependenc
 
 ### Added Capabilities
 - `board-command-palette`: the board web UI gains an overlay palette that searches specs by title,
-  id/slug, priority-as-text, and status-as-text (case-insensitive literal substring), refines by a
-  multi-select priority filter, and jumps straight to a spec's details drawer from any of the three
-  views — without ever filtering or altering the underlying board.
+  id/slug, linked ticket ID (`ticket.key`, when present), priority-as-text, and status-as-text
+  (case-insensitive literal substring), refines by a multi-select priority filter, and jumps
+  straight to a spec's details drawer from any of the three views — without ever filtering or
+  altering the underlying board.
 
 ### Modified Capabilities
 - `board-header`: gains the palette trigger button in `styles.actions`, immediately before the

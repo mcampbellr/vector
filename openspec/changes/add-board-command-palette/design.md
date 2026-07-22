@@ -20,8 +20,9 @@ is unreachable from `standup` and `tokens`.
 
 **Goals:**
 - Reach any spec's details drawer in two keystrokes (`/` + typing) from **all three** views.
-- Search over title, id/slug, priority-as-text, and status-as-text, case-insensitive, literal
-  substring, refined by a multi-select priority filter local to the palette.
+- Search over title, id/slug, linked ticket ID (`ticket.key`, when present), priority-as-text, and
+  status-as-text, case-insensitive, literal substring, refined by a multi-select priority filter
+  local to the palette.
 - Full keyboard operation and a correct combobox/listbox accessibility contract.
 - Zero new dependencies, zero network calls, zero writes.
 
@@ -47,9 +48,13 @@ is unreachable from `standup` and `tokens`.
   plain `.ts` helper with a sibling unit test, no React import. All branching logic lives here,
   where it is trivially testable; the component keeps only wiring.
 - **`.includes()`, never `RegExp`.** The haystack is
-  `` `${card.title} ${card.id} ${card.priority} ${card.status}`.toLowerCase() ``. Building a
-  `RegExp` from user input would both throw on unbalanced metacharacters and silently turn `.` into
-  a wildcard; literal substring is what a spec-name search actually wants.
+  `` `${card.title} ${card.id} ${card.ticket?.key ?? ''} ${card.priority} ${card.status}`.toLowerCase() ``.
+  Building a `RegExp` from user input would both throw on unbalanced metacharacters and silently
+  turn `.` into a wildcard; literal substring is what a spec-name search actually wants.
+  `card.ticket?.key` (e.g. `BB-6`) is folded into the same haystack as everything else — the same
+  `foldDiacritics` + lowercase normalization applies uniformly rather than special-casing the
+  ticket key; folding an ASCII ticket key is a no-op, so uniform treatment is correct and simpler.
+  Cards without a linked ticket contribute an empty segment and are otherwise unaffected.
 - **`/` as the trigger, with a focus guard, in a standalone hook.** `useCommandPaletteTrigger`
   registers one `window` `keydown` listener (with cleanup) and ignores the event when the target is
   an `INPUT` / `TEXTAREA` / `isContentEditable`. This single guard elegantly covers three cases at

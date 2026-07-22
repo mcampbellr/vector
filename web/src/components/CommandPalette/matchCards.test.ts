@@ -31,7 +31,19 @@ const palette = makeCard({
   priority: 'normal',
   status: 'review',
 })
-const cards = [darkMode, embedFix, palette]
+const mobileApp = makeCard({
+  id: 'ship-mobile-app',
+  title: 'App móvil: completar EAS Submit para iOS y Android',
+  priority: 'low',
+  status: 'in-progress',
+})
+const ticketed = makeCard({
+  id: 'link-issue-tracker',
+  title: 'Link issue tracker',
+  priority: 'normal',
+  ticket: { provider: 'jira', key: 'BB-6', url: 'https://example.com/BB-6' },
+})
+const cards = [darkMode, embedFix, palette, mobileApp, ticketed]
 
 describe('matchCards', () => {
   it('matches case-insensitively by title', () => {
@@ -71,9 +83,31 @@ describe('matchCards', () => {
     expect(matchCards(cards, 'embed', ['high'])).toEqual([])
   })
 
+  it('ignores diacritics on both sides of the comparison', () => {
+    // Plain query finds an accented haystack.
+    expect(matchCards(cards, 'movil', [])).toEqual([mobileApp])
+    // Accented, uppercase query finds a plain haystack.
+    expect(matchCards(cards, 'MÓVIL', [])).toEqual([mobileApp])
+    // Accented forms of the same word match each other regardless of side.
+    const naive = makeCard({ id: 'naive-cache', title: 'naïve cache invalidation' })
+    expect(matchCards([naive], 'naive', [])).toEqual([naive])
+    expect(matchCards([naive], 'naïve', [])).toEqual([naive])
+  })
+
   it('preserves input order without relevance sorting', () => {
     // 'mode' hits darkMode by title; 'command' hits palette; a query hitting
     // several cards keeps board order.
     expect(matchCards(cards, 'add-', [])).toEqual([darkMode, palette])
+  })
+
+  it('matches by the linked ticket key', () => {
+    expect(matchCards(cards, 'BB-', [])).toEqual([ticketed])
+    expect(matchCards(cards, 'BB-6', [])).toEqual([ticketed])
+    expect(matchCards(cards, 'bb-6', [])).toEqual([ticketed])
+  })
+
+  it('leaves cards without a linked ticket unaffected', () => {
+    expect(matchCards(cards, 'BB-', [])).not.toContain(darkMode)
+    expect(matchCards([darkMode], 'BB-', [])).toEqual([])
   })
 })

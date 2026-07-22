@@ -5,16 +5,20 @@
 - [x] 1.1 `web/src/components/CommandPalette/matchCards.ts`: new pure module.
       `export function matchCards(cards: Card[], query: string, priorities: Priority[]): Card[]`.
       Normalize the query with `.trim().toLowerCase()`; an empty query filters nothing by text. Per
-      card build `` `${card.title} ${card.id} ${card.priority} ${card.status}`.toLowerCase() `` and
-      test with `haystack.includes(normalized)` — **no `RegExp`**. When `priorities.length > 0`,
-      additionally require `priorities.includes(card.priority)`. Preserve input order; no relevance
-      sorting. No React import. Reference: `web/src/components/SpecCard/relationChips.ts`.
+      card build
+      `` `${card.title} ${card.id} ${card.ticket?.key ?? ''} ${card.priority} ${card.status}`.toLowerCase() ``
+      (`card.ticket?.key` included so a query like `"BB-"` matches cards linked to `BB-6`, `BB-32`,
+      etc.; cards without a linked ticket contribute an empty segment) and test with
+      `haystack.includes(normalized)` — **no `RegExp`**. When `priorities.length > 0`, additionally
+      require `priorities.includes(card.priority)`. Preserve input order; no relevance sorting. No
+      React import. Reference: `web/src/components/SpecCard/relationChips.ts`.
 - [x] 1.2 `web/src/components/CommandPalette/matchCards.test.ts`: Vitest unit test. Cover
-      case-insensitive substring by title, id, priority-as-text, and status-as-text; regex
-      metacharacters (`.`, `*`, `(`, `)`, `[`, `\`) treated as literal text without throwing; empty
-      / whitespace-only query returns every card; multi-select priority filter with 0, 1, and 2+
-      active priorities; input order preserved. Reference:
-      `web/src/components/SpecCard/relationChips.test.ts`.
+      case-insensitive substring by title, id, ticket ID (prefix match e.g. `"BB-"`, full key
+      `"BB-6"`, case-insensitive `"bb-6"`, and cards without a linked ticket unaffected),
+      priority-as-text, and status-as-text; regex metacharacters (`.`, `*`, `(`, `)`, `[`, `\`)
+      treated as literal text without throwing; empty / whitespace-only query returns every card;
+      multi-select priority filter with 0, 1, and 2+ active priorities; input order preserved.
+      Reference: `web/src/components/SpecCard/relationChips.test.ts`.
 
 ## 2. Trigger hook
 
