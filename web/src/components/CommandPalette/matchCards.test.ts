@@ -31,7 +31,13 @@ const palette = makeCard({
   priority: 'normal',
   status: 'review',
 })
-const cards = [darkMode, embedFix, palette]
+const mobileApp = makeCard({
+  id: 'ship-mobile-app',
+  title: 'App móvil: completar EAS Submit para iOS y Android',
+  priority: 'low',
+  status: 'in-progress',
+})
+const cards = [darkMode, embedFix, palette, mobileApp]
 
 describe('matchCards', () => {
   it('matches case-insensitively by title', () => {
@@ -69,6 +75,17 @@ describe('matchCards', () => {
     expect(matchCards(cards, '', ['high'])).toEqual([darkMode])
     expect(matchCards(cards, '', ['high', 'urgent'])).toEqual([darkMode, embedFix])
     expect(matchCards(cards, 'embed', ['high'])).toEqual([])
+  })
+
+  it('ignores diacritics on both sides of the comparison', () => {
+    // Plain query finds an accented haystack.
+    expect(matchCards(cards, 'movil', [])).toEqual([mobileApp])
+    // Accented, uppercase query finds a plain haystack.
+    expect(matchCards(cards, 'MÓVIL', [])).toEqual([mobileApp])
+    // Accented forms of the same word match each other regardless of side.
+    const naive = makeCard({ id: 'naive-cache', title: 'naïve cache invalidation' })
+    expect(matchCards([naive], 'naive', [])).toEqual([naive])
+    expect(matchCards([naive], 'naïve', [])).toEqual([naive])
   })
 
   it('preserves input order without relevance sorting', () => {
