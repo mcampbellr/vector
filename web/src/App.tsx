@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useBoard } from './api/useBoard'
+import type { Card } from './types/board'
 import { BoardHeader } from './components/BoardHeader/BoardHeader'
 import { KanbanBoard } from './components/KanbanBoard/KanbanBoard'
 import { StandupView } from './components/StandupView'
 import { TokenBreakdownView } from './components/TokenBreakdownView'
+import { CommandPalette } from './components/CommandPalette'
+import { SpecDetailsDrawer } from './components/SpecDetailsDrawer'
+import { useCommandPaletteTrigger } from './lib/useCommandPaletteTrigger'
 import styles from './App.module.css'
 
 type View = 'board' | 'standup' | 'tokens'
@@ -11,6 +15,11 @@ type View = 'board' | 'standup' | 'tokens'
 export function App() {
   const { board, connection, error } = useBoard()
   const [view, setView] = useState<View>('board')
+  // Selection and the palette live here — the only common ancestor of the
+  // header, the three views, the palette and the drawer — so jump-to-spec
+  // works identically from board, standup and tokens.
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null)
+  const { isOpen: paletteOpen, open: openPalette, close: closePalette } = useCommandPaletteTrigger()
 
   // Reflect the active project in the browser tab so it's identifiable when
   // several boards are open at once. `board.repo` is the repo directory name.
@@ -28,6 +37,8 @@ export function App() {
     )
   }
 
+  const cards = board.columns.flatMap((column) => column.cards)
+
   return (
     <div className={styles.app}>
       <BoardHeader
@@ -35,6 +46,7 @@ export function App() {
         specCount={board.totals.specs}
         updatedAt={board.updatedAt}
         connection={connection}
+        onOpenPalette={openPalette}
       />
       <nav className={styles.tabs}>
         <button
@@ -61,7 +73,7 @@ export function App() {
       </nav>
       {view === 'board' && (
         <div className={styles.content}>
-          <KanbanBoard columns={board.columns} />
+          <KanbanBoard columns={board.columns} onSelectCard={setSelectedCard} />
         </div>
       )}
       {view === 'standup' && (
@@ -73,6 +85,12 @@ export function App() {
         <div className={styles.content}>
           <TokenBreakdownView board={board} />
         </div>
+      )}
+      {paletteOpen && (
+        <CommandPalette cards={cards} onSelectCard={setSelectedCard} onClose={closePalette} />
+      )}
+      {selectedCard && (
+        <SpecDetailsDrawer card={selectedCard} onClose={() => setSelectedCard(null)} />
       )}
     </div>
   )
