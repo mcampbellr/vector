@@ -9,17 +9,17 @@ function foldDiacritics(value: string): string {
 }
 
 // matchCards is the palette's pure filter: diacritic- and case-insensitive
-// literal substring over a title+id+priority+status haystack — never a
-// RegExp, so user-typed metacharacters (. * ( [) stay literal text. An empty
-// query filters nothing by text; active priorities additionally narrow the
-// set. Input order is preserved — no relevance scoring.
+// literal substring over a title+id+ticket key+priority+status haystack —
+// never a RegExp, so user-typed metacharacters (. * ( [) stay literal text.
+// An empty query filters nothing by text; active priorities additionally
+// narrow the set. Input order is preserved — no relevance scoring.
 export function matchCards(cards: Card[], query: string, priorities: Priority[]): Card[] {
   const normalized = foldDiacritics(query.trim().toLowerCase())
   return cards.filter((card) => {
     if (priorities.length > 0 && !priorities.includes(card.priority)) return false
     if (normalized === '') return true
     const haystack = foldDiacritics(
-      `${card.title} ${card.id} ${card.priority} ${card.status}`.toLowerCase(),
+      `${card.title} ${card.id} ${card.ticket?.key ?? ''} ${card.priority} ${card.status}`.toLowerCase(),
     )
     return haystack.includes(normalized)
   })
