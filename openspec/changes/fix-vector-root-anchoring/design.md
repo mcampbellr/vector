@@ -38,6 +38,44 @@
   de pasarlo.
 - **Sin `relatedTo`** y **`SchemaVersion` sin cambios**: decisiones explícitas del spec (§10).
 
+### Corrección — nearest-wins no basta cuando la raíz del workspace no es git
+
+- **Por qué nearest-wins solo se queda corto**: nearest-wins asume que "el store más cercano" es
+  siempre el correcto. Eso es cierto en un repo git simple, pero se rompe en un layout
+  bare+worktree donde la **raíz del workspace no es un repo git** y cada worktree lleva su
+  **propio** `.vector/config.json` trackeado (`specStore: vector`). Ahí, correr un comando dentro
+  de un worktree ancla al store del worktree — que existe y es válido — **shadowing** (ocultando)
+  el store canónico de la raíz del workspace que está más arriba. Es exactamente el bug de
+  split-board que el propio dogfooding de Vector sufrió: no es un stray (ambos configs son
+  válidos), así que la detección de strays existente no lo cubre.
+- **Dos pines, precedencia explícita sobre el walk-up**:
+  1. **`VECTOR_REPO_ROOT` (env var, efímero)**: cuando está seteada y no vacía, su valor absoluto
+     es la raíz; el walk-up se salta por completo. Pensado para scripts/CI que necesitan pinnear
+     sin tocar ningún archivo.
+  2. **`stateRoot` (campo de config, persistente)**: cuando el config al que el walk-up ancla
+     lleva `stateRoot` no vacío, se re-ancla ahí. Se resuelve relativo al directorio de **ese**
+     config (no al cwd) cuando no es absoluto, y se valida con `config.Load` antes de aceptarlo —
+     un `stateRoot` inválido o que apunta a sí mismo (auto-referencia/loop trivial) se ignora y cae
+     al resultado nearest-wins, nunca aborta.
+  - **Precedencia completa (mayor→menor)**: `--repo-root` explícito > `VECTOR_REPO_ROOT` >
+    `stateRoot` (del config al que ancla el walk-up) > walk-up nearest-wins > `git rev-parse
+    --show-toplevel` > `os.Getwd()`. `--repo-root` y el env pin **saltan el walk-up entero**
+    (ni siquiera se calculan strays/shadowing); `stateRoot` se evalúa **después** de que el
+    walk-up ya encontró un ancestro (es una corrección posterior a ese resultado, no un atajo).
+  - **Sin encadenar pines**: `ResolveStateRootPin` valida el target con `Load` pero **no**
+    persigue el `stateRoot` del target de forma recursiva — un solo salto. Eso hace imposible un
+    loop no trivial (A→B→A) sin necesidad de detectarlo; solo se guarda contra la auto-referencia
+    trivial (A→A).
+- **Warning de shadowing, no error**: cuando el walk-up ancla a un store pero existe un ancestro
+  **más arriba todavía** y ningún pin redirigió, `resolveRepoRootStrays` devuelve un
+  `*ShadowNotice` (nunca imprime — la misma disciplina que `strayDirs`). Los call-sites de rama
+  humana (`update`, `spec create`, `serve`, `doctor`) lo imprimen con `ui.Warning` nombrando ambas
+  rutas y sugiriendo `stateRoot`/`VECTOR_REPO_ROOT`; la rama `--json` de esos mismos comandos
+  nunca lo consulta (garantía de `--json` byte-idéntico intacta).
+- **`SchemaVersion` sigue en 1**: `stateRoot` es un campo `omitempty` más, siguiendo exactamente
+  el precedente de `language`/`applyModel`/`ship` — aditivo, un config legado sin el campo carga
+  `StateRoot == ""` y el comportamiento no cambia (nearest-wins puro, como hoy).
+
 ## Superficie
 
 - `cli/internal/config/config.go` — nueva `FindAncestorConfig`; `Resolve`/`Load`/`Exists`/`Write`
@@ -93,18 +131,46 @@
 ## Open questions
 
 1. **Definición exacta de "config.json válido"** en el walk-up: ¿basta con que deserialice sin
-   error (diseño mínimo asumido), o debe además tener `schemaVersion`/`specPath` no vacíos? `TBD`.
+   error (diseño mínimo asumido), o debe además tener `schemaVersion`/`specPath` no vacíos?
+   **RESUELTA (implementación)** — válido == `config.Load(dir)` sin error. Reusa la validación ya
+   existente (parseo + enums de `defaultTicketProvider`/`applyModel`/`ship.mode`) en vez de
+   introducir un segundo criterio que podría divergir. Un `{}` sintácticamente válido cuenta como
+   válido; endurecerlo exigiría campos obligatorios y rompería configs antiguas — fuera de fase.
 2. **Límite de walk-up vs límites de git/worktree**: el propio workspace de Vector es bare+worktree
    (raíz no-git con `.vector/` + `code/main/.vector/` versionado). El walk-up no debe cruzar
-   incorrectamente hacia el `.vector/` de un worktree o repo padre distinto. Mecanismo exacto:
-   `TBD`. **Riesgo alto en este repo — validar antes de dar el fix por bueno.**
+   incorrectamente hacia el `.vector/` de un worktree o repo padre distinto.
+   **RE-ABIERTA y RESUELTA con corrección** — la primera resolución ("el más cercano gana, sin
+   corte explícito necesario") describía el comportamiento **observado**, pero no lo declaraba
+   **deseado**: nearest-wins puro es precisamente el bug de split-board que el propio dogfooding
+   de Vector sufrió (`vector spec list` desde `code/root-anchoring/cli` viendo los specs del
+   worktree, ocultando los de la raíz del workspace, sin ningún error ni warning). La resolución
+   final añade **dos pines con precedencia sobre nearest-wins** (`VECTOR_REPO_ROOT` env,
+   `stateRoot` config field — ver "Corrección" arriba) más un **warning de shadowing** cuando
+   nearest-wins ancla sin que ningún pin lo redirija. Nearest-wins **sigue siendo el default sin
+   pin** (sin regresión para repos de un solo store); lo que cambia es que ahora hay una vía
+   explícita para anclar al ancestro correcto en un layout multi-store, y el usuario es avisado
+   cuando no lo ha hecho.
 3. **Merge de `activity.jsonl` en `doctor adopt`**: se asume append cronológico simple por
-   timestamp; deduplicación/reordenamiento sofisticado queda `TBD`.
+   timestamp; deduplicación/reordenamiento sofisticado queda `TBD`. **Implementado como append +
+   reordenado estable por `ts`, conservando cada línea verbatim** (sin re-encoding, sin pérdida de
+   campos desconocidos); las líneas no parseables se conservan y ordenan primero (`ts` cero). La
+   deduplicación sigue `TBD`.
 4. **Backup explícito del stray antes de borrarlo**: hoy el contenido queda movido (no perdido)
    antes del borrado, sin backup independiente adicional. Si la regla 1 de
-   `destructive-ops-consent.md` exige uno explícito aquí, `TBD`.
+   `destructive-ops-consent.md` exige uno explícito aquí, `TBD`. **Sigue `TBD`** — mitigado por el
+   orden (mover primero, borrar último) y por el dry-run por defecto, pero no hay copia aparte.
 5. **Semántica de conflicto parcial** en `doctor adopt --force`: se asume "aborta esa migración
-   puntual, continúa con el resto"; confirmar si debe ser todo-o-nada. `TBD`.
+   puntual, continúa con el resto"; confirmar si debe ser todo-o-nada. **RESUELTA como se asumía**,
+   con un refuerzo: ante cualquier conflicto el stray **no** se borra, porque el spec conflictivo
+   sigue viviendo solo ahí. El usuario resuelve y reejecuta `adopt`.
 6. **Enforcement de scoping sobre el campo `repo`** (ya existente y cableado end-to-end): si Vector
    debe *forzar* que los specs de subproyecto lo usen dentro del store raíz en vez de tolerar
    stores anidados, y cómo la doc lo sanciona como mecanismo único. Fuera de esta fase. `TBD`.
+## Rebaseline — workspace root is authoritative
+
+This section replaces the nearest-wins strategy described below. Root discovery collects all valid
+physical ancestors and selects the outermost workspace store. Inner `--repo-root`,
+`VECTOR_REPO_ROOT`, and `stateRoot` values fail rather than creating or selecting a split board.
+`init --force` does not override this invariant. `doctor adopt` uses an exclusive canonical-root
+lock, performs all collision checks before its first migration, writes activity via temp-file rename,
+and rolls completed artifact moves back if a later migration fails.

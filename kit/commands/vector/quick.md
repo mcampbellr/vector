@@ -51,6 +51,9 @@ Split `$ARGUMENTS` into the change description (`RAW_QW`) and the optional trail
 Read `.vector/config.json` for `specPath`. If it's missing, tell the user to run `vector init`
 in the repo root and stop — without it there is no place to register the card.
 
+If a `.vector/` already exists at an ancestor directory, that store is the base: anchor there
+and never `vector init` a nested one. See `.claude/agents/_shared/root-anchoring-guardrail.md`.
+
 ## 3. Sanity-check: is this really a quick-win?
 
 Before spending the refiner, screen `RAW_QW` for red flags and **escalate instead of

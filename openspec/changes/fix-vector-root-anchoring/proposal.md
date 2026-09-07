@@ -42,6 +42,30 @@ carries **no `relatedTo[]`**; a fabricated link would be worse than none.
   `kit/agents/_shared/root-anchoring-guardrail.md` plus notes in `kit/commands/vector/{raw,bug,
   quick}.md` and `kit/CLAUDE.md` — an ancestor `.vector/` is the single base; creating another one
   in a subdirectory is forbidden; `vector doctor` is the way to consolidate pre-existing strays.
+- **Correction — nearest-wins alone is insufficient in a bare+worktree layout with a non-git
+  root**: when the workspace root is *not* a git repo and each worktree carries its **own**
+  tracked `.vector/config.json` (`specStore: vector`), a command run inside a worktree anchors to
+  the worktree's own store, *shadowing* the canonical workspace-root store above it — the
+  split-board bug Vector's own dogfooding hit. Nearest-wins is unchanged as the default, but two
+  explicit **pins** now take precedence over it:
+  1. **`VECTOR_REPO_ROOT` env var** — an ephemeral pin; when set and non-empty, its absolute value
+     is the repo root and the walk-up is skipped entirely.
+  2. **`stateRoot` config field** (new, top-level in `Config`, `omitempty`) — a persistent pin
+     baked into a tracked `.vector/config.json`. When the config the walk-up anchors to carries a
+     non-empty `stateRoot`, `resolveRepoRootStrays` re-anchors to it (resolved relative to that
+     config's own directory when not absolute, then validated via `config.Load`). An invalid or
+     self-referencing `stateRoot` is ignored, falling through to the nearest-wins result rather
+     than erroring.
+  - **Precedence (highest→lowest)**: explicit `--repo-root` > `VECTOR_REPO_ROOT` env >
+    `stateRoot` (from the walk-up config) > walk-up nearest-wins > `git rev-parse
+    --show-toplevel` > `os.Getwd()`.
+  - **Shadowing warning**: when the walk-up anchors to a worktree store but a *further* ancestor
+    store exists above it and no pin redirected there, `resolveRepoRootStrays` surfaces a
+    `ShadowNotice` and human-branch callers (`update`, `spec create`, `serve`, `doctor`) print a
+    `ui.Warning` naming both paths and suggesting `stateRoot`/`VECTOR_REPO_ROOT` — never inside a
+    `--json` branch (byte-identical `--json` guarantee holds).
+- `config.SchemaVersion` stays **1**: `stateRoot` is additive and `omitempty`, mirroring the
+    existing `language` field precedent — no schema bump.
 
 ## Scope
 
@@ -58,3 +82,10 @@ carries **no `relatedTo[]`**; a fabricated link would be worse than none.
 - `config.SchemaVersion` stays at **1**: this is a path-resolution fix, not a schema change.
 
 Authored spec: `.vector/specs/fix-vector-root-anchoring/spec.md`.
+## Rebaseline — workspace root is authoritative
+
+This section supersedes earlier nearest-wins and pin-precedence language. When more than one valid
+ancestor store exists, Vector selects the outermost workspace store. A `--repo-root`,
+`VECTOR_REPO_ROOT`, or `stateRoot` target inside that workspace is rejected; `init --force` cannot
+create an inner store. `doctor adopt` locks the canonical store, completes collision preflight
+before mutation, writes activity atomically, and rolls moved artifacts back after a later failure.
