@@ -76,17 +76,12 @@ func newInitCmd() *cobra.Command {
 		Short: "seed /vector:* commands and initialize the .vector state skeleton",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			// init resolves WITHOUT the walk-up on purpose: anchoring transparently
-			// here would silently adopt an ancestor store instead of refusing to
-			// nest a new one below it.
-			root, err := rawTargetRoot(repoRoot)
+			// init must use the same canonical root as every other command. In a
+			// workspace with worktrees, --force may overwrite generated assets but
+			// must never authorize a second .vector store in a worktree.
+			root, err := resolveRepoRoot(repoRoot)
 			if err != nil {
 				return err
-			}
-			// Look strictly above the target: a store at the target itself is the
-			// existing-config case, handled by cfgExisted below.
-			if ancestor, _, found := config.FindAncestorConfig(filepath.Dir(root)); found && !force {
-				return fmt.Errorf("an ancestor Vector store already exists at %s; refusing to create a nested store at %s (use --force to override)", ancestor, root)
 			}
 
 			results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: force, DryRun: dryRun})
@@ -1028,33 +1023,48 @@ func readBody(path string) (string, error) {
 	}
 }
 
-// resolveRepoRoot returns the Vector root for a command, discarding any stray
-// .vector/ directories seen on the way up. Callers with a human output branch
-// should use resolveRepoRootStrays and warn about them.
+// resolveRepoRoot returns the canonical Vector root for a command, discarding
+// any stray .vector/ directories seen on the way up. Callers with a human output
+// branch should use resolveRepoRootStrays and warn about them.
 func resolveRepoRoot(explicit string) (string, error) {
 	root, _, err := resolveRepoRootStrays(explicit)
 	return root, err
 }
 
-// resolveRepoRootStrays resolves the Vector root and reports the stray .vector/
-// directories skipped while resolving it.
-//
-// Precedence: an explicit --repo-root is final (no walk-up); otherwise the
-// nearest ancestor holding a valid .vector/config.json wins, so running from a
-// subdirectory anchors to the store that already exists above instead of
-// treating the subdirectory as a new root. With no ancestor store the legacy
-// fallback applies unchanged: git toplevel, else the working directory.
+// resolveRepoRootStrays resolves the canonical Vector root and reports stray
+// .vector/ directories skipped on the way up. When multiple valid stores are
+// physical ancestors of the working directory, the outermost one is the single
+// source of truth; an inner worktree store is a copy, never an alternative board.
 func resolveRepoRootStrays(explicit string) (root string, strays []string, err error) {
-	if explicit != "" {
-		abs, err := filepath.Abs(explicit)
-		return abs, nil, err
-	}
-	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
-		ancestor, strayDirs, found := config.FindAncestorConfig(cwd)
-		if found {
-			return ancestor, strayDirs, nil
+	var canonical string
+	discoveryStart, cwdErr := os.Getwd()
+	if cwdErr == nil {
+		if explicit != "" {
+			discoveryStart = explicit
+		} else if envRoot := strings.TrimSpace(os.Getenv("VECTOR_REPO_ROOT")); envRoot != "" {
+			discoveryStart = envRoot
 		}
+		roots, strayDirs := config.FindAncestorConfigs(discoveryStart)
 		strays = strayDirs
+		if len(roots) > 0 {
+			canonical = roots[len(roots)-1]
+		}
+	}
+	if explicit != "" {
+		return resolveRootOverride("--repo-root", explicit, canonical)
+	}
+	if envRoot := strings.TrimSpace(os.Getenv("VECTOR_REPO_ROOT")); envRoot != "" {
+		return resolveRootOverride("VECTOR_REPO_ROOT", envRoot, canonical)
+	}
+	if canonical != "" {
+		cfg, loadErr := config.Load(canonical)
+		if loadErr != nil {
+			return "", strays, loadErr
+		}
+		if pinned, ok := cfg.ResolveStateRootPin(canonical); ok {
+			return resolveRootOverride("stateRoot", pinned, canonical)
+		}
+		return canonical, strays, nil
 	}
 	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
 		if root := strings.TrimSpace(string(out)); root != "" {
@@ -1065,20 +1075,24 @@ func resolveRepoRootStrays(explicit string) (root string, strays []string, err e
 	return cwd, strays, err
 }
 
-// rawTargetRoot is the pre-walk-up resolution: explicit root, else git toplevel,
-// else the working directory. `vector init` uses it so it can tell "I am at the
-// canonical root" apart from "I am below one" — the transparent walk-up would
-// make both cases indistinguishable and silently adopt the ancestor.
-func rawTargetRoot(explicit string) (string, error) {
-	if explicit != "" {
-		return filepath.Abs(explicit)
+// resolveRootOverride accepts an explicit root outside the current workspace but
+// rejects a target nested under an already-discovered canonical store. This keeps
+// flags and pins from reintroducing a split board through a worktree-local path.
+func resolveRootOverride(source, value, canonical string) (string, []string, error) {
+	root, err := filepath.Abs(value)
+	if err != nil {
+		return "", nil, err
 	}
-	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
-		if root := strings.TrimSpace(string(out)); root != "" {
-			return root, nil
-		}
+	root = filepath.Clean(root)
+	if canonical == "" || root == canonical || !isNestedPath(root, canonical) {
+		return root, nil, nil
 	}
-	return os.Getwd()
+	return "", nil, fmt.Errorf("%s points inside the workspace at %s; use the canonical Vector root %s", source, root, canonical)
+}
+
+func isNestedPath(path, parent string) bool {
+	rel, err := filepath.Rel(parent, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // warnStrayStores prints a human-branch warning naming each stray .vector/ (a

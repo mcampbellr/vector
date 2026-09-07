@@ -120,6 +120,13 @@ type Config struct {
 	// nil-safe. Written only by `vector config set-ship` (strictly opt-in, never by
 	// init/update). SchemaVersion stays 1 (additive).
 	Ship *ShipConfig `json:"ship,omitempty"`
+	// StateRoot is an optional persistent root pin, resolved relative to this config
+	// when not absolute. It can confirm the canonical workspace root or select a
+	// root outside the current worktree family; command resolution rejects a target
+	// nested below an already-discovered canonical root. Invalid or self-referencing
+	// values are ignored. Empty preserves ordinary ancestor discovery. Not written by
+	// init/update; see ResolveStateRootPin.
+	StateRoot string `json:"stateRoot,omitempty"`
 }
 
 // IsSketchEnabled reports whether the tail sketch step is enabled for this repo:
@@ -575,39 +582,78 @@ func Exists(repoRoot string) bool {
 	return err == nil
 }
 
-// FindAncestorConfig walks up from startDir looking for the nearest directory
-// that holds a valid .vector/config.json — the canonical store to anchor to. The
-// walk starts at startDir itself and stops at the filesystem root.
+// FindAncestorConfigs walks up from startDir and returns every directory holding
+// a valid .vector/config.json, ordered from nearest to outermost. The walk starts
+// at startDir itself and stops at the filesystem root.
 //
 // A .vector/ directory WITHOUT a loadable config.json is a stray: it is recorded
 // in strayDirs (so the caller can warn) but never adopted, and the walk keeps
 // going up — an intermediate stray must not hide the real ancestor.
 //
-// Nearest wins: in a bare+worktree layout where a worktree carries its own
-// .vector/config.json under a workspace that also has one, a command run inside
-// the worktree anchors to the worktree, never to the workspace above it.
-//
 // It is read-only: no writes, no side effects, and no opinion on git/worktree
-// boundaries. When nothing is found it returns ("", strayDirs, false) and the
-// caller keeps its existing resolution.
-func FindAncestorConfig(startDir string) (root string, strayDirs []string, found bool) {
+// boundaries. Callers select the canonical root from the returned candidates.
+func FindAncestorConfigs(startDir string) (roots, strayDirs []string) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
-		return "", nil, false
+		return nil, nil
 	}
 	for {
 		if _, err := os.Stat(filepath.Join(dir, ".vector")); err == nil {
 			if _, err := Load(dir); err == nil {
-				return dir, strayDirs, true
+				roots = append(roots, dir)
+			} else {
+				strayDirs = append(strayDirs, dir)
 			}
-			strayDirs = append(strayDirs, dir)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", strayDirs, false
+			return roots, strayDirs
 		}
 		dir = parent
 	}
+}
+
+// FindAncestorConfig returns the nearest valid Vector store for legacy callers.
+// New root-resolution code should use FindAncestorConfigs so a workspace-root
+// store can remain authoritative over a worktree-local copy.
+func FindAncestorConfig(startDir string) (root string, strayDirs []string, found bool) {
+	roots, strays := FindAncestorConfigs(startDir)
+	if len(roots) == 0 {
+		return "", strays, false
+	}
+	return roots[0], strays, true
+}
+
+// ResolveStateRootPin resolves c.StateRoot into an absolute repo root pin, given
+// configDir — the directory holding c (typically the canonical ancestor store).
+// A relative StateRoot is resolved against configDir. Returns ok=false (and the
+// caller must fall through to ordinary ancestor discovery)
+// instead of erroring) when StateRoot is empty, unresolvable, a self-reference
+// (resolves back to configDir itself — the trivial loop), or does not hold a
+// .vector/config.json that Load can parse. It is read-only and does not recurse
+// into the target's own StateRoot (no multi-hop chasing, so no non-trivial loop
+// is possible).
+func (c *Config) ResolveStateRootPin(configDir string) (root string, ok bool) {
+	raw := strings.TrimSpace(c.StateRoot)
+	if raw == "" {
+		return "", false
+	}
+	target := raw
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(configDir, target)
+	}
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return "", false
+	}
+	abs = filepath.Clean(abs)
+	if absConfigDir, err := filepath.Abs(configDir); err == nil && abs == filepath.Clean(absConfigDir) {
+		return "", false // self-reference: ignore, fall through to nearest-wins
+	}
+	if _, err := Load(abs); err != nil {
+		return "", false // invalid or unreachable pin: ignore, fall through
+	}
+	return abs, true
 }
 
 // Load reads an existing config.

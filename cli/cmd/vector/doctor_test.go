@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,6 +179,53 @@ func TestDoctorAdoptKeepsStrayOnSlugConflict(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join(existing, "state.json"))
 	if err != nil || !strings.Contains(string(body), "canonical") {
 		t.Errorf("canonical spec was overwritten: %s (%v)", body, err)
+	}
+}
+
+func TestDoctorAdoptRejectsConcurrentMigration(t *testing.T) {
+	base := tempWorkspace(t)
+	seedStore(t, base, testConfigBody)
+	stray := seedStraySpec(t, filepath.Join(base, "website"), "orphan-spec", "2026-07-01T10:00:00Z")
+	release, err := acquireAdoptionLock(filepath.Join(base, ".vector"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+
+	_, err = adoptStray(stray, base, true)
+	if err == nil || !strings.Contains(err.Error(), "already migrating") {
+		t.Fatalf("adoptStray error = %v, want lock-contention error", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(stray, "specs", "orphan-spec")); statErr != nil {
+		t.Error("lock contention must not move any source artifact")
+	}
+}
+
+func TestDoctorAdoptRollsBackWhenArtifactMoveFails(t *testing.T) {
+	base := tempWorkspace(t)
+	seedStore(t, base, testConfigBody)
+	stray := seedStraySpec(t, filepath.Join(base, "website"), "orphan-spec", "2026-07-01T10:00:00Z")
+	originalRename := adoptionRename
+	adoptionRename = func(source, destination string) error {
+		if strings.HasSuffix(source, "summaries.json") {
+			return errors.New("injected local-state failure")
+		}
+		return originalRename(source, destination)
+	}
+	defer func() { adoptionRename = originalRename }()
+
+	_, err := adoptStray(stray, base, true)
+	if err == nil || !strings.Contains(err.Error(), "injected local-state failure") {
+		t.Fatalf("adoptStray error = %v, want injected failure", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(stray, "specs", "orphan-spec", "state.json")); statErr != nil {
+		t.Errorf("spec was not rolled back into the stray: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(base, ".vector", "specs", "orphan-spec")); !os.IsNotExist(statErr) {
+		t.Errorf("canonical store retained a partial spec migration: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(stray, "local", "summaries.json")); statErr != nil {
+		t.Errorf("failed local artifact was removed from the stray: %v", statErr)
 	}
 }
 
