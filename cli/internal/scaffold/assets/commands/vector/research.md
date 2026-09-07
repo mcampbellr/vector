@@ -1,6 +1,6 @@
 ---
 name: "Vector: Research"
-description: Investigate whether a raw idea is worth building before specifying it — auto-detect the applicable feasibility lenses (technical always; security/marketing/design on signals), review each with a skeptical Sonnet reviewer, consolidate a go/no-go verdict, gate with the user, and only then author a full 20-section spec with the feasibility report embedded and register it as a draft. The exhaustive sibling of /vector:raw. You never write Vector's state yourself; the binary owns the writes.
+description: Investigate whether a raw idea is worth building before specifying it — auto-detect the applicable feasibility lenses (technical always; security/marketing/design on signals), review each with a skeptical Sonnet reviewer, consolidate a go/no-go verdict, gate with the user, and only then author a full 20-section spec with the feasibility report embedded and register it as a draft. The exhaustive sibling of /vector:idea. You never write Vector's state yourself; the binary owns the writes.
 argument-hint: "[idea-text]"
 user-invocable: true
 category: Workflow
@@ -17,7 +17,7 @@ allowed-tools:
 Investigate a raw idea **across disciplines** to decide whether it is worth building, then —
 **only if the user says go** — author a complete 20-section Vector spec with the feasibility
 report embedded and register it as a `draft` card. This is the exhaustive sibling of
-`/vector:raw`: where `raw` refines-and-emits, `research` **investigates → evaluates → decides →
+`/vector:idea`: where `raw` refines-and-emits, `research` **investigates → evaluates → decides →
 emits**. It stops at a `draft` card; it does **not** create the OpenSpec change (`/vector:propose`)
 or implement the feature (`/vector:apply`).
 
@@ -257,7 +257,7 @@ writes the doc to the repo's configured location and creates the draft card.
     orchestration = main loop) and that **the binary owns every state write** (CLI-owns-writes).
 
 15. **Sketch Excalidraw (opt-in)** — after the report, offer a design wireframe when the spec is
-    UI-facing. Same tail step as `/vector:raw` step 12: optional, Sonnet-costly, fires only on a
+    UI-facing. Same tail step as `/vector:idea` step 12: optional, Sonnet-costly, fires only on a
     strong UI signal with the user's confirmation; it never blocks the draft (registered in step 12).
 
     a. **Opt-out check.** Skip **silently** (no prompt, no mention) if the user passed `--no-sketch`

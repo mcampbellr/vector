@@ -22,7 +22,7 @@ Your job is just to run it and report; **do not** author specs or edit `.vector/
   `status: superseded|implemented`) is **skipped**: the change of a *different* slug already
   represents that feature. This is the only cross-slug dedup — Vector never guesses by name.
 - `openspec/specs/` (applied capabilities) are **not** imported — they are the catalog, not work items.
-- Synced cards from changes carry `openspec{change,artifacts}` provenance; `/vector:raw` drafts
+- Synced cards from changes carry `openspec{change,artifacts}` provenance; `/vector:idea` drafts
   and any card already present are **never** touched (re-sync only adds what's missing).
 
 ## Bare + worktree layouts (`[branch]`)
@@ -74,7 +74,7 @@ ONCE, here in the command, so the binary stays deterministic and later syncs are
    vector sync --reconcile --json
    ```
 4. **Report** the board summary (counts by status) and remind the user that draft cards from
-   `/vector:raw` and any manual edits were preserved.
+   `/vector:idea` and any manual edits were preserved.
 
 ## Notes
 

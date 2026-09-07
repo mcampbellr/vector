@@ -5,7 +5,7 @@ category: Workflow
 tags: [vector, openspec, propose, lifecycle]
 ---
 
-Formalize a Vector card in `draft` (a spec authored by `/vector:raw`) into an OpenSpec
+Formalize a Vector card in `draft` (a spec authored by `/vector:idea`) into an OpenSpec
 **change**, then move the card to `open`. **You never write Vector's state yourself** —
 you create the change artifacts and then call `vector spec propose`, which flips the board
 state (CLI-owns-writes).

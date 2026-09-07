@@ -281,7 +281,7 @@ func newUpdateCmd() *cobra.Command {
 
 // runSync projects the repo's OpenSpec changes onto the Vector board. It is
 // additive and idempotent: new changes become cards (status by task progress),
-// existing sync-owned cards are left alone unless --reconcile, and /vector:raw
+// existing sync-owned cards are left alone unless --reconcile, and /vector:idea
 // drafts are never touched. Applied capability specs (openspec/specs/) are skipped.
 func newSyncCmd() *cobra.Command {
 	var (
@@ -416,7 +416,7 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 				}
 			}
 			results = append(results, syncResult{c.Name, string(status), "created"})
-		case existing.OpenSpec == nil: // user-authored (e.g. a /vector:raw draft) — never touch
+		case existing.OpenSpec == nil: // user-authored (e.g. a /vector:idea draft) — never touch
 			results = append(results, syncResult{c.Name, string(existing.Status), "skipped (not sync-owned)"})
 		case reconcile:
 			// Terminal cards (closed/archived) are never reconciled back to a
@@ -1057,7 +1057,7 @@ func printJSONValue(v any) error {
 
 // DetectTicketResponse is the JSON output of `vector detect-ticket`. It bundles
 // the detected ticket (nil when absent or ambiguous) with the repo's configured
-// language and ticket defaults, so callers (e.g. /vector:raw) can resolve both
+// language and ticket defaults, so callers (e.g. /vector:idea) can resolve both
 // ticket and language from a single binary invocation.
 type DetectTicketResponse struct {
 	Ticket                *state.Ticket        `json:"ticket"`
@@ -1077,7 +1077,7 @@ func newDetectTicketCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "detect-ticket",
-		Short: "detect an external ticket from text (for /vector:raw and /vector:bug)",
+		Short: "detect an external ticket from text (for /vector:idea and /vector:bug)",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			root, err := resolveRepoRoot(repoRoot)

@@ -58,7 +58,7 @@ It returns the 8-section brief, including a **Classification** (`spec-only|code-
 and a **Clarity Verdict**:
 
 - **`OutOfScope`** → this is a fresh feature / standalone bug, not a correction. Route the user
-  to the destination the refiner named (`/vector:raw`, `/idea`, or `/vector:bug`) and **stop
+  to the destination the refiner named (`/vector:idea`, `/idea`, or `/vector:bug`) and **stop
   without writing anything** (no transition, no `spec fix`).
 - **`NEEDS_CLARIFICATION`** → surface the refiner's Open Questions via `AskUserQuestion`. Fold
   the answers into the brief and re-evaluate. If still unresolved, stop with the questions

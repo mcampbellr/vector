@@ -110,7 +110,7 @@ Set Up Development Environment (TODO·Low·30m).
 | Workspace ("Brook Greens")     | Repo / proyecto raíz administrado por Vector             |
 | Proyectos del sidebar          | Repos o sub-workspaces (mono/micro)                      |
 | Columnas (Concept…Development) | Etapas del workflow de specs (configurable)              |
-| Tarjeta (task)                 | **Spec** (creado con `/vector:raw [text]`)               |
+| Tarjeta (task)                 | **Spec** (creado con `/vector:idea [text]`)               |
 | Status pill                    | Estado del spec (todo/progress/review/done)              |
 | Prioridad (bandera)            | Prioridad del spec                                       |
 | Estimación (reloj)             | Estimación de tiempo **o budget de tokens** del spec     |

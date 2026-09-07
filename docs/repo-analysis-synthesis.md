@@ -40,7 +40,7 @@
 
 somnio documenta el pipeline maestro en `docs/workflow-reference.md`:
 `/idea → spec → /openspec-propose → /opsx:apply → /branch-ship`.
-**Es casi 1:1 con el flujo de Vector**: `/vector:raw` ≈ `/idea`, `/vector:apply` ≈ `/opsx:apply`.
+**Es casi 1:1 con el flujo de Vector**: `/vector:idea` ≈ `/idea`, `/vector:apply` ≈ `/opsx:apply`.
 Vector no inventa el flujo — lo **estandariza, lo hace queryable y le agrega el board + token economics**.
 
 ## "Forma Vector" propuesta (destino de `/vector init`)
@@ -53,7 +53,7 @@ repo/
 │   ├── board.json                   # DERIVADO (no commiteado) → alimenta el dashboard
 │   └── local/activity.jsonl         # personal, gitignored → /vector:daily (daily notes)
 ├── .claude/
-│   ├── commands/vector/*            # /vector:raw :link :status :daily :apply :close :archive
+│   ├── commands/vector/*            # /vector:idea :link :status :daily :apply :close :archive
 │   ├── rules/*                      # constraints de agente (formato único — resuelve #4)
 │   └── settings.json                # HOOKS: json-up-to-date · graphify-refresh · need-attention
 ├── .project-structure               # devup unificado (run:, bare-repo, tunnel) — resuelve unificación

@@ -49,7 +49,7 @@ a `<provider>:<key>` shorthand, or a bare key. If either is missing, ask
 
 ## Notes
 
-- **Auto vs manual**: `/vector:raw` and `vector sync` may *auto*-detect a ticket (`auto:true`);
+- **Auto vs manual**: `/vector:idea` and `vector sync` may *auto*-detect a ticket (`auto:true`);
   this command always writes a **manual** link (`auto:false`), which auto-detection never overwrites.
 - An empty URL is valid (a bare key with no host): the board shows the key without a link.
 - If `vector` is not found, it isn't installed — tell the user; do not edit `.vector/` by hand.

@@ -21,7 +21,7 @@ export function basename(path: string): string {
 // the OpenSpec change. No fetch, no filesystem scan; content is fetched lazily
 // when an entry is selected.
 //
-// specDoc is the authored spec (the 20-section doc from /vector:raw); the OpenSpec
+// specDoc is the authored spec (the 20-section doc from /vector:idea); the OpenSpec
 // artifacts live under openspec/changes/<change>/ and are distinct files. propose
 // never rewrites specDoc to proposal.md, so the spec doc is listed regardless of
 // whether OpenSpec artifacts exist — otherwise non-draft cards lose access to it.

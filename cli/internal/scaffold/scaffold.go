@@ -21,7 +21,7 @@
 // go generate.
 //
 // The embedded assets under assets/ mirror into the target repo's .claude/
-// directory (assets/commands/vector/raw.md -> .claude/commands/vector/raw.md,
+// directory (assets/commands/vector/idea.md -> .claude/commands/vector/idea.md,
 // assets/agents/x.md -> .claude/agents/x.md), so only files meant to live
 // under .claude/ belong in assets/.
 package scaffold

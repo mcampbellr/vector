@@ -9,7 +9,7 @@
 `draft` · `open` · `in-progress` · `needs-attention` · `review` · `closed` · `archived`
 
 - kebab-case en datos; el frontend mapea a display ("Needs attention", uppercase en pills).
-- `draft` es el estado de **entrada** (output de `/vector:raw`): el **spec está escrito pero
+- `draft` es el estado de **entrada** (output de `/vector:idea`): el **spec está escrito pero
   todavía no existe el change de OpenSpec**. El change se crea en `/vector:propose`, que mueve
   el spec a `open`. Un spec puede quedarse en `draft` (idea que no se formaliza) o cerrarse desde ahí.
   Distinción spec≠change: la card de Vector existe sin change; el `specDoc` apunta al doc autorado.
@@ -33,7 +33,7 @@
 ### Máquina de estados (transiciones permitidas)
 
 ```
-  /vector:raw      /vector:propose     /vector:apply       /vector:status
+  /vector:idea      /vector:propose     /vector:apply       /vector:status
       │                  │                   │                   │
       ▼                  ▼                   ▼                   ▼
     draft ───────────▶ open ──────────▶ in-progress ─────────▶ review
@@ -122,7 +122,7 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 
 | Comando | Escribe en `state.json` | Evento en `activity.jsonl` | Efecto OpenSpec |
 |---------|--------------------------|-----------------------------|------------------|
-| `/vector:raw [text]` | crea `<id>/state.json` (`status:draft`, `createdAt`, `specDoc` puntero) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | — (change se crea en propose) |
+| `/vector:idea [text]` | crea `<id>/state.json` (`status:draft`, `createdAt`, `specDoc` puntero) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | — (change se crea en propose) |
 | `/vector:bug [report] {scope}` | crea `fix-<id>/state.json` (`status:draft`, prefijo `fix-`) + spec doc bug-framed; siembra `relatedTo[{kind,ref,source}]` (causa deducida por git, idempotente; `--related` inválido **degrada** a card sin relaciones) | `spec.created` + un `spec.related` por relación | — (change se crea en propose) |
 | `/vector:quick "<text>" {ticket\|spec-id}` | crea `<id>/state.json` directamente en `status:in-progress` con `quickWin:true` (`createdAt`, `startedAt`, `specDoc` puntero al brief) + opcional `ticket`/`relatedTo`; luego `work.logged` (tras implementar) y `status:review` (`reviewAt`) | `spec.created` [+ `spec.linked`/`spec.related`] + `status.changed` + `work.logged` + `status.changed`(→review) | — (no crea change; apply-in-run nativo) |
 | `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
@@ -139,7 +139,7 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 | **hook** (surgen preguntas) | `status:needs-attention`, `needsAttention{reason,since,source:hook}` | `status.changed` (`trigger:hook`) | — |
 
 - `auto`: el campo `ticket.auto` distingue **detección automática** de **link manual**.
-  - **`auto:true`** — sembrado por detección: `/vector:raw` cuando el texto crudo menciona un
+  - **`auto:true`** — sembrado por detección: `/vector:idea` cuando el texto crudo menciona un
     ticket reconocible, y `vector sync` por cada change vía `detectTicket` (ver abajo). Es
     *best-effort*: ante ambigüedad **no adivina** (deja el spec sin ticket).
   - **`auto:false`** — link explícito vía `/vector:link` (`vector spec link`). Es autoritativo.

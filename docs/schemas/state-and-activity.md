@@ -66,7 +66,7 @@ type SpecState struct {
 	Labels        []string `json:"labels,omitempty"`
 	EstimateMin   int      `json:"estimateMinutes,omitempty"`
 	QuickWin      bool     `json:"quickWin,omitempty"`   // /vector:quick one-run change marker
-	Sketches      []SketchRef `json:"sketches,omitempty"` // Excalidraw wireframes (/vector:raw + /vector:research)
+	Sketches      []SketchRef `json:"sketches,omitempty"` // Excalidraw wireframes (/vector:idea + /vector:research)
 
 	Ticket    *Ticket       `json:"ticket,omitempty"`
 	RelatedTo []RelatedItem `json:"relatedTo,omitempty"`     // cause→bug trace (/vector:bug)
@@ -87,7 +87,7 @@ type Ticket struct {
 	Provider TicketProvider `json:"provider"`
 	Key      string         `json:"key"`   // e.g. MH-1438
 	URL      string         `json:"url"`
-	Auto     bool           `json:"auto"`  // true if auto-detected from /vector:raw text
+	Auto     bool           `json:"auto"`  // true if auto-detected from /vector:idea text
 }
 
 // RelatedItem traza la causa de un bug a la obra previa que lo originó
@@ -100,7 +100,7 @@ type RelatedItem struct {
 }
 
 // SketchRef es un wireframe Excalidraw adjunto a un spec, generado por el agente
-// vector-ui-ux-designer al final de `/vector:raw` y `/vector:research` y persistido por
+// vector-ui-ux-designer al final de `/vector:idea` y `/vector:research` y persistido por
 // `vector spec attach-sketch`. Optional + omitempty → specs sin sketch serializan idéntico
 // (backward-compatible; SchemaVersion sigue en 1, sin migración). El archivo vive en
 // .vector/specs/<id>/sketches/<name>; se sirve como descarga en `GET /api/file?artifact=sketch`.

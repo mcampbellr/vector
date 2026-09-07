@@ -58,7 +58,7 @@ type CreateSpecParams struct {
 	SpecDocRel     string
 
 	// OpenSpec, when set, records the source change (used by `vector sync` to mark
-	// a card as derived from an OpenSpec change rather than a /vector:raw draft).
+	// a card as derived from an OpenSpec change rather than a /vector:idea draft).
 	OpenSpec *OpenSpec
 
 	// NeedsUAT marks the card as awaiting manual UAT. Only honored when Status is
@@ -70,7 +70,7 @@ type CreateSpecParams struct {
 	QuickWin bool
 
 	// Ticket, when set, seeds the spec's external-tracker link at creation time
-	// (e.g. a ref detected in a /vector:raw idea, or sync's conservative scan). It
+	// (e.g. a ref detected in a /vector:idea idea, or sync's conservative scan). It
 	// is persisted on state.json and also emits a spec.linked event alongside
 	// spec.created. Auto-detected seeds carry Auto:true.
 	Ticket *Ticket

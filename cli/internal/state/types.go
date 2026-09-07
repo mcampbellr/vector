@@ -15,7 +15,7 @@ type Status string
 
 const (
 	// StatusDraft is a captured spec with no OpenSpec change yet (the output of
-	// /vector:raw). It precedes StatusOpen, which means the change exists.
+	// /vector:idea). It precedes StatusOpen, which means the change exists.
 	StatusDraft          Status = "draft"
 	StatusOpen           Status = "open"
 	StatusInProgress     Status = "in-progress"
@@ -145,7 +145,7 @@ type SpecState struct {
 	QuickWin bool `json:"quickWin,omitempty"`
 
 	// Sketches records the Excalidraw design wireframes attached to this spec
-	// (produced by /vector:raw and /vector:research via the vector-ui-ux-designer
+	// (produced by /vector:idea and /vector:research via the vector-ui-ux-designer
 	// agent, written by `vector spec attach-sketch`). Optional and omitempty, so
 	// specs without a sketch read/serialize byte-identically. SchemaVersion stays 1:
 	// a legacy SpecState deserializes with Sketches == nil (no migration).

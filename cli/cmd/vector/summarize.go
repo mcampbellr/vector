@@ -129,7 +129,9 @@ func runSpecSummarizeProjection(id, repoRoot string, jsonOut bool) error {
 		return err
 	}
 
-	timelineEvents := standup.Timeline(events, id, from)
+	// Open-ended upper bound (zero time): the per-spec summary window is bounded
+	// only below by --since; the half-open cap is specific to the standup marker.
+	timelineEvents := standup.Timeline(events, id, from, time.Time{})
 	proj := summarizeProjection{
 		ID:     spec.ID,
 		Title:  spec.Title,

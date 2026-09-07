@@ -1,5 +1,5 @@
 ---
-name: "Vector: Raw"
+name: "Vector: Idea"
 description: Turn a raw idea into a complete, validated 20-section Vector spec and register it on the board as a draft (no OpenSpec change yet). As powerful as /idea, self-contained in Vector.
 category: Workflow
 tags: [vector, spec, capture, idea]

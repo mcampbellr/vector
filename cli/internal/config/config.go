@@ -108,7 +108,7 @@ type Config struct {
 	// when the repo declares a [branch] layout; additive and backward-compatible.
 	BranchPrefix string `json:"branchPrefix,omitempty"`
 	// SketchEnabled globally gates the opt-in Excalidraw sketch step at the tail of
-	// /vector:raw and /vector:research. nil (absent) or true = enabled (the command
+	// /vector:idea and /vector:research. nil (absent) or true = enabled (the command
 	// may prompt on a strong UI signal); only an explicit false suppresses the prompt
 	// repo-wide. A pointer so absent and false are distinguishable; additive and
 	// backward-compatible (a legacy config loads it as nil = enabled). Not written by
@@ -500,7 +500,7 @@ func (c *Config) changesTemplate() string {
 	return DefaultChangesPath
 }
 
-// Defaults for the per-spec worktree the /vector:raw and /vector:bug orchestration
+// Defaults for the per-spec worktree the /vector:idea and /vector:bug orchestration
 // creates on bare+worktree layouts.
 const (
 	DefaultBaseBranch   = "main"
@@ -510,7 +510,7 @@ const (
 // HasBranchPlaceholder reports whether the repo declares a bare+worktree layout:
 // the [branch] placeholder is present in the resolved spec-path or changes-path
 // template. This is the signal that gates the worktree-resolve/create step in
-// /vector:raw and /vector:bug; false means that step is inert (non-worktree repos).
+// /vector:idea and /vector:bug; false means that step is inert (non-worktree repos).
 func (c *Config) HasBranchPlaceholder() bool {
 	return strings.Contains(c.SpecPath, branchPlaceholder) ||
 		strings.Contains(c.changesTemplate(), branchPlaceholder)

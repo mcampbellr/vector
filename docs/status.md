@@ -68,7 +68,7 @@ board lo muestra como badge "UAT" (review-gated). Los subcomandos de transición
 
 ## Qué está construido (kit)
 
-- Commands: `/vector:raw` (idea → spec 20-secciones validado → card `draft`), `/vector:sync`,
+- Commands: `/vector:idea` (idea → spec 20-secciones validado → card `draft`), `/vector:sync`,
   `/vector:propose`, **`/vector:apply`** (selección por `applyMode` → start → delegate/native →
   implementar → `review`; no auto-commitea). Ver `docs/apply-design.md`.
 - Agents: `vector-spec-refiner` (Haiku), `vector-spec-validator` (Sonnet). Template:

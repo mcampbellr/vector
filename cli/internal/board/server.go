@@ -118,7 +118,9 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "could not read activity log")
 		return
 	}
-	timeline := standup.Timeline(events, specID, from)
+	// Open-ended upper bound (zero time): the board timeline shows everything since
+	// the window start; the half-open cap is only for the standup marker.
+	timeline := standup.Timeline(events, specID, from, time.Time{})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

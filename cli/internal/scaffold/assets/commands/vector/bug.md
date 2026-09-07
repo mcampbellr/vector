@@ -1,6 +1,6 @@
 ---
 name: "Vector: Bug"
-description: Turn a raw bug report into a complete, validated Vector spec and register it as a draft card — deducing the bug's root cause from git history and persisting it as a queryable relatedTo[] relation. The bug-framed counterpart of /vector:raw. You never write Vector's state yourself; the binary owns the writes.
+description: Turn a raw bug report into a complete, validated Vector spec and register it as a draft card — deducing the bug's root cause from git history and persisting it as a queryable relatedTo[] relation. The bug-framed counterpart of /vector:idea. You never write Vector's state yourself; the binary owns the writes.
 argument-hint: "[bug-report] {spec-id|branch|file}"
 user-invocable: true
 category: Workflow
@@ -19,7 +19,7 @@ allowed-tools:
 Turn the user's raw bug report into a **complete, validated spec** and register it as a
 Vector card in `draft` status — **plus** trace the bug to the prior work that caused it
 (`relatedTo[]`), so the board records *why this bug appeared*. This is the bug-framed
-counterpart of `/vector:raw`: it authors and registers a `draft` card and **stops there**.
+counterpart of `/vector:idea`: it authors and registers a `draft` card and **stops there**.
 It does **not** create the OpenSpec change (that's `/vector:propose`) or implement the fix
 (that's `/vector:apply`).
 

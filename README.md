@@ -141,7 +141,7 @@ vector init                      # seed the commands and detect your stack
 ```
 
 ```text
-/vector:raw "add user authentication"   # create a new spec from scratch
+/vector:idea "add user authentication"   # create a new spec from scratch
 ```
 
 ```bash
@@ -150,7 +150,7 @@ vector serve                     # open the local board
 
 Run `/vector:sync` first. It is idempotent and additive: in a repo that already uses OpenSpec it
 pulls those changes onto the board so you never recreate specs by hand, and in a fresh repo it
-simply finds nothing and does no harm. Reach for `/vector:raw` for anything new. Either way the
+simply finds nothing and does no harm. Reach for `/vector:idea` for anything new. Either way the
 cards land in the `open` column — open the board in your browser to watch them move as you propose
 and apply each change.
 
@@ -158,7 +158,7 @@ and apply each change.
 
 | Concept | What it means |
 |---|---|
-| **spec** | The unit of work, equivalent to a card on the board. You create one with `/vector:raw`. It carries a status, a priority, and an optional ticket link. |
+| **spec** | The unit of work, equivalent to a card on the board. You create one with `/vector:idea`. It carries a status, a priority, and an optional ticket link. |
 | **OpenSpec** | The change model Vector builds on (proposal / design / tasks). A spec becomes an OpenSpec change when you formalize it with `/vector:propose`. |
 | **board** | The kanban view. Columns are spec *states* (open, in-progress, needs-attention, review, closed, archived). See [`docs/domain-contract.md`](docs/domain-contract.md). |
 | **token routing** | Each command sends a task to the cheapest capable agent. Trivial work goes to Haiku or Sonnet; implementation goes to Opus. |
@@ -172,7 +172,7 @@ activity history, and the spec files. Open a file to read the spec itself, rende
 
 ## Design sketches
 
-When you author a UI-facing spec with `/vector:raw` or `/vector:research`, Vector can turn its
+When you author a UI-facing spec with `/vector:idea` or `/vector:research`, Vector can turn its
 written description into an **Excalidraw wireframe** — no leaving Claude Code, no modeling the
 layout by hand. At the tail of the command, a conservative heuristic detects UI work and, on your
 confirmation, an embedded Sonnet agent (`vector-ui-ux-designer`) emits a valid `.excalidraw`
@@ -195,7 +195,7 @@ the commands call it rather than editing `.vector/` by hand.
 
 | Command | What it does |
 |---|---|
-| `/vector:raw` | Turn a raw idea into a complete, validated 20-section spec and register it on the board as a draft. |
+| `/vector:idea` | Turn a raw idea into a complete, validated 20-section spec and register it on the board as a draft. |
 | `/vector:research` | Investigate whether an idea is worth building first: run feasibility lenses, gate a go/no-go verdict, then author the spec with the report embedded. |
 | `/vector:bug` | Turn a bug report into a validated spec, deducing the root cause from git history and recording it as a queryable relation. |
 | `/vector:propose` | Formalize a draft spec into an OpenSpec change (proposal, design, tasks) and move the card from draft to open. |
@@ -219,7 +219,7 @@ You run `vector init` in your repo. Vector seeds the `/vector:*` commands into
 `.claude/commands/vector/`, detects how you build and test, and writes the `.vector/` state
 directory.
 
-In Claude Code, you run `/vector:raw "add user authentication"`. Vector authors a full spec at
+In Claude Code, you run `/vector:idea "add user authentication"`. Vector authors a full spec at
 `.vector/specs/add-user-authentication/spec.md` and the card appears in the `open` column.
 
 When you are ready to plan the change, you run `/vector:propose`. Claude drafts the OpenSpec

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "fix-hui-341-publishing-parity",
+  "title": "Fix Assembly Station publishing parity gaps (HUI-341)",
+  "status": "open",
+  "priority": "high",
+  "repo": "",
+  "specDoc": ".vector/specs/fix-hui-341-publishing-parity/spec.md",
+  "openspec": {
+    "change": "fix-hui-341-publishing-parity",
+    "artifacts": {
+      "proposal": true,
+      "design": true,
+      "tasks": true
+    }
+  },
+  "createdAt": "2026-09-07T16:27:15.554271Z",
+  "updatedAt": "2026-09-07T16:28:54.955485Z"
+}

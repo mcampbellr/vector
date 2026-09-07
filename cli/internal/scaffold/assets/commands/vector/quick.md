@@ -8,7 +8,7 @@ tags: [vector, quick-win, refactor, lifecycle]
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git *), Bash(vector *), Bash(go *), Bash(npm *), Bash(npx *), Bash(cargo *), Bash(ruff *), Bash(mypy *), Bash(pnpm *), Bash(yarn *), Agent, AskUserQuestion
 ---
 
-Apply a **small, low-risk change in the same run**. Unlike `/vector:raw` → `/vector:propose` →
+Apply a **small, low-risk change in the same run**. Unlike `/vector:idea` → `/vector:propose` →
 `/vector:apply` (full ceremony + an OpenSpec change), `/vector:quick` is for mechanical work — a
 refactor, a symbol rename, an extracted helper, a copy tweak, a missing index, a promoted file.
 It registers a board card **born `in-progress` and marked quick-win**, implements the change,
@@ -57,12 +57,12 @@ Before spending the refiner, screen `RAW_QW` for red flags and **escalate instea
 expanding**:
 
 - New screen / page / modal / endpoint / feature, or any net-new user-visible behavior →
-  recommend `/vector:raw` and stop.
+  recommend `/vector:idea` and stop.
 - "Broken" / "regression" / "doesn't work" / a defect needing investigation →
   recommend `/vector:bug` and stop.
 - Multiple unrelated changes bundled together → ask the user to split; suggest one `/vector:quick`
   per change, and stop.
-- Schema / migration / new endpoint → recommend `/vector:raw`, **unless** it is a literal
+- Schema / migration / new endpoint → recommend `/vector:idea`, **unless** it is a literal
   one-line change (e.g. adding a missing index).
 
 When you escalate, **do not** invoke the refiner and **do not** create a card. Name the better
@@ -79,7 +79,7 @@ RAW_QW: <the change description>
 It returns the light brief (Optimized Title / Kebab-case Slug / Change Type / What Changes / Why
 / Files to Touch / Acceptance / Risks / Blocking Clarifying Questions / Non-Blocking Notes).
 
-**Scope-guard** — if any of the following holds, escalate to `/vector:raw` and stop (do not
+**Scope-guard** — if any of the following holds, escalate to `/vector:idea` and stop (do not
 create a card):
 - More than ~6 files to touch.
 - A visible behavior change disguised as a refactor.
@@ -126,7 +126,7 @@ of scope** mid-implementation:
 
 ```bash
 git restore <touched files>
-vector spec status <id> needs-attention --reason "out of scope for a quick-win: use /vector:raw"
+vector spec status <id> needs-attention --reason "out of scope for a quick-win: use /vector:idea"
 ```
 
 …and stop with the recommendation surfaced.
@@ -204,6 +204,6 @@ result, and the next step: `/vector:close <id>`.
 - **Token routing.** Refinement = Haiku (`vector-quick-refiner`); sanity-check, link resolution,
   and implementation = main loop; **no** Sonnet validator (`product/token-routing.md`). Only the
   refiner is recorded via `vector spec route`.
-- **Escalate, don't expand.** A change that grows beyond a quick-win routes to `/vector:raw` (or
+- **Escalate, don't expand.** A change that grows beyond a quick-win routes to `/vector:idea` (or
   `/vector:bug` for a defect) — it never grows silently.
 - If `vector` is not found, it isn't installed — tell the user; never edit state manually.

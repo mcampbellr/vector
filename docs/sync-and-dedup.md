@@ -56,7 +56,7 @@ hechas, o solo quedan tasks de **QA/verificación manual**). Sin `tasks.md` pars
 
 - Cards de change: `openspec{change,artifacts}`. Specs sueltos: `draft` con `source:sync`.
 - **Aditivo**: re-sync solo agrega lo que falta; `--reconcile` actualiza el status de cards
-  sync-owned. Drafts de `/vector:raw` y cualquier card existente **nunca** se tocan.
+  sync-owned. Drafts de `/vector:idea` y cualquier card existente **nunca** se tocan.
 
 ## El patrón de producto (flujo del usuario)
 

@@ -4,5 +4,5 @@
   "specFilename": "spec.md",
   "specStore": "vector",
   "source": "default",
-  "kitVersion": "dev"
+  "kitVersion": "0.4.1"
 }

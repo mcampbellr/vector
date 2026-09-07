@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	rawCommand        = ".claude/commands/vector/raw.md"
+	ideaCommand       = ".claude/commands/vector/idea.md"
 	bugCommand        = ".claude/commands/vector/bug.md"
 	bugRefiner        = ".claude/agents/vector-bug-refiner.md"
 	specComposerAgent = ".claude/agents/vector-spec-composer.md"
@@ -33,12 +33,12 @@ func TestSeedCommandsCreatesUnderClaude(t *testing.T) {
 		t.Fatal("expected at least one seeded file")
 	}
 
-	target := filepath.Join(root, rawCommand)
+	target := filepath.Join(root, ideaCommand)
 	if _, err := os.Stat(target); err != nil {
-		t.Fatalf("expected %s to exist: %v", rawCommand, err)
+		t.Fatalf("expected %s to exist: %v", ideaCommand, err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionCreated {
-		t.Fatalf("raw.md action = %q, want %q", got, ActionCreated)
+	if got := actionFor(results, ideaCommand); got != ActionCreated {
+		t.Fatalf("idea.md action = %q, want %q", got, ActionCreated)
 	}
 }
 
@@ -48,7 +48,7 @@ func TestSeedCommandsSkipsExistingByDefault(t *testing.T) {
 		t.Fatalf("first seed: %v", err)
 	}
 
-	target := filepath.Join(root, rawCommand)
+	target := filepath.Join(root, ideaCommand)
 	if err := os.WriteFile(target, []byte("user edits"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestSeedCommandsSkipsExistingByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second seed: %v", err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionSkipped {
+	if got := actionFor(results, ideaCommand); got != ActionSkipped {
 		t.Fatalf("action = %q, want %q", got, ActionSkipped)
 	}
 	got, _ := os.ReadFile(target)
@@ -68,7 +68,7 @@ func TestSeedCommandsSkipsExistingByDefault(t *testing.T) {
 
 func TestSeedCommandsForceOverwrites(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(root, rawCommand)
+	target := filepath.Join(root, ideaCommand)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestSeedCommandsForceOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("force seed: %v", err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionOverwritten {
+	if got := actionFor(results, ideaCommand); got != ActionOverwritten {
 		t.Fatalf("action = %q, want %q", got, ActionOverwritten)
 	}
 	got, _ := os.ReadFile(target)
@@ -96,10 +96,10 @@ func TestSeedCommandsDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run seed: %v", err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionCreated {
+	if got := actionFor(results, ideaCommand); got != ActionCreated {
 		t.Fatalf("dry-run action = %q, want %q", got, ActionCreated)
 	}
-	if _, err := os.Stat(filepath.Join(root, rawCommand)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, ideaCommand)); !os.IsNotExist(err) {
 		t.Fatalf("dry-run wrote a file (stat err = %v)", err)
 	}
 }

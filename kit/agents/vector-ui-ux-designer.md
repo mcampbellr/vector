@@ -1,6 +1,6 @@
 ---
 name: vector-ui-ux-designer
-description: Emits a valid Excalidraw (.excalidraw) wireframe for a UI-facing Vector spec, then commits it via `vector spec attach-sketch`. Reads the composed spec, writes pure JSON to a temp path, and calls the binary to validate + persist it. Never edits .vector/specs/ or state.json directly. Spawned async at the tail of /vector:raw and /vector:research on Sonnet.
+description: Emits a valid Excalidraw (.excalidraw) wireframe for a UI-facing Vector spec, then commits it via `vector spec attach-sketch`. Reads the composed spec, writes pure JSON to a temp path, and calls the binary to validate + persist it. Never edits .vector/specs/ or state.json directly. Spawned async at the tail of /vector:idea and /vector:research on Sonnet.
 model: sonnet
 tools: Read, Write, Bash
 ---

@@ -30,7 +30,7 @@ type ContextOutput struct {
 	ApplyMode      string `json:"applyMode"`
 	TicketDetected bool   `json:"ticketDetected"`
 	// SketchEnabled reports whether the opt-in Excalidraw sketch step at the tail of
-	// /vector:raw and /vector:research is enabled for this repo (true unless
+	// /vector:idea and /vector:research is enabled for this repo (true unless
 	// sketchEnabled is explicitly false in config). The command skips the sketch
 	// prompt when this is false, without re-reading config.json itself.
 	SketchEnabled bool            `json:"sketchEnabled"`
@@ -54,7 +54,7 @@ type ShipContext struct {
 	AuthBootstrap string   `json:"authBootstrap,omitempty"`
 }
 
-// WorktreeContext describes the repo's bare+worktree layout for the /vector:raw
+// WorktreeContext describes the repo's bare+worktree layout for the /vector:idea
 // and /vector:bug orchestration: whether the [branch] placeholder is present
 // (Layout), the worktree root directory (Root — the literal prefix before
 // [branch], e.g. "code"), and the base branch + branch prefix used when creating

@@ -11,7 +11,7 @@ Go/TS. Es lo que materializa la propuesta "ecosistema que estandariza la organiz
 
 ## Contenido
 
-- **Project commands** distribuibles en `commands/vector/*.md` (`/vector:raw`, etc.). El
+- **Project commands** distribuibles en `commands/vector/*.md` (`/vector:idea`, etc.). El
   subdirectorio `vector/` da el namespace con colon. **No es un plugin** — ver
   `docs/plugin-and-commands.md`.
 - **Rules/memorias** plantilla que Vector siembra en el repo del usuario.

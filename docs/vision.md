@@ -46,7 +46,7 @@ organización del repo y facilita el trabajo en equipo.
      lo del `.gitignore` o similar en cada stack) antes de reorganizar al formato que Vector
      requiere (formato a definir tras analizar repos de referencia + `/biz`).
 3. **JSON de estado/record**: lleva el registro de lo que pasa. Ej.: al crear un "spec" con
-   `/vector:raw [text]` (equivalente al actual `/idea` del usuario, pero alineado a cómo
+   `/vector:idea [text]` (equivalente al actual `/idea` del usuario, pero alineado a cómo
    Vector guarda specs).
 4. **Administración sobre el JSON**: a los specs se les puede agregar, p. ej., el link del
    ticket correspondiente, etc.
@@ -64,7 +64,7 @@ organización del repo y facilita el trabajo en equipo.
 ## Comandos (nomenclatura tentativa)
 
 Project commands bajo el namespace `vector` (colon vía subdirectorio `.claude/commands/vector/` — ver `docs/plugin-and-commands.md`):
-- `/vector:raw [text]` — crear un spec (equivalente a `/idea` actual).
+- `/vector:idea [text]` — crear un spec (equivalente a `/idea` actual).
 - `/vector:link · :status · :daily · :apply · :close · :archive` — administración del spec.
 
 `vector init` queda fuera de los slash: es el subcomando de terminal del binario que bootstrapea el repo (detecta el stack y siembra los `/vector:*`).
