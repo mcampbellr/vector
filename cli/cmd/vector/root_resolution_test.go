@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -60,7 +61,7 @@ func TestResolveRepoRootWalksUpToAncestorStore(t *testing.T) {
 	}
 }
 
-func TestResolveRepoRootExplicitStaysFinal(t *testing.T) {
+func TestResolveRepoRootRejectsExplicitInnerStore(t *testing.T) {
 	base := tempWorkspace(t)
 	seedStore(t, base, testConfigBody)
 	nested := filepath.Join(base, "website")
@@ -69,16 +70,9 @@ func TestResolveRepoRootExplicitStaysFinal(t *testing.T) {
 	}
 	t.Chdir(nested)
 
-	// An explicit --repo-root skips the walk-up entirely: precedence is unchanged.
-	root, strays, err := resolveRepoRootStrays(nested)
-	if err != nil {
-		t.Fatalf("resolveRepoRootStrays: %v", err)
-	}
-	if root != nested {
-		t.Errorf("root = %q, want %q", root, nested)
-	}
-	if strays != nil {
-		t.Errorf("strays = %v, want nil for an explicit root", strays)
+	_, _, err := resolveRepoRootStrays(nested)
+	if err == nil || !strings.Contains(err.Error(), "canonical Vector root") {
+		t.Fatalf("resolveRepoRootStrays error = %v, want actionable inner-root rejection", err)
 	}
 }
 
@@ -102,7 +96,7 @@ func TestResolveRepoRootReportsStraysAndFallsBack(t *testing.T) {
 	}
 }
 
-func TestInitRefusesNestedStoreBelowAncestor(t *testing.T) {
+func TestInitRejectsNestedStoreBelowAncestorEvenWithForce(t *testing.T) {
 	base := tempWorkspace(t)
 	seedStore(t, base, testConfigBody)
 	nested := filepath.Join(base, "website")
@@ -110,31 +104,14 @@ func TestInitRefusesNestedStoreBelowAncestor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := runInit([]string{"--repo-root", nested})
-	if err == nil {
-		t.Fatal("expected init to refuse the nested store")
+	for _, args := range [][]string{{"--repo-root", nested}, {"--repo-root", nested, "--force"}} {
+		err := runInit(args)
+		if err == nil || !strings.Contains(err.Error(), "canonical Vector root") {
+			t.Errorf("init %v error = %v, want inner-root rejection", args, err)
+		}
 	}
-	if !strings.Contains(err.Error(), base) || !strings.Contains(err.Error(), "--force") {
-		t.Errorf("error should name the ancestor and suggest --force, got: %v", err)
-	}
-	if _, statErr := os.Stat(filepath.Join(nested, ".vector")); statErr == nil {
-		t.Error("init wrote a nested .vector despite refusing")
-	}
-}
-
-func TestInitForceCreatesNestedStore(t *testing.T) {
-	base := tempWorkspace(t)
-	seedStore(t, base, testConfigBody)
-	nested := filepath.Join(base, "website")
-	if err := os.MkdirAll(nested, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := runInit([]string{"--repo-root", nested, "--force"}); err != nil {
-		t.Fatalf("init --force: %v", err)
-	}
-	if !config.Exists(nested) {
-		t.Error("init --force did not create the nested store")
+	if config.Exists(nested) {
+		t.Error("init created a nested .vector store")
 	}
 }
 
@@ -146,6 +123,24 @@ func TestInitAtCanonicalRootDoesNotTripGuard(t *testing.T) {
 
 	if err := runInit([]string{"--repo-root", base}); err != nil {
 		t.Fatalf("init at the canonical root: %v", err)
+	}
+}
+
+func TestInitFromWorktreeUsesWorkspaceStoreEvenWithForce(t *testing.T) {
+	workspaceRoot := tempWorkspace(t)
+	seedStore(t, workspaceRoot, testConfigBody)
+	worktree := filepath.Join(workspaceRoot, "code", "main")
+	seedStore(t, worktree, testConfigBody)
+	t.Chdir(worktree)
+
+	if err := runInit([]string{"--force"}); err != nil {
+		t.Fatalf("init --force from worktree: %v", err)
+	}
+	if !config.Exists(workspaceRoot) {
+		t.Error("init did not retain the workspace-root store")
+	}
+	if !config.Exists(worktree) {
+		t.Error("fixture worktree store unexpectedly disappeared")
 	}
 }
 
@@ -190,6 +185,164 @@ func TestSpecCreateFromStraySubdirLandsInCanonicalStore(t *testing.T) {
 	}
 	if got := dirEntryNames(t, filepath.Join(strayDir, ".vector")); !reflect.DeepEqual(got, strayBefore) {
 		t.Errorf("stray store was written to: %v, want %v", got, strayBefore)
+	}
+}
+
+func TestResolveRepoRootEnvVarOverridesWalkUp(t *testing.T) {
+	base := tempWorkspace(t)
+	seedStore(t, base, testConfigBody)
+	pinned := tempWorkspace(t)
+	nested := filepath.Join(base, "website")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(nested)
+	t.Setenv("VECTOR_REPO_ROOT", pinned)
+
+	root, strays, err := resolveRepoRootStrays("")
+	if err != nil {
+		t.Fatalf("resolveRepoRootStrays: %v", err)
+	}
+	if root != pinned {
+		t.Errorf("root = %q, want the env-pinned %q (walk-up must be skipped)", root, pinned)
+	}
+	if strays != nil {
+		t.Errorf("strays = %v, want nil (walk-up skipped entirely)", strays)
+	}
+}
+
+func TestResolveRepoRootRejectsEnvVarInsideWorkspace(t *testing.T) {
+	workspaceRoot := tempWorkspace(t)
+	seedStore(t, workspaceRoot, testConfigBody)
+	worktree := filepath.Join(workspaceRoot, "code", "main")
+	seedStore(t, worktree, testConfigBody)
+	t.Chdir(worktree)
+	t.Setenv("VECTOR_REPO_ROOT", worktree)
+
+	_, _, err := resolveRepoRootStrays("")
+	if err == nil || !strings.Contains(err.Error(), "VECTOR_REPO_ROOT points inside the workspace") {
+		t.Fatalf("resolveRepoRootStrays error = %v, want env inner-root rejection", err)
+	}
+}
+
+func TestResolveRepoRootExplicitFlagBeatsEnvVar(t *testing.T) {
+	base := tempWorkspace(t)
+	seedStore(t, base, testConfigBody)
+	t.Setenv("VECTOR_REPO_ROOT", tempWorkspace(t))
+
+	root, _, err := resolveRepoRootStrays(base)
+	if err != nil {
+		t.Fatalf("resolveRepoRootStrays: %v", err)
+	}
+	if root != base {
+		t.Errorf("root = %q, want the explicit %q (flag must beat the env var)", root, base)
+	}
+}
+
+func TestResolveRepoRootStateRootPinsToPersistentTarget(t *testing.T) {
+	// A bare+worktree layout: the workspace root carries the canonical store, and
+	// the worktree's own tracked config carries a stateRoot pointing back at it.
+	workspaceRoot := tempWorkspace(t)
+	seedStore(t, workspaceRoot, testConfigBody)
+	worktree := filepath.Join(workspaceRoot, "code", "main")
+	worktreeCfg := fmt.Sprintf(`{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default","stateRoot":%q}`, workspaceRoot)
+	seedStore(t, worktree, worktreeCfg)
+	nested := filepath.Join(worktree, "cli")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(nested)
+
+	root, _, err := resolveRepoRootStrays("")
+	if err != nil {
+		t.Fatalf("resolveRepoRootStrays: %v", err)
+	}
+	if root != workspaceRoot {
+		t.Errorf("root = %q, want the stateRoot-pinned workspace root %q", root, workspaceRoot)
+	}
+}
+
+func TestResolveRepoRootStateRootRelativeToItsOwnConfig(t *testing.T) {
+	workspaceRoot := tempWorkspace(t)
+	seedStore(t, workspaceRoot, testConfigBody)
+	worktree := filepath.Join(workspaceRoot, "code", "main")
+	// A relative stateRoot resolves against the directory holding this config, not cwd.
+	worktreeCfg := `{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default","stateRoot":"../.."}`
+	seedStore(t, worktree, worktreeCfg)
+	t.Chdir(worktree)
+
+	root, _, err := resolveRepoRootStrays("")
+	if err != nil {
+		t.Fatalf("resolveRepoRootStrays: %v", err)
+	}
+	if root != workspaceRoot {
+		t.Errorf("root = %q, want %q (relative stateRoot resolved against its own config dir)", root, workspaceRoot)
+	}
+}
+
+func TestResolveRepoRootStateRootSelfReferenceIgnored(t *testing.T) {
+	base := tempWorkspace(t)
+	selfPinCfg := fmt.Sprintf(`{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default","stateRoot":%q}`, base)
+	seedStore(t, base, selfPinCfg)
+	t.Chdir(base)
+
+	root, _, err := resolveRepoRootStrays("")
+	if err != nil {
+		t.Fatalf("resolveRepoRootStrays: %v", err)
+	}
+	if root != base {
+		t.Errorf("root = %q, want %q (self-referencing stateRoot ignored, falls through to nearest-wins)", root, base)
+	}
+}
+
+func TestResolveRepoRootStateRootInvalidTargetIgnored(t *testing.T) {
+	base := tempWorkspace(t)
+	invalidPinCfg := `{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default","stateRoot":"/nonexistent-path-does-not-exist"}`
+	seedStore(t, base, invalidPinCfg)
+	t.Chdir(base)
+
+	root, _, err := resolveRepoRootStrays("")
+	if err != nil {
+		t.Fatalf("resolveRepoRootStrays: %v", err)
+	}
+	if root != base {
+		t.Errorf("root = %q, want %q (invalid stateRoot ignored, falls through to nearest-wins)", root, base)
+	}
+}
+
+func TestResolveRepoRootUsesOutermostAncestorStoreWithoutPin(t *testing.T) {
+	// A worktree-local config cannot shadow the workspace root, even without a
+	// stateRoot pin.
+	workspaceRoot := tempWorkspace(t)
+	seedStore(t, workspaceRoot, testConfigBody)
+	worktree := filepath.Join(workspaceRoot, "code", "main")
+	seedStore(t, worktree, testConfigBody) // no stateRoot pin
+	nested := filepath.Join(worktree, "cli")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(nested)
+
+	root, _, err := resolveRepoRootStrays("")
+	if err != nil {
+		t.Fatalf("resolveRepoRootStrays: %v", err)
+	}
+	if root != workspaceRoot {
+		t.Errorf("root = %q, want the workspace root %q", root, workspaceRoot)
+	}
+}
+
+func TestResolveRepoRootRejectsStateRootInsideWorkspace(t *testing.T) {
+	workspaceRoot := tempWorkspace(t)
+	worktree := filepath.Join(workspaceRoot, "code", "main")
+	seedStore(t, worktree, testConfigBody)
+	workspaceCfg := fmt.Sprintf(`{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default","stateRoot":%q}`, worktree)
+	seedStore(t, workspaceRoot, workspaceCfg)
+	t.Chdir(worktree)
+
+	_, _, err := resolveRepoRootStrays("")
+	if err == nil || !strings.Contains(err.Error(), "stateRoot points inside the workspace") {
+		t.Fatalf("resolveRepoRootStrays error = %v, want stateRoot rejection", err)
 	}
 }
 

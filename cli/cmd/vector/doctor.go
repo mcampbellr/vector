@@ -88,6 +88,10 @@ type adoptResult struct {
 	Removed   bool     `json:"removed"` // the stray directory was deleted
 }
 
+type adoptionMove struct{ source, destination string }
+
+var adoptionRename = os.Rename
+
 // newDoctorAdoptCmd migrates a stray store into the canonical one. Without
 // --force it prints the plan and touches nothing; with --force it moves the
 // specs, merges the activity log chronologically, moves the remaining local
@@ -206,89 +210,183 @@ func validateStray(stray, root string) error {
 	return nil
 }
 
-// adoptStray computes the migration plan and, when apply is set, performs it.
-// Order matters: specs, then activity, then local state, and only then the
-// deletion of the stray — so any failure leaves the stray recoverable.
+// adoptStray locks the canonical store, builds a complete plan, then migrates
+// each artifact by rename. A later failure rolls every completed rename back so
+// no partial migration is exposed.
 func adoptStray(stray, root string, apply bool) (adoptResult, error) {
 	canonical := filepath.Join(root, ".vector")
-	result := adoptResult{Stray: stray, Canonical: canonical, Applied: apply}
-
 	if apply {
-		if _, err := state.Open(root); err != nil {
-			return result, fmt.Errorf("open canonical store: %w", err)
+		release, err := acquireAdoptionLock(canonical)
+		if err != nil {
+			return adoptResult{Stray: stray, Canonical: canonical}, err
 		}
+		defer release()
 	}
+	return executeAdoption(stray, canonical, apply)
+}
 
+func acquireAdoptionLock(canonical string) (func(), error) {
+	path := filepath.Join(canonical, "local", "doctor-adopt.lock")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create adoption lock directory: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("another vector doctor adopt is already migrating %s", canonical)
+		}
+		return nil, fmt.Errorf("acquire adoption lock: %w", err)
+	}
+	return func() {
+		_ = file.Close()
+		_ = os.Remove(path)
+	}, nil
+}
+
+func executeAdoption(stray, canonical string, apply bool) (adoptResult, error) {
+	result := adoptResult{Stray: stray, Canonical: canonical}
+	specMoves := make([]adoptionMove, 0)
 	for _, slug := range straySpecs(stray) {
-		src := filepath.Join(stray, "specs", slug)
-		dst := filepath.Join(canonical, "specs", slug)
-		if _, err := os.Stat(dst); err == nil {
+		move := adoptionMove{filepath.Join(stray, "specs", slug), filepath.Join(canonical, "specs", slug)}
+		if _, err := os.Stat(move.destination); err == nil {
 			result.Conflicts = append(result.Conflicts, slug)
 			continue
+		} else if !os.IsNotExist(err) {
+			return result, fmt.Errorf("preflight spec %s: %w", slug, err)
 		}
+		specMoves = append(specMoves, move)
 		result.Specs = append(result.Specs, slug)
-		if !apply {
-			continue
-		}
-		if err := os.Rename(src, dst); err != nil {
-			return result, fmt.Errorf("migrate spec %s: %w", slug, err)
-		}
 	}
-
-	events, err := mergeActivity(stray, canonical, apply)
-	if err != nil {
-		return result, err
-	}
-	result.Events = events
-
-	local, err := moveLocalState(stray, canonical, apply)
+	localMoves, local, err := planLocalMoves(stray, canonical)
 	if err != nil {
 		return result, err
 	}
 	result.Local = local
-
-	// The stray is removed only when nothing was left behind: a conflicted spec
-	// still lives inside it, and deleting would destroy the only copy.
-	if apply && len(result.Conflicts) == 0 {
-		if err := os.RemoveAll(stray); err != nil {
-			return result, fmt.Errorf("remove stray store: %w", err)
+	for _, move := range localMoves {
+		if _, err := os.Stat(move.destination); err == nil {
+			result.Conflicts = append(result.Conflicts, "local/"+filepath.Base(move.source))
+		} else if !os.IsNotExist(err) {
+			return result, fmt.Errorf("preflight local state: %w", err)
 		}
-		result.Removed = true
 	}
+	strayLines, err := readActivityLines(filepath.Join(stray, "local", "activity.jsonl"))
+	if err != nil {
+		return result, err
+	}
+	result.Events = len(strayLines)
+	activityPath := filepath.Join(canonical, "local", "activity.jsonl")
+	originalActivity, originalExists, err := readOptionalFile(activityPath)
+	if err != nil {
+		return result, err
+	}
+	if len(result.Conflicts) > 0 || !apply {
+		return result, nil
+	}
+	for _, dir := range []string{filepath.Join(canonical, "specs"), filepath.Join(canonical, "local")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return result, fmt.Errorf("prepare canonical store: %w", err)
+		}
+	}
+	canonicalLines, err := readActivityLines(activityPath)
+	if err != nil {
+		return result, err
+	}
+	activity := renderMergedActivity(canonicalLines, strayLines)
+	completed := make([]adoptionMove, 0, len(specMoves)+len(localMoves))
+	for _, move := range append(specMoves, localMoves...) {
+		if err := adoptionRename(move.source, move.destination); err != nil {
+			rollbackAdoption(completed)
+			return result, fmt.Errorf("migrate %s: %w", move.source, err)
+		}
+		completed = append(completed, move)
+	}
+	if err := writeAdoptionFile(activityPath, activity); err != nil {
+		rollbackAdoption(completed)
+		return result, err
+	}
+	if err := os.RemoveAll(stray); err != nil {
+		_ = restoreOptionalFile(activityPath, originalActivity, originalExists)
+		rollbackAdoption(completed)
+		return result, fmt.Errorf("remove stray store: %w", err)
+	}
+	result.Applied = true
+	result.Removed = true
 	return result, nil
 }
 
-// mergeActivity appends the stray's activity lines into the canonical log and
-// rewrites it in timestamp order. Unparseable lines are kept (sorted last)
-// rather than dropped — the log is append-only history, not a cache.
-func mergeActivity(stray, canonical string, apply bool) (int, error) {
-	strayLines, err := readActivityLines(filepath.Join(stray, "local", "activity.jsonl"))
+func planLocalMoves(stray, canonical string) ([]adoptionMove, []string, error) {
+	entries, err := os.ReadDir(filepath.Join(stray, "local"))
+	if os.IsNotExist(err) {
+		return nil, []string{}, nil
+	}
 	if err != nil {
-		return 0, err
+		return nil, nil, fmt.Errorf("read stray local state: %w", err)
 	}
-	if len(strayLines) == 0 || !apply {
-		return len(strayLines), nil
+	moves := make([]adoptionMove, 0, len(entries))
+	local := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Name() == "activity.jsonl" {
+			continue
+		}
+		moves = append(moves, adoptionMove{filepath.Join(stray, "local", entry.Name()), filepath.Join(canonical, "local", entry.Name())})
+		local = append(local, entry.Name())
 	}
-	canonicalPath := filepath.Join(canonical, "local", "activity.jsonl")
-	canonicalLines, err := readActivityLines(canonicalPath)
-	if err != nil {
-		return 0, err
-	}
-	merged := append(canonicalLines, strayLines...)
-	sort.SliceStable(merged, func(i, j int) bool { return merged[i].event.TS.Before(merged[j].event.TS) })
+	return moves, local, nil
+}
 
+func rollbackAdoption(completed []adoptionMove) {
+	for i := len(completed) - 1; i >= 0; i-- {
+		_ = os.Rename(completed[i].destination, completed[i].source)
+	}
+}
+
+func readOptionalFile(path string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read canonical activity: %w", err)
+	}
+	return data, true, nil
+}
+
+func restoreOptionalFile(path string, data []byte, exists bool) error {
+	if !exists {
+		return os.Remove(path)
+	}
+	return writeAdoptionFile(path, data)
+}
+
+func renderMergedActivity(canonical, stray []rawEvent) []byte {
+	merged := append(append([]rawEvent{}, canonical...), stray...)
+	sort.SliceStable(merged, func(i, j int) bool { return merged[i].event.TS.Before(merged[j].event.TS) })
 	var buf strings.Builder
 	for _, line := range merged {
 		buf.WriteString(line.raw)
-		buf.WriteString("\n")
+		buf.WriteByte('\n')
 	}
-	if err := os.MkdirAll(filepath.Dir(canonicalPath), 0o755); err != nil {
-		return 0, fmt.Errorf("create local dir: %w", err)
+	return []byte(buf.String())
+}
+
+func writeAdoptionFile(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".doctor-adopt-*")
+	if err != nil {
+		return fmt.Errorf("create activity temp file: %w", err)
 	}
-	if err := os.WriteFile(canonicalPath, []byte(buf.String()), 0o644); err != nil {
-		return 0, fmt.Errorf("write merged activity: %w", err)
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write activity temp file: %w", err)
 	}
-	return len(strayLines), nil
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close activity temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace canonical activity: %w", err)
+	}
+	return nil
 }
 
 // rawEvent keeps a JSONL activity line verbatim alongside its decoded form, so
@@ -327,43 +425,6 @@ func readActivityLines(path string) ([]rawEvent, error) {
 		return nil, fmt.Errorf("scan activity log: %w", err)
 	}
 	return lines, nil
-}
-
-// moveLocalState moves the stray's remaining local files (everything but the
-// already-merged activity log) into the canonical local dir. Existing files are
-// never overwritten: they are left in place and reported as untouched.
-func moveLocalState(stray, canonical string, apply bool) ([]string, error) {
-	srcDir := filepath.Join(stray, "local")
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []string{}, nil
-		}
-		return nil, fmt.Errorf("read stray local state: %w", err)
-	}
-	dstDir := filepath.Join(canonical, "local")
-	moved := []string{}
-	for _, entry := range entries {
-		name := entry.Name()
-		if name == "activity.jsonl" {
-			continue
-		}
-		dst := filepath.Join(dstDir, name)
-		if _, err := os.Stat(dst); err == nil {
-			continue // canonical wins; never clobber local state
-		}
-		moved = append(moved, name)
-		if !apply {
-			continue
-		}
-		if err := os.MkdirAll(dstDir, 0o755); err != nil {
-			return nil, fmt.Errorf("create local dir: %w", err)
-		}
-		if err := os.Rename(filepath.Join(srcDir, name), dst); err != nil {
-			return nil, fmt.Errorf("move local state %s: %w", name, err)
-		}
-	}
-	return moved, nil
 }
 
 // printAdoptResult renders the plan or the applied migration for humans.

@@ -1003,3 +1003,143 @@ func TestFindAncestorConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestFindAncestorConfigsReturnsEveryValidStore(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(base, "code", "main")
+	writeStore(t, base, validConfigBody)
+	writeStore(t, worktree, validConfigBody)
+	nested := filepath.Join(worktree, "cli")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	roots, strays := FindAncestorConfigs(nested)
+	if !reflect.DeepEqual(roots, []string{worktree, base}) {
+		t.Errorf("roots = %v, want [%s %s]", roots, worktree, base)
+	}
+	if len(strays) != 0 {
+		t.Errorf("strays = %v, want none", strays)
+	}
+}
+
+func TestResolveStateRootPinAbsoluteTarget(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(base, "canonical")
+	writeStore(t, target, validConfigBody)
+	configDir := filepath.Join(base, "worktree")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &Config{StateRoot: target}
+	root, ok := cfg.ResolveStateRootPin(configDir)
+	if !ok {
+		t.Fatal("ResolveStateRootPin: ok = false, want true for a valid absolute target")
+	}
+	if root != target {
+		t.Errorf("root = %q, want %q", root, target)
+	}
+}
+
+func TestResolveStateRootPinRelativeTarget(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStore(t, base, validConfigBody)
+	configDir := filepath.Join(base, "code", "main")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A relative stateRoot resolves against configDir, not the process cwd.
+	cfg := &Config{StateRoot: "../.."}
+	root, ok := cfg.ResolveStateRootPin(configDir)
+	if !ok {
+		t.Fatal("ResolveStateRootPin: ok = false, want true for a valid relative target")
+	}
+	if root != base {
+		t.Errorf("root = %q, want %q", root, base)
+	}
+}
+
+func TestResolveStateRootPinEmpty(t *testing.T) {
+	cfg := &Config{}
+	if _, ok := cfg.ResolveStateRootPin(t.TempDir()); ok {
+		t.Error("ResolveStateRootPin: ok = true for an empty StateRoot, want false")
+	}
+}
+
+func TestResolveStateRootPinSelfReferenceIgnored(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStore(t, base, validConfigBody)
+
+	cfg := &Config{StateRoot: base}
+	if _, ok := cfg.ResolveStateRootPin(base); ok {
+		t.Error("ResolveStateRootPin: ok = true for a self-referencing StateRoot, want false")
+	}
+}
+
+func TestResolveStateRootPinInvalidTargetIgnored(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	configDir := filepath.Join(base, "worktree")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// "elsewhere" holds no .vector/config.json at all — an invalid pin.
+	if err := os.MkdirAll(filepath.Join(base, "elsewhere"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &Config{StateRoot: filepath.Join(base, "elsewhere")}
+	if _, ok := cfg.ResolveStateRootPin(configDir); ok {
+		t.Error("ResolveStateRootPin: ok = true for a target with no loadable config, want false")
+	}
+}
+
+func TestResolveStateRootOmitEmptyRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	if err := Write(root, &Config{SchemaVersion: SchemaVersion, SpecPath: VectorFallbackSpecPath, SpecFilename: "spec.md", SpecStore: StoreVector, Source: SourceDefault}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "stateRoot") {
+		t.Errorf("empty StateRoot should be omitted from JSON, got: %s", b)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StateRoot != "" {
+		t.Errorf("StateRoot = %q, want empty for a legacy config", cfg.StateRoot)
+	}
+
+	cfg.StateRoot = "/some/pinned/root"
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.StateRoot != "/some/pinned/root" {
+		t.Errorf("StateRoot round-trip = %q, want %q", reloaded.StateRoot, "/some/pinned/root")
+	}
+}
