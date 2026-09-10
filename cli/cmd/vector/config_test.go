@@ -54,3 +54,23 @@ func TestRunConfigSetShip(t *testing.T) {
 		t.Errorf("expected changed:false on idempotent re-set, got %s", out)
 	}
 }
+
+// TestConfigCommandRegistered guards the wiring: `config` and `config set-ship`
+// must be reachable through the real dispatch path (exit code ≠ 2 = "unknown
+// command"). Regression guard for the release blocker where config.go existed but
+// was never hung off newRootCmd, so `vector config set-ship` returned exit 2.
+func TestConfigCommandRegistered(t *testing.T) {
+	root := t.TempDir()
+	if err := config.Write(root, config.Resolve(root)); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	// A valid invocation through dispatch must succeed (exit 0), proving the command
+	// is registered and reachable — not routed to the unknown-command exit-2 path.
+	if code := dispatch([]string{"config", "set-ship", "--mode", "auto", "--repo-root", root}); code != 0 {
+		t.Fatalf("`vector config set-ship` exit code = %d, want 0 (must be a registered command)", code)
+	}
+	// `vector config` with no subverb is a usage error (exit 1), never exit 2.
+	if code := dispatch([]string{"config"}); code != 1 {
+		t.Errorf("`vector config` (no subverb) exit code = %d, want 1 (usage error, registered)", code)
+	}
+}

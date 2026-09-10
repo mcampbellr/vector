@@ -251,3 +251,4 @@ Licensed under the [Apache License 2.0](LICENSE).
 - [`docs/domain-contract.md`](docs/domain-contract.md) — board states and the domain model
 - [`docs/plugin-and-commands.md`](docs/plugin-and-commands.md) — the commands and plugin model
 - [`docs/commercialization.md`](docs/commercialization.md) — distribution and packaging
+- [`CHANGELOG.md`](CHANGELOG.md) — release history and notable changes per version

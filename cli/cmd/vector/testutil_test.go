@@ -54,8 +54,14 @@ func runViaCmd(newCmd func() *cobra.Command, args []string) error {
 // runXxx shims: same signatures the pre-cobra tests used, now driving the cobra
 // factories. They keep the ~11 command test files unchanged.
 
-func runInit(args []string) error     { return runViaCmd(newInitCmd, args) }
-func runUpdate(args []string) error   { return runViaCmd(newUpdateCmd, args) }
+func runInit(args []string) error   { return runViaCmd(newInitCmd, args) }
+func runUpdate(args []string) error { return runViaCmd(newUpdateCmd, args) }
+
+// runConfigSetShip drives the config `set-ship` child through the cobra tree, so
+// the test exercises the real registered command path (not the internal function).
+func runConfigSetShip(args []string) error {
+	return runViaCmd(newConfigCmd, append([]string{"set-ship"}, args...))
+}
 func runContext(args []string) error  { return runViaCmd(newContextCmd, args) }
 func runSync(args []string) error     { return runViaCmd(newSyncCmd, args) }
 func runStandup(args []string) error  { return runViaCmd(newStandupCmd, args) }
