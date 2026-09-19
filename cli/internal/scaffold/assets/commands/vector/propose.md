@@ -19,9 +19,10 @@ state (CLI-owns-writes).
 - **OpenSpec present** (the repo has the `openspec` CLI on PATH, or `opsx:propose` /
   `openspec-propose` skills) → **delegate**: run that tooling to create
   `openspec/changes/<id>/{proposal,design,tasks}.md`. Zero new tooling for the user.
-- **OpenSpec absent** → **native fallback**: write the three artifacts yourself from the spec
-  doc (proposal ← the spec; design/tasks ← actionable stubs). Minimal — **not** an OpenSpec
-  clone (no spec-delta model, no catalog).
+- **OpenSpec absent** → **native fallback**: the `vector-proposal-generator` subagent (Sonnet)
+  writes the three artifacts from the spec doc (proposal ← the spec; design/tasks ← decisions
+  and an actionable checklist). Minimal — **not** an OpenSpec clone (no spec-delta model, no
+  catalog).
 
 ## Hard rules
 
@@ -52,10 +53,26 @@ state (CLI-owns-writes).
 5. **Generate the change artifacts** into `CHANGE_DIR`:
    - `delegate`: invoke the OpenSpec propose tooling (skill or CLI), passing the spec id and the
      `specDoc` path as the source. Let it author `proposal.md` / `design.md` / `tasks.md`.
-   - `native`: write `proposal.md` (a clear proposal derived from the spec doc — Why / What
-     changes / Scope), `design.md` (key decisions + architecture from the spec, or a `TODO` stub),
-     and `tasks.md` (an actionable checklist derived from the spec's success criteria / deliverables).
-   Note which of the three you actually created.
+   - `native`: invoke the **`vector-proposal-generator`** subagent (**model: sonnet**, writes only
+     inside `CHANGE_DIR`) with:
+     ```
+     SPEC_PATH:  <abs path to the specDoc read in step 1>
+     SPEC_ID:    <id>
+     CHANGE_DIR: <abs path resolved in step 2>
+     ```
+     It writes `proposal.md` / `design.md` / `tasks.md` and returns three lines, the second being
+     `Artifacts: <list>`. **Do not write the artifacts yourself.** If it returns an error instead,
+     report it and stop — the card stays `draft`.
+   Note which of the three were actually created (native: the `Artifacts:` line).
+
+   **Record the token routing** — only when the `native` branch ran (omit in `delegate`, which
+   runs no Vector agent):
+   ```bash
+   vector spec route <id> --model sonnet --baseline opus --task "generate proposal" \
+     --tokens-in <generator-in> --tokens-out <generator-out>
+   ```
+   Same precision rule as the rest of the kit: omit `--precision` (defaults to `estimated`) unless
+   the harness exposed the exact counts; round estimates to the nearest thousand.
 
 6. **Flip the board state** — call the binary:
    ```bash

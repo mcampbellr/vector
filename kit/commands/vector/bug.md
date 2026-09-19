@@ -1,7 +1,7 @@
 ---
 name: "Vector: Bug"
-description: Turn a raw bug report into a complete, validated Vector spec and register it as a draft card — deducing the bug's root cause from git history and persisting it as a queryable relatedTo[] relation. The bug-framed counterpart of /vector:idea. You never write Vector's state yourself; the binary owns the writes.
-argument-hint: "[bug-report] {spec-id|branch|file}"
+description: Turn a raw bug report into a complete, validated Vector spec, register it, and auto-propose its OpenSpec change (`--no-propose` keeps it a draft) — deducing the bug's root cause from git history and persisting it as a queryable relatedTo[] relation. The bug-framed counterpart of /vector:idea. You never write Vector's state yourself; the binary owns the writes.
+argument-hint: "[bug-report] {spec-id|branch|file} [--no-propose]"
 user-invocable: true
 category: Workflow
 tags: [vector, spec, bug, traceability, cause]
@@ -11,6 +11,7 @@ allowed-tools:
   - Glob
   - Bash(git *)
   - Bash(vector *)
+  - Bash(openspec *)
   - Agent
   - AskUserQuestion
   - Skill
@@ -19,12 +20,14 @@ allowed-tools:
 Turn the user's raw bug report into a **complete, validated spec** and register it as a
 Vector card in `draft` status — **plus** trace the bug to the prior work that caused it
 (`relatedTo[]`), so the board records *why this bug appeared*. This is the bug-framed
-counterpart of `/vector:idea`: it authors and registers a `draft` card and **stops there**.
-It does **not** create the OpenSpec change (that's `/vector:propose`) or implement the fix
-(that's `/vector:apply`).
+counterpart of `/vector:idea`: it authors and registers a `draft` card, then auto-proposes its
+OpenSpec change (`draft → open`) unless `--no-propose`. It does **not** implement the fix (that's
+`/vector:apply`).
 
 **Input**: `$ARGUMENTS` — the raw bug report, optionally followed by a `{spec-id|branch|file}`
 token that scopes cause deduction. If empty, ask for the report and stop.
+`--no-propose` may appear anywhere in `$ARGUMENTS`: strip it before reading the rest and hold
+`AUTO_PROPOSE = !present` (default true — see the auto-propose step).
 
 **You never write Vector's state files yourself** — the `vector` binary is the sole writer. You
 author the **spec doc** (a repo artifact), deduce the cause, and then call the binary to
@@ -36,7 +39,8 @@ register the card with its relations; the binary writes the doc and creates the 
 
 ## Hard rules
 
-- **Never implement the fix.** Stop after the spec is authored, validated, and registered as `draft`.
+- **Never implement the fix.** Stop after the spec is authored, validated, registered, and (unless
+  `--no-propose`) proposed.
 - **No inference of product intent.** When the expected behavior is unclear, ask — do not invent.
 - **Never guess the cause.** Deduce from git; on ambiguity / multiple candidates / low confidence /
   no match → ask. A hallucinated `relatedTo` link is worse than none.
@@ -54,6 +58,15 @@ register the card with its relations; the binary writes the doc and creates the 
    CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
    ```
 
+   **Newer release available?** If `CONTEXT.update.available` is `true`, ask once via
+   `AskUserQuestion` — "Vector `<CONTEXT.update.current>` → `<CONTEXT.update.latest>` is available":
+   - **Upgrade now** → run `vector upgrade --yes`, then continue this command. If the upgrade fails,
+     show its error and continue with the current binary.
+   - **Not now** → continue with the current binary.
+
+   Never upgrade without this explicit confirmation. The field is absent on dev builds, when
+   no update exists, or when GitHub was unreachable — then skip silently.
+
    > Token routing: one zero-token binary call returns examplePath + language + build commands
    > so later steps need not re-derive them from manifests or globs.
 
@@ -70,8 +83,9 @@ register the card with its relations; the binary writes the doc and creates the 
    `SPEC_LANGUAGE` will be resolved in step 4 using the original glob+detect approach. Treat
    `WT_LAYOUT` as `false` (the worktree step in step 9 stays inert) when context is unavailable.
 
-1. **Parse the input.** Split `$ARGUMENTS` into `RAW_BUG` (the report) and an optional trailing
-   `{spec-id|branch|file}` token (`SCOPE`). If `RAW_BUG` is empty, ask the user for the report via
+1. **Parse the input.** Strip `--no-propose` and hold `AUTO_PROPOSE`. Split the rest of
+   `$ARGUMENTS` into `RAW_BUG` (the report) and an optional trailing `{spec-id|branch|file}` token
+   (`SCOPE`). If `RAW_BUG` is empty, ask the user for the report via
    `AskUserQuestion` and stop until you have it.
 
 2. **Confirm the repo is initialized.** The spec doc location and ticket defaults come from
@@ -212,7 +226,33 @@ register the card with its relations; the binary writes the doc and creates the 
    vector spec relate "fix-<slug>" --kind spec --ref "<cause-spec-id>" --source manual --json
    ```
 
-10. **Record the token routing** (feeds the board's Token Savings Meter). For **each** cheap-agent
+10. **Auto-propose the OpenSpec change (unless `--no-propose`).** If `AUTO_PROPOSE` is false,
+    skip this step — the card stays `draft`. Otherwise run the `/vector:propose` sequence inline
+    (`propose.md` steps 2–7) for the card just registered. The card is already `draft`, so a
+    failure here never loses it.
+
+    a. **Resolve `CHANGE_DIR`** — `propose.md` step 2 (bare+worktree → the worktree of
+       `proposeBranch`, else `branch`; simple repo → `openspec/changes/<id>/`).
+    b. **Detect `MODE = delegate | native`** — `propose.md` step 3.
+    c. **`CHANGE_DIR` already exists** → ask overwrite / keep via `AskUserQuestion` —
+       `propose.md` step 4. On keep, skip (d) and go to (e).
+    d. **Generate the artifacts** — `propose.md` step 5. `delegate` → the OpenSpec propose tooling,
+       unchanged. `native` → the **`vector-proposal-generator`** subagent (**model: sonnet**) with
+       `SPEC_PATH` (abs path of the registered `specDoc`), `SPEC_ID` (`<id>`) and `CHANGE_DIR`;
+       take the created list from its `Artifacts:` line. Never write the artifacts yourself.
+    e. **Flip the board state** — `propose.md` step 6:
+       `vector spec propose <id> --change <id> --artifacts <created,list> --json` (`draft → open`;
+       logs `spec.proposed` + `status.changed`, the same events as a manual propose).
+    f. **Post-action summary** — `propose.md` step 7 (`--action propose`). Not a gate.
+    g. **On a failure in (d) or (e)**: the card stays `draft` — no rollback, no `needs-attention`.
+       Print the error to stderr, hold it as `PROPOSE_ERROR` for the report, and continue with the
+       routing step.
+
+    Hold for the next steps: `FINAL_STATUS` (`open` on success, else `draft`), `MODE`,
+    `CHANGE_DIR` + the created artifacts, and `PROPOSAL_AGENT_RAN` (true only when the native
+    subagent ran).
+
+11. **Record the token routing** (feeds the board's Token Savings Meter). For **each** cheap-agent
     step you ran, call the binary once so the saving is captured — you never write the JSON
     yourself; the binary derives cost/saved and appends the `agent.routed` event:
 
@@ -226,6 +266,9 @@ register the card with its relations; the binary writes the doc and creates the 
     # The validator ran on Sonnet instead of the Opus baseline:
     vector spec route "<SPEC_ID>" --model sonnet --baseline opus --task "validate spec" \
       --tokens-in <validator-in> --tokens-out <validator-out>
+    # Only when the auto-propose step ran the native vector-proposal-generator (PROPOSAL_AGENT_RAN):
+    vector spec route "<SPEC_ID>" --model sonnet --baseline opus --task "generate proposal" \
+      --tokens-in <generator-in> --tokens-out <generator-out>
     ```
 
     **Precision**: omit `--precision` (defaults to `estimated`) unless the harness exposed the
@@ -238,18 +281,26 @@ register the card with its relations; the binary writes the doc and creates the 
     to the nearest thousand (the meter is an estimate by design). Skip a route you did not run.
     `--baseline` defaults to `opus`; keep it explicit.
 
-11. **Report** (in `config.language`, else the conversation language): the card id, `status: draft`,
-    the `specDoc` path, the **registered relations** (`relatedTo[]` — what caused the bug, and
-    whether each was `blame`-deduced or `manual`), and the validator verdict. If deduction found no
-    cause, say so plainly. Tell the user the next step: **`/vector:propose`** creates the `fix-…`
-    OpenSpec change (proposal/design/tasks) and moves the card `draft → open`; **`/vector:apply`**
-    implements the fix. Note the token routing (refiner = Haiku, validator = Sonnet, orchestration =
-    main loop) and that **the binary owns every state write** (CLI-owns-writes).
+12. **Report** (in `config.language`, else the conversation language): the card id, the final
+    status (`FINAL_STATUS`), the `specDoc` path, the **registered relations** (`relatedTo[]` — what
+    caused the bug, and whether each was `blame`-deduced or `manual`), and the validator verdict. If
+    deduction found no cause, say so plainly. Note the token routing (refiner = Haiku, validator =
+    Sonnet, orchestration = main loop) and that **the binary owns every state write**
+    (CLI-owns-writes).
+
+    **Proposal + next step** (conditional on `FINAL_STATUS`):
+    - `open` → report `draft → open`, `MODE`, `CHANGE_DIR` and the artifacts created; next step:
+      **`/vector:apply <id>`** implements the fix.
+    - `draft` because of `--no-propose` → next step: **`/vector:propose <id>`** generates the
+      `fix-…` OpenSpec change (proposal/design/tasks) and moves the card `draft → open`.
+    - `draft` because the auto-propose failed → quote `PROPOSE_ERROR`; next step:
+      **`/vector:propose <id>`** retries it.
 
 ## Notes
 
-- `draft` = spec authored, **no OpenSpec change yet**. The change is created at `/vector:propose`;
-  the fix starts at `/vector:apply`.
+- `draft` = spec authored, **no OpenSpec change yet**. By default this command proposes the
+  change itself (step 10) and the card ends `open`; with `--no-propose` (or a failed auto-propose)
+  it stays `draft` until `/vector:propose`. The fix starts at `/vector:apply`.
 - The `fix-<slug>` id is reused as the OpenSpec change name when proposed/applied.
 - Re-running on the same report creates a **second distinct** `draft` card by design (no dedup —
   each run is a new bug). The user archives/closes duplicates.

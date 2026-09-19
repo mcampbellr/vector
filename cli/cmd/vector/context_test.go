@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mariocampbell/vector/internal/config"
+	"github.com/mariocampbell/vector/internal/updatecheck"
 )
 
 // seedContextRepo writes a minimal config + Go/Node repo so runContext can run.
@@ -239,5 +241,68 @@ func TestContextShipBlock(t *testing.T) {
 	// ExcludeGlobs folds in the static default ahead of the configured extra.
 	if len(co.Ship.ExcludeGlobs) != 2 || co.Ship.ExcludeGlobs[0] != "openspec/" || co.Ship.ExcludeGlobs[1] != "dist/" {
 		t.Errorf("ship.excludeGlobs = %v, want [openspec/ dist/]", co.Ship.ExcludeGlobs)
+	}
+}
+
+// TestContextUpdateOmittedInDev: every test runs as "dev", so `update` is absent
+// and the golden fixtures stay byte-identical.
+func TestContextUpdateOmittedInDev(t *testing.T) {
+	root := seedContextRepo(t)
+	out := captureStdout(t, func() error {
+		return runContext([]string{"--repo-root", root, "--json"})
+	})
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &fields); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, ok := fields["update"]; ok {
+		t.Errorf("update must be omitted in dev: %s", out)
+	}
+}
+
+// TestContextUpdateFromRootHook: a released build with an available update
+// surfaces it through the context stored by the root hook (no second check).
+func TestContextUpdateFromRootHook(t *testing.T) {
+	root := seedContextRepo(t)
+	checks := 0
+	stubUpdateCheck(t, "1.0.0", func(string) *updatecheck.Result {
+		checks++
+		return &updatecheck.Result{Available: true, Current: "v1.0.0", Latest: "v1.1.0"}
+	})
+	var out string
+	captureStderr(t, func() {
+		out = captureStdout(t, func() error {
+			if code := dispatch([]string{"context", "--repo-root", root, "--json"}); code != 0 {
+				t.Errorf("exit = %d", code)
+			}
+			return nil
+		})
+	})
+	var co ContextOutput
+	if err := json.Unmarshal([]byte(out), &co); err != nil {
+		t.Fatalf("stdout is not pure JSON: %v\n%s", err, out)
+	}
+	want := UpdateInfo{Available: true, Current: "v1.0.0", Latest: "v1.1.0"}
+	if co.Update == nil || *co.Update != want {
+		t.Errorf("update = %+v, want %+v", co.Update, want)
+	}
+	if checks != 1 {
+		t.Errorf("update check ran %d times, want exactly 1", checks)
+	}
+}
+
+// TestContextUpdateOmittedWhenCurrent: a released build that is up to date omits
+// the field.
+func TestContextUpdateOmittedWhenCurrent(t *testing.T) {
+	root := seedContextRepo(t)
+	stubUpdateCheck(t, "1.1.0", func(string) *updatecheck.Result {
+		return &updatecheck.Result{Available: false, Current: "v1.1.0", Latest: "v1.1.0"}
+	})
+	out := captureStdout(t, func() error {
+		dispatch([]string{"context", "--repo-root", root, "--json"})
+		return nil
+	})
+	if strings.Contains(out, `"update"`) {
+		t.Errorf("update must be omitted when up to date: %s", out)
 	}
 }
