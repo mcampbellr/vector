@@ -25,6 +25,15 @@ Fetch the setup context from the binary before refining or implementing:
 CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
 ```
 
+**Newer release available?** If `CONTEXT.update.available` is `true`, ask once via
+`AskUserQuestion` — "Vector `<CONTEXT.update.current>` → `<CONTEXT.update.latest>` is available":
+- **Upgrade now** → run `vector upgrade --yes`, then continue this command. If the upgrade fails,
+  show its error and continue with the current binary.
+- **Not now** → continue with the current binary.
+
+Never upgrade without this explicit confirmation. The field is absent on dev builds, when
+no update exists, or when GitHub was unreachable — then skip silently.
+
 Extract `BUILD_CMD` ← `CONTEXT.buildCmd`, `TEST_CMD` ← `CONTEXT.testCmd`, `LINT_CMD` ←
 `CONTEXT.lintCmd`. **Fallback when it fails**: emit a one-line warning and discover build/lint/
 test from the repo's manifests when you reach the gate.

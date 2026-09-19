@@ -1,7 +1,7 @@
 ---
 name: "Vector: Research"
-description: Investigate whether a raw idea is worth building before specifying it — auto-detect the applicable feasibility lenses (technical always; security/marketing/design on signals), review each with a skeptical Sonnet reviewer, consolidate a go/no-go verdict, gate with the user, and only then author a full 20-section spec with the feasibility report embedded and register it as a draft. The exhaustive sibling of /vector:idea. You never write Vector's state yourself; the binary owns the writes.
-argument-hint: "[idea-text]"
+description: Investigate whether a raw idea is worth building before specifying it — auto-detect the applicable feasibility lenses (technical always; security/marketing/design on signals), review each with a skeptical Sonnet reviewer, consolidate a go/no-go verdict, gate with the user, and only then author a full 20-section spec with the feasibility report embedded, register it, and auto-propose its OpenSpec change (`--no-propose` keeps it a draft). The exhaustive sibling of /vector:idea. You never write Vector's state yourself; the binary owns the writes.
+argument-hint: "[idea-text] [--no-propose]"
 user-invocable: true
 category: Workflow
 tags: [vector, spec, research, feasibility, idea]
@@ -10,19 +10,23 @@ allowed-tools:
   - Grep
   - Glob
   - Bash(vector *)
+  - Bash(openspec *)
   - Agent
   - AskUserQuestion
+  - Skill
 ---
 
 Investigate a raw idea **across disciplines** to decide whether it is worth building, then —
 **only if the user says go** — author a complete 20-section Vector spec with the feasibility
-report embedded and register it as a `draft` card. This is the exhaustive sibling of
-`/vector:idea`: where `raw` refines-and-emits, `research` **investigates → evaluates → decides →
-emits**. It stops at a `draft` card; it does **not** create the OpenSpec change (`/vector:propose`)
-or implement the feature (`/vector:apply`).
+report embedded, register it as a `draft` card, and auto-propose its OpenSpec change
+(`draft → open`). This is the exhaustive sibling of `/vector:idea`: where `raw` refines-and-emits,
+`research` **investigates → evaluates → decides → emits**. It does **not** implement the feature
+(`/vector:apply`).
 
 **Input**: `$ARGUMENTS` (the raw idea). If empty, use the user's latest message; if there is none,
 ask for it and stop.
+`--no-propose` may appear anywhere in `$ARGUMENTS`: strip it before reading the rest and hold
+`AUTO_PROPOSE = !present` (default true — see the auto-propose step).
 
 **You never write Vector's state files yourself** — the `vector` binary is the sole writer. You
 author the **spec doc** (a repo artifact) and call the binary to register the card; the binary
@@ -36,8 +40,8 @@ writes the doc to the repo's configured location and creates the draft card.
 
 ## Hard rules
 
-- **Never implement code.** Stop after the spec is authored, validated, and registered as `draft`.
-  `research` evaluates and authors; it never writes the feature or the OpenSpec change.
+- **Never implement code.** Stop after the spec is authored, validated, registered, and (unless
+  `--no-propose`) proposed. `research` evaluates and authors; it never writes the feature.
 - **Gate before emitting.** Never author or register a card without an explicit go from the user
   at the go/no-go gate. On abort, no card is created and no spec doc is written.
 - **No inference of product intent.** When behavior is unclear, ask — do not invent.
@@ -61,6 +65,15 @@ writes the doc to the repo's configured location and creates the draft card.
    CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
    ```
 
+   **Newer release available?** If `CONTEXT.update.available` is `true`, ask once via
+   `AskUserQuestion` — "Vector `<CONTEXT.update.current>` → `<CONTEXT.update.latest>` is available":
+   - **Upgrade now** → run `vector upgrade --yes`, then continue this command. If the upgrade fails,
+     show its error and continue with the current binary.
+   - **Not now** → continue with the current binary.
+
+   Never upgrade without this explicit confirmation. The field is absent on dev builds, when
+   no update exists, or when GitHub was unreachable — then skip silently.
+
    > Token routing: one zero-token binary call returns examplePath + language so later steps need
    > not re-derive them from globs.
 
@@ -73,8 +86,9 @@ writes the doc to the repo's configured location and creates the draft card.
    (`docs/specs/**`, `openspec/changes/*/spec.md`, `specs/**`) for an example spec; detect
    `SPEC_LANGUAGE` from it (default English).
 
-1. **Read the raw idea** (`$ARGUMENTS`, or the latest message). Hold as `RAW_IDEA`. If empty,
-   ask for it via `AskUserQuestion` and stop until provided.
+1. **Read the raw idea** (`$ARGUMENTS`, or the latest message). Strip `--no-propose` and hold
+   `AUTO_PROPOSE`; hold the rest as `RAW_IDEA`. If empty, ask for it via `AskUserQuestion` and stop
+   until provided.
 
 2. **Confirm the repo is initialized.** The spec doc location and `config.language` come from
    `.vector/config.json` (written by `vector init`, migrated from `.project-structure`). If it is
@@ -221,7 +235,36 @@ writes the doc to the repo's configured location and creates the draft card.
     `--ticket` (malformed JSON / uninferable provider), re-run `vector spec create` **without**
     `--ticket` and fall through to the `/vector:link` hint.
 
-13. **Record the token routing** (feeds the board's Token Savings Meter). For **each** cheap/medium
+13. **Auto-propose the OpenSpec change (unless `--no-propose`).** If `AUTO_PROPOSE` is false,
+    skip this step — the card stays `draft`. Otherwise run the `/vector:propose` sequence inline
+    (`propose.md` steps 2–7) for the card just registered. The card is already `draft`, so a
+    failure here never loses it.
+
+    a. **Resolve `CHANGE_DIR`** — `propose.md` step 2 (bare+worktree → the worktree of
+       `proposeBranch`, else `branch`; simple repo → `openspec/changes/<id>/`).
+    b. **Detect `MODE = delegate | native`** — `propose.md` step 3.
+    c. **`CHANGE_DIR` already exists** → ask overwrite / keep via `AskUserQuestion` —
+       `propose.md` step 4. On keep, skip (d) and go to (e).
+    d. **Generate the artifacts** — `propose.md` step 5. `delegate` → the OpenSpec propose tooling,
+       unchanged. `native` → the **`vector-proposal-generator`** subagent (**model: sonnet**) with
+       `SPEC_PATH` (abs path of the registered `specDoc`), `SPEC_ID` (`<id>`) and `CHANGE_DIR`;
+       take the created list from its `Artifacts:` line. Never write the artifacts yourself.
+    e. **Flip the board state** — `propose.md` step 6:
+       `vector spec propose <id> --change <id> --artifacts <created,list> --json` (`draft → open`;
+       logs `spec.proposed` + `status.changed`, the same events as a manual propose).
+    f. **Post-action summary** — `propose.md` step 7 (`--action propose`). Not a gate.
+    g. **On a failure in (d) or (e)**: the card stays `draft` — no rollback, no `needs-attention`.
+       Print the error to stderr, hold it as `PROPOSE_ERROR` for the report, and continue with the
+       routing step.
+
+    Hold for the next steps: `FINAL_STATUS` (`open` on success, else `draft`), `MODE`,
+    `CHANGE_DIR` + the created artifacts, and `PROPOSAL_AGENT_RAN` (true only when the native
+    subagent ran).
+
+    The `SPEC_PATH` passed to `vector-proposal-generator` is the registered `specDoc`, which already
+    carries the feasibility annex (step 10.e).
+
+14. **Record the token routing** (feeds the board's Token Savings Meter). For **each** cheap/medium
     agent step you ran, call the binary once so the saving is captured — you never write the JSON
     yourself; the binary derives cost/saved from the model and token counts and appends the
     `agent.routed` event:
@@ -239,6 +282,9 @@ writes the doc to the repo's configured location and creates the draft card.
     # The validator ran on Sonnet instead of the Opus baseline:
     vector spec route "<SPEC_ID>" --model sonnet --baseline opus --task "validate spec" \
       --tokens-in <validator-in> --tokens-out <validator-out>
+    # Only when the auto-propose step ran the native vector-proposal-generator (PROPOSAL_AGENT_RAN):
+    vector spec route "<SPEC_ID>" --model sonnet --baseline opus --task "generate proposal" \
+      --tokens-in <generator-in> --tokens-out <generator-out>
     ```
 
     **Precision**: omit `--precision` (defaults to `estimated`) unless the harness exposed exact
@@ -247,17 +293,24 @@ writes the doc to the repo's configured location and creates the draft card.
     Round estimates to the nearest thousand. Skip a route you did not run. `--baseline` defaults to
     `opus`; keep it explicit.
 
-14. **Report** (in `config.language`, else the conversation language): the card id, `status: draft`,
-    the `specDoc` path, the **consolidated feasibility verdict** (with the per-lens summary), and
-    the validator verdict. For the ticket: if one was seeded, say `linked <KEY> (<provider>)`; if a
-    reference was detected but ambiguous, say it can be linked with `/vector:link`; if none, don't
-    mention a ticket. Tell the user the next step: **`/vector:propose`** generates the OpenSpec
-    change (proposal/design/tasks) and moves the card `draft → open`; **`/vector:apply`** implements
-    it. Note the token routing (refiner = Haiku, lenses + composer + validator = Sonnet,
-    orchestration = main loop) and that **the binary owns every state write** (CLI-owns-writes).
+15. **Report** (in `config.language`, else the conversation language): the card id, the final
+    status (`FINAL_STATUS`), the `specDoc` path, the **consolidated feasibility verdict** (with the
+    per-lens summary), and the validator verdict. For the ticket: if one was seeded, say
+    `linked <KEY> (<provider>)`; if a reference was detected but ambiguous, say it can be linked
+    with `/vector:link`; if none, don't mention a ticket. Note the token routing (refiner = Haiku,
+    lenses + composer + validator + proposal generator = Sonnet, orchestration = main loop) and
+    that **the binary owns every state write** (CLI-owns-writes).
 
-15. **Sketch Excalidraw (opt-in)** — after the report, offer a design wireframe when the spec is
-    UI-facing. Same tail step as `/vector:idea` step 12: optional, Sonnet-costly, fires only on a
+    **Proposal + next step** (conditional on `FINAL_STATUS`):
+    - `open` → report `draft → open`, `MODE`, `CHANGE_DIR` and the artifacts created; next step:
+      **`/vector:apply <id>`** implements it.
+    - `draft` because of `--no-propose` → next step: **`/vector:propose <id>`** generates the
+      OpenSpec change (proposal/design/tasks) and moves the card `draft → open`.
+    - `draft` because the auto-propose failed → quote `PROPOSE_ERROR`; next step:
+      **`/vector:propose <id>`** retries it.
+
+16. **Sketch Excalidraw (opt-in)** — after the report, offer a design wireframe when the spec is
+    UI-facing. Same tail step as `/vector:idea` step 13: optional, Sonnet-costly, fires only on a
     strong UI signal with the user's confirmation; it never blocks the draft (registered in step 12).
 
     a. **Opt-out check.** Skip **silently** (no prompt, no mention) if the user passed `--no-sketch`
@@ -271,7 +324,7 @@ writes the doc to the repo's configured location and creates the draft card.
 
     c. **Confirm** via `AskUserQuestion` — a single **selection** question with **two explicit
        options**, never a free-text prompt:
-       - **Generate wireframe** → continue to step 15.d.
+       - **Generate wireframe** → continue to step 16.d.
        - **Skip** → **end cleanly** (spec stays a draft, no sketch).
 
        Present it exactly as a bounded choice (same select-style question the user answers for spec
@@ -299,12 +352,14 @@ writes the doc to the repo's configured location and creates the draft card.
 
 ## Notes
 
-- `draft` = spec authored, **no OpenSpec change yet**. The change is created at `/vector:propose`;
-  implementation starts at `/vector:apply`. The id is reused as the OpenSpec change name.
+- `draft` = spec authored, **no OpenSpec change yet**. By default this command proposes the
+  change itself (step 13) and the card ends `open`; with `--no-propose` (or a failed auto-propose)
+  it stays `draft` until `/vector:propose`. Implementation starts at `/vector:apply`. The id is
+  reused as the OpenSpec change name.
 - The feasibility report travels **with the spec** (embedded annex), so the verdict is queryable
   later — there is no separate `spec.researched` event or board panel (out of scope).
-- Always `draft` in V1 (even on `go-with-risks`): the risk lives in the embedded report, not in a
-  `needs-attention` status.
+- Never `needs-attention` in V1 (even on `go-with-risks`): the risk lives in the embedded report,
+  not in the card status.
 - Keep the spec honest: mark unknowns as `TBD — ver Open questions`, never invent detail or a
   verdict.
 - If `vector` is not found, the binary isn't installed — tell the user to install it; do not write

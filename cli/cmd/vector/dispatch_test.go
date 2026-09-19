@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/mariocampbell/vector/internal/updatecheck"
 )
 
 // TestDispatchExitCodes locks in the legacy exit-code contract (design.md §11)
@@ -138,5 +140,77 @@ func TestNoUIInJSONBranch(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestUpgradeRegistered asserts `vector upgrade` is wired into the root tree.
+func TestUpgradeRegistered(t *testing.T) {
+	if !isKnownCommand(newRootCmd(), "upgrade") {
+		t.Error("upgrade is not a registered subcommand")
+	}
+}
+
+// stubUpdateCheck replaces the version check and the binary version for one test.
+func stubUpdateCheck(t *testing.T, binaryVersion string, check func(string) *updatecheck.Result) {
+	t.Helper()
+	origVersion, origCheck := version, checkForUpdate
+	t.Cleanup(func() { version, checkForUpdate = origVersion, origCheck })
+	version = binaryVersion
+	checkForUpdate = check
+}
+
+// TestNoUpdateCheckInDev: a dev build never consults the check, prints no banner.
+func TestNoUpdateCheckInDev(t *testing.T) {
+	stubUpdateCheck(t, "dev", func(string) *updatecheck.Result {
+		t.Error("the update check must not run in a dev build")
+		return nil
+	})
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() error {
+			dispatch([]string{"version"})
+			return nil
+		})
+	})
+	if strings.Contains(stderr, "available") {
+		t.Errorf("unexpected banner in dev: %q", stderr)
+	}
+}
+
+// TestUpdateBannerOnStderrOnly: a released build with a newer release prints the
+// banner to stderr and leaves stdout untouched.
+func TestUpdateBannerOnStderrOnly(t *testing.T) {
+	stubUpdateCheck(t, "1.0.0", func(current string) *updatecheck.Result {
+		return &updatecheck.Result{Available: true, Current: "v" + current, Latest: "v1.1.0"}
+	})
+	var stdout string
+	stderr := captureStderr(t, func() {
+		stdout = captureStdout(t, func() error {
+			if code := dispatch([]string{"version"}); code != 0 {
+				t.Errorf("exit = %d", code)
+			}
+			return nil
+		})
+	})
+	if !strings.Contains(stderr, "vector v1.1.0 available (you have v1.0.0)") || !strings.Contains(stderr, "vector upgrade") {
+		t.Errorf("banner missing from stderr: %q", stderr)
+	}
+	if strings.TrimSpace(stdout) != "vector 1.0.0" {
+		t.Errorf("stdout = %q, want only the version line", stdout)
+	}
+}
+
+// TestNoBannerWhenUpToDate: no update available → silence.
+func TestNoBannerWhenUpToDate(t *testing.T) {
+	stubUpdateCheck(t, "1.1.0", func(string) *updatecheck.Result {
+		return &updatecheck.Result{Available: false, Current: "v1.1.0", Latest: "v1.1.0"}
+	})
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() error {
+			dispatch([]string{"version"})
+			return nil
+		})
+	})
+	if stderr != "" {
+		t.Errorf("stderr = %q, want silence", stderr)
 	}
 }

@@ -45,7 +45,9 @@ func newRootCmd() *cobra.Command {
 	// position.
 	var showVersion bool
 	root.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "print the vector version and exit")
-	root.PersistentPreRunE = func(_ *cobra.Command, _ []string) error {
+	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		// Runs first so `vector -v` also shows the banner when an update exists.
+		checkForUpdateBeforeRun(cmd)
 		if showVersion {
 			fmt.Println("vector", version)
 			return errVersionRequested
@@ -68,6 +70,7 @@ func newRootCmd() *cobra.Command {
 		newSpecCmd(),
 		newDetectTicketCmd(),
 		newVersionCmd(),
+		newUpgradeCmd(),
 		newCompletionCmd(),
 	)
 

@@ -99,6 +99,34 @@ cd vector/cli
 go build -o ~/.local/bin/vector ./cmd/vector
 ```
 
+### Upgrading
+
+Released builds check GitHub Releases for a newer version at most once a day (a stale check adds
+at most ~1s to that one command, offline included, and stays silent on any network error). When one exists, every
+command prints a one-line notice on **stderr** — stdout and `--json` output are never affected —
+and `vector context --json` gains an additive `update` field (`available`, `current`, `latest`)
+that the `/vector:*` commands use to offer the upgrade. Locally built (`dev`) binaries skip the
+check entirely.
+
+Replace the installed binary in place:
+
+```bash
+vector upgrade              # latest release; asks y/N in a terminal
+vector upgrade --yes        # no prompt (required when stdin is not a terminal)
+vector upgrade --dry-run    # resolve, download and verify the checksum only
+vector upgrade --target v0.1.0 --force   # pin a tag; --force allows reinstall/downgrade
+```
+
+`vector upgrade` downloads the archive for your platform plus `checksums.txt`, verifies the
+SHA256 before touching anything, resolves symlinks so the real binary is replaced (never the
+link), keeps a `.bak` copy and restores it if the new binary fails its version check. It never
+uses `sudo`: if the binary's directory is not writable, it refuses. Pre-releases are never
+offered. `--json` prints the upgrade report only. On Windows the running `vector.exe` is renamed
+to `vector.exe.old` and removed on the next invocation.
+
+`vector upgrade` replaces the binary; `vector update` is different — it re-seeds the `/vector:*`
+kit into a repo after an upgrade.
+
 ### Set up a repo
 
 Make sure `~/.local/bin` is on your `PATH`, then run `vector init` inside each repo you want to
