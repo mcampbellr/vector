@@ -35,27 +35,37 @@ function makeColumn(overrides: Partial<Column>): Column {
 }
 
 describe('BoardColumn', () => {
-  it('renders the sticky header with label and count for a column with cards', () => {
+  it('heads the column with the status key and count, not the display label', () => {
     const cards = [
       makeCard({ id: 'a', title: 'Spec A' }),
       makeCard({ id: 'b', title: 'Spec B' }),
       makeCard({ id: 'c', title: 'Spec C' }),
     ]
     const { container } = render(
-      <BoardColumn column={makeColumn({ label: 'In progress', cards, count: cards.length })} onSelectCard={() => {}} />,
+      <BoardColumn
+        column={makeColumn({ status: 'in-progress', label: 'In progress', cards, count: cards.length })}
+        onSelectCard={() => {}}
+      />,
     )
 
     const header = container.querySelector('header')
     expect(header).not.toBeNull()
-    expect(header?.querySelector('h2')?.textContent).toBe('In progress')
+    // The board speaks the same lowercase vocabulary as the slash commands and
+    // the state JSON — `in-progress`, not `In progress`.
+    expect(header?.querySelector('h2')?.textContent).toBe('in-progress')
     expect(header?.querySelector('span')?.textContent).toBe('3')
-    expect(screen.queryByText('No specs')).toBeNull()
+    expect(screen.queryByText('— no specs')).toBeNull()
   })
 
   it('shows the empty state for a column with no cards', () => {
-    render(<BoardColumn column={makeColumn({ label: 'Review', cards: [], count: 0 })} onSelectCard={() => {}} />)
+    render(
+      <BoardColumn
+        column={makeColumn({ status: 'review', label: 'Review', cards: [], count: 0 })}
+        onSelectCard={() => {}}
+      />,
+    )
 
-    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Review')
-    expect(screen.getByText('No specs')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('review')
+    expect(screen.getByText('— no specs')).toBeTruthy()
   })
 })

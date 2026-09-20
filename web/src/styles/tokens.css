@@ -64,10 +64,33 @@
   --savings-fg: #047857;
   --savings-bg: #ecfdf5;
 
+  /* Ledger board (dark values in the [data-theme='dark'] blocks below).
+     The board reads as a dense register, not a stack of floating cards: one
+     status rail per card, mono for every identifier, colour only where it
+     carries meaning. `--shadow-card` stays defined but unused on the board —
+     hierarchy comes from the border over the app background. */
+  --ledger-text-mid: #6b7280;
+  --ledger-text-dim: #6b7280;
+  --ledger-column-key: #374151;
+  --ledger-card-border: #e5e7eb;
+  --ledger-card-hover-bg: #f3f4f6;
+  --ledger-hover-bg: #f7f8fa;
+
+  /* Status rails: same meaning as the status palette, different value. */
+  --rail-draft: #9ca3af;
+  --rail-open: #1d4ed8;
+  --rail-in-progress: #ea580c;
+  --rail-needs-attention: #dc2626;
+  --rail-review: #6366f1;
+  --rail-closed: #047857;
+
   /* Radii */
   --radius-card: 12px;
   --radius-pill: 6px;
   --radius-button: 8px;
+  --radius-ledger: 6px;
+  --radius-control: 5px;
+  --radius-ledger-sm: 4px;
 
   /* Spacing scale */
   --space-1: 4px;
@@ -82,6 +105,7 @@
   --shadow-raised: 0 4px 12px rgba(16, 24, 40, 0.08);
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Fira Mono', Menlo, Monaco, Consolas, monospace;
 }
 
 /* Dark palette (Dracula-based, tuned for WCAG AA). Applied explicitly via
@@ -150,6 +174,22 @@
   /* Savings (the differentiator) */
   --savings-fg: #50fa7b;
   --savings-bg: #1f3a2c;
+
+  /* Ledger board */
+  --ledger-text-mid: #aeb8d4;
+  --ledger-text-dim: #8893b8;
+  --ledger-column-key: #aeb8d4;
+  --ledger-card-border: #343746;
+  --ledger-card-hover-bg: #343746;
+  --ledger-hover-bg: #2e303c;
+
+  /* Status rails */
+  --rail-draft: #6272a4;
+  --rail-open: #8be9fd;
+  --rail-in-progress: #ffb86c;
+  --rail-needs-attention: #ff5555;
+  --rail-review: #bd93f9;
+  --rail-closed: #50fa7b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -215,6 +255,22 @@
     /* Savings (the differentiator) */
     --savings-fg: #50fa7b;
     --savings-bg: #1f3a2c;
+
+    /* Ledger board */
+    --ledger-text-mid: #aeb8d4;
+    --ledger-text-dim: #8893b8;
+    --ledger-column-key: #aeb8d4;
+    --ledger-card-border: #343746;
+    --ledger-card-hover-bg: #343746;
+    --ledger-hover-bg: #2e303c;
+
+    /* Status rails */
+    --rail-draft: #6272a4;
+    --rail-open: #8be9fd;
+    --rail-in-progress: #ffb86c;
+    --rail-needs-attention: #ff5555;
+    --rail-review: #bd93f9;
+    --rail-closed: #50fa7b;
   }
 }
 
@@ -267,6 +323,24 @@
   --priority-low: #9ca3af;
   --savings-fg: #047857;
   --savings-bg: #ecfdf5;
+
+  /* Ledger board. In light, the tertiary ramp (#9ca3af) fails contrast on white
+     (2.5:1), so every readable mono drops to #6b7280 (4.9:1) and #9ca3af is left
+     for dots, keycap borders and separators. */
+  --ledger-text-mid: #6b7280;
+  --ledger-text-dim: #6b7280;
+  --ledger-column-key: #374151;
+  --ledger-card-border: #e5e7eb;
+  --ledger-card-hover-bg: #f3f4f6;
+  --ledger-hover-bg: #f7f8fa;
+
+  /* Status rails */
+  --rail-draft: #9ca3af;
+  --rail-open: #1d4ed8;
+  --rail-in-progress: #ea580c;
+  --rail-needs-attention: #dc2626;
+  --rail-review: #6366f1;
+  --rail-closed: #047857;
 }
 
 * {
@@ -282,6 +356,9 @@
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none;
+    /* The connection dot pulses indefinitely while the stream is reconnecting;
+       reduced motion has to stop it, not just the colour transitions. */
+    animation: none;
   }
 }
 

@@ -1,238 +1,330 @@
+/* Ledger card: a 2px status rail plus three fixed rows — title · identity ·
+   status — and a fourth, optional row for needs-attention. No shadow, no
+   gradient, no lift on hover: the card is a row of a register, not a floating
+   tile. ~92px tall, so a column shows 8 cards instead of 4. */
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) var(--space-2);
+  display: grid;
+  grid-template-columns: 2px 1fr;
+  flex: none;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  border: 1px solid var(--ledger-card-border);
+  border-radius: var(--radius-ledger);
+  overflow: hidden;
   cursor: pointer;
   text-align: left;
 }
 
+/* Hover steps one surface up and lightens the border — the card lights up, it
+   does not detach. No box-shadow and no translate. */
 .card:hover {
-  box-shadow: var(--shadow-raised);
-  transform: translateY(-1px);
+  background: var(--ledger-card-hover-bg);
+  border-color: var(--color-border-strong);
 }
 
+/* Focus does not imitate hover: outline only, surface untouched, so "the mouse
+   is over it" reads differently from "the keyboard is here". */
 .card:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-.head {
+.rail {
+  /* background comes from statusRailColor(), applied inline. */
+  height: 100%;
+}
+
+.body {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 12px;
+  min-width: 0;
+}
+
+/* Row 1 — title (the only prose, and the only sans on the card) + ticket ref. */
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.titleBox {
+  flex: 1;
+  min-width: 0;
 }
 
 .title {
-  /* min-width:0 lets the title flex item shrink under a long title instead of
-     shoving the ticket badge past the card's right edge; overflow-wrap keeps an
-     unbroken long word wrapping within the shrunk column rather than overflowing
-     (mirrors the min-width:0 pattern of .attentionSummary). */
-  min-width: 0;
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--color-text);
-  overflow-wrap: anywhere;
+  /* break-word (never `anywhere`) breaks only the word that does not fit — it
+     can't degrade into one letter per line the way the old title did. The clamp
+     backs up the JS clip in clipTitle.ts. */
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
+/* shortTicketRef only shortens `…#<number>` and bare numeric keys; Ticket.Key is
+   free text for the `other` provider, so a long key still has to be capped here
+   or it collapses the title to zero width — the exact bug this card exists to
+   fix. */
 .ticket {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ledger-text-dim);
+}
+
+/* Row 2 — identity: the slug (which is itself the copy target) + the artifact
+   meter. */
+.identityRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Sized to its content, not to the row: stretching the button across the free
+   space made the blank area right of the slug copy instead of opening the card. */
+.slug {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-dim);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.slug:hover {
+  color: var(--ledger-text-mid);
+  text-decoration: underline dotted;
+}
+
+.slug:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.slugText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The Copy glyph only shows up under the pointer: at rest the slug is data. */
+.slugGlyph {
+  flex: none;
+  opacity: 0;
+}
+
+/* The confirmation check is not hover-bound — it leads the "copied" label. */
+.slugGlyphFixed {
+  flex: none;
+}
+
+.slug:hover .slugGlyph,
+.slug:focus-visible .slugGlyph {
+  opacity: 1;
+}
+
+/* "copied" replaces the datum in place for ~1.5s — no global toast. */
+.slugCopied,
+.slugCopied:hover {
+  color: var(--color-success-fg);
+  text-decoration: none;
+}
+
+/* The artifact meter is always present: three segments, unlit in --color-border.
+   Hiding it made absence invisible; leaving it lets a whole column be read at a
+   glance. */
+.meter {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  /* Keep intrinsic width (title yields first via min-width:0), never break the
-     key on its hyphen (MH-1814 → MH-), and cap + clip only as a safety net for
-     an extreme key length — the same overflow guard as .relation. */
-  flex-shrink: 0;
-  max-width: 100%;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
+  flex: none;
+  margin-left: auto;
 }
 
-/* Legacy fallback: a card that carries only attentionReason (no structured
-   summary) keeps the red block, now single-line + ellipsis with a full title. */
-.attention {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--status-attention-fg);
-  background: var(--status-attention-bg);
-  padding: 6px 8px;
-  border-radius: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.segment {
+  width: 13px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-border);
 }
 
-/* Structured needs-attention: a category chip + a one-line summary. The summary
-   truncates responsively (CSS ellipsis) and exposes the full text via title. */
-.attentionRow {
+.segmentOn {
+  background: var(--color-accent);
+}
+
+/* Row 3 — status: priority, effort glyphs, numbers, and the verb pinned right.
+   No `overflow: hidden` here on purpose: the row is exactly as tall as the verb
+   button, so clipping it would eat the verb's focus ring. Any horizontal spill
+   is already clipped by the card, which is where the design clips it. */
+.statusRow {
   display: flex;
   align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+/* Only urgent and high print. The flag is an alarm; repeated across 200 cards it
+   stops being one, and Normal is ~80% of the board. */
+.priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.priorityUrgent {
+  color: var(--priority-urgent);
+}
+
+.priorityHigh {
+  color: var(--priority-high);
+}
+
+/* Quick win and UAT are glyphs, not pills: the amber UAT pill collided with the
+   amber of priority high — two meanings, one colour. */
+.glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-mid);
+  white-space: nowrap;
+}
+
+/* Planned (estimate, with a glyph) and spent (tokens, without one) sit in this
+   order; the glyph is the only thing telling them apart. */
+.glyphDim {
+  color: var(--ledger-text-dim);
+}
+
+.tokens {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-dim);
+  white-space: nowrap;
+}
+
+/* The verb is the only element on the card with a background. Its tooltip holds
+   the whole line (`/vector:close <slug>`); the click copies it. */
+.verb {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--radius-ledger-sm);
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.verb:hover {
+  color: var(--color-text);
+  background: var(--color-border);
+}
+
+.verb:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.verbCopied,
+.verbCopied:hover {
+  color: var(--color-success-fg);
+}
+
+/* Row 4 — needs-attention. The only optional row: it goes last, under a 1px
+   rule, and closes the card at four rows. Nothing else may add a fifth. */
+.attentionRow {
+  display: flex;
+  align-items: baseline;
   gap: 6px;
   min-width: 0;
+  margin-top: -1px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ledger-card-border);
+}
+
+/* The category is colour, not a chip: a chip background says nothing the
+   coloured text doesn't, and five backgrounds per column turn the board into
+   confetti again. */
+.attentionCategory {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.catDependency {
+  color: var(--status-cat-dependency-fg);
+}
+
+.catEnv {
+  color: var(--status-cat-env-fg);
+}
+
+.catDecision {
+  color: var(--status-cat-decision-fg);
+}
+
+.catExternal {
+  color: var(--status-cat-external-fg);
+}
+
+.catOther {
+  color: var(--status-cat-other-fg);
 }
 
 .attentionSummary {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.4;
-  color: var(--status-attention-fg);
+  color: var(--ledger-text-mid);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.categoryChip {
-  flex: none;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
-  white-space: nowrap;
-}
-
-.catDependency {
-  color: var(--status-cat-dependency-fg);
-  background: var(--status-cat-dependency-bg);
-}
-
-.catEnv {
-  color: var(--status-cat-env-fg);
-  background: var(--status-cat-env-bg);
-}
-
-.catDecision {
-  color: var(--status-cat-decision-fg);
-  background: var(--status-cat-decision-bg);
-}
-
-.catExternal {
-  color: var(--status-cat-external-fg);
-  background: var(--status-cat-external-bg);
-}
-
-.catOther {
-  color: var(--status-cat-other-fg);
-  background: var(--status-cat-other-bg);
-}
-
-.related {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.relation {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
-}
-
-.artifacts {
-  display: flex;
-  gap: 4px;
-}
-
-.artifact {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  color: var(--color-text-tertiary);
-  background: var(--color-surface-muted);
-  opacity: 0.6;
-}
-
-.artifactOn {
-  color: var(--color-accent);
-  background: var(--color-accent-bg);
-  opacity: 1;
-}
-
-.meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  padding-top: var(--space-1);
-}
-
-.estimate {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.savings {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--savings-fg);
-  background: var(--savings-bg);
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-  margin-left: auto;
-}
-
-.uat {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: var(--status-progress-fg);
-  background: var(--status-progress-bg);
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-}
-
-.quickWin {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: var(--color-accent);
-  background: var(--color-accent-bg);
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-}
-
-.sketch {
-  display: inline-flex;
-  align-items: center;
-  color: var(--color-text-tertiary);
+/* Free text with no category stays red: the red is what flags that the datum is
+   unstructured. */
+.attentionSummaryLegacy {
+  color: var(--status-attention-fg);
 }

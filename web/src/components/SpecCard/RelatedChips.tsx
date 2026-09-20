@@ -1,7 +1,7 @@
 import { GitBranch } from 'lucide-react'
 import type { RelatedItem } from '../../types/board'
 import { relationChips } from './relationChips'
-import styles from './SpecCard.module.css'
+import styles from './RelatedChips.module.css'
 
 interface RelatedChipsProps {
   related: RelatedItem[]

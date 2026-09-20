@@ -2,95 +2,170 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
+  gap: 24px;
+  height: 56px;
+  padding: 0 24px;
+  flex: none;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
 }
 
 .brand {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
 }
 
-.logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-button);
-  color: #fff;
-  background: var(--gradient-brand);
-}
-
-.title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  text-transform: capitalize;
-}
-
-.subtitle {
-  margin: 2px 0 0;
+.product {
+  font-family: var(--font-mono);
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ledger-text-dim);
+}
+
+/* A separator, not text — so the tertiary ramp is allowed here. */
+.separator {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+
+.repo {
+  /* A flex item defaults to min-width:auto, which would keep the name at its
+     min-content width and leave the ellipsis below inert while the header
+     overflows a narrow window. */
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freshness {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-dim);
+  white-space: nowrap;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.tab {
+  border: 0;
+  background: none;
+  padding: 5px 10px;
+  border-radius: var(--radius-control);
+  font: inherit;
+  color: var(--ledger-text-dim);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--ledger-hover-bg);
   color: var(--color-text-secondary);
+}
+
+.tabActive,
+.tabActive:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .actions {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 14px;
 }
 
-.status {
+.connection {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-dim);
+  white-space: nowrap;
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--color-text-tertiary);
+  flex: none;
+  background: var(--color-border-strong);
 }
 
+/* connecting: no status colour yet, just the pulse. */
+.loading .dot {
+  animation: vector-pulse 1.4s ease-in-out infinite;
+}
+
+/* live: the dot is green, the label stays grey — "all good" does not need
+   announcing. */
 .live .dot {
   background: var(--conn-live);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+
+.reconnecting {
+  color: var(--conn-reconnecting);
 }
 
 .reconnecting .dot {
   background: var(--conn-reconnecting);
+  animation: vector-pulse 1.4s ease-in-out infinite;
+}
+
+/* offline: the label is tinted too — what you are looking at is stale. */
+.error {
+  color: var(--conn-error);
 }
 
 .error .dot {
   background: var(--conn-error);
 }
 
+/* The keycap is what changes tone on hover: it is what the user is about to
+   press. */
 .paletteTrigger {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-button);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-dim);
   cursor: pointer;
 }
 
-.paletteTrigger:hover {
-  color: var(--color-text);
+.paletteTrigger:hover,
+.paletteTrigger:focus-visible {
   background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.paletteTrigger:hover .keycap,
+.paletteTrigger:focus-visible .keycap {
+  border-color: var(--color-border-strong);
 }
 
 .paletteTrigger:focus-visible {
@@ -98,26 +173,46 @@
   outline-offset: 2px;
 }
 
+.keycap {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-ledger-sm);
+  padding: 1px 5px;
+}
+
 .themeControl {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-button);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--ledger-text-dim);
   cursor: pointer;
 }
 
 .themeControl:hover {
-  color: var(--color-text);
   background: var(--color-surface-muted);
+  color: var(--color-text);
 }
 
 .themeControl:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+/* Declared inside this module on purpose: CSS Modules localises the *value* of
+   `animation`, so a keyframe declared globally (e.g. in tokens.css) is rewritten
+   to a hashed name here and never resolves. Same pattern as the drawer's own
+   keyframes. */
+@keyframes vector-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }

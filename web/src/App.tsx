@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useBoard } from './api/useBoard'
 import type { Card } from './types/board'
 import { BoardHeader } from './components/BoardHeader/BoardHeader'
+import type { BoardView } from './components/BoardHeader/BoardView'
 import { KanbanBoard } from './components/KanbanBoard/KanbanBoard'
 import { StandupView } from './components/StandupView'
 import { TokenBreakdownView } from './components/TokenBreakdownView'
@@ -10,11 +11,9 @@ import { SpecDetailsDrawer } from './components/SpecDetailsDrawer'
 import { useCommandPaletteTrigger } from './lib/useCommandPaletteTrigger'
 import styles from './App.module.css'
 
-type View = 'board' | 'standup' | 'tokens'
-
 export function App() {
   const { board, connection, error } = useBoard()
-  const [view, setView] = useState<View>('board')
+  const [view, setView] = useState<BoardView>('board')
   // Selection and the palette live here — the only common ancestor of the
   // header, the three views, the palette and the drawer — so jump-to-spec
   // works identically from board, standup and tokens.
@@ -31,7 +30,7 @@ export function App() {
     return (
       <div className={styles.app}>
         <div className={styles.placeholder}>
-          {error ? `Failed to load board: ${error}` : 'Loading board…'}
+          {error ? `failed to load board — ${error}` : 'loading board…'}
         </div>
       </div>
     )
@@ -46,31 +45,10 @@ export function App() {
         specCount={board.totals.specs}
         updatedAt={board.updatedAt}
         connection={connection}
+        view={view}
+        onChangeView={setView}
         onOpenPalette={openPalette}
       />
-      <nav className={styles.tabs}>
-        <button
-          type="button"
-          className={`${styles.tab} ${view === 'board' ? styles.tabActive : ''}`}
-          onClick={() => setView('board')}
-        >
-          Board
-        </button>
-        <button
-          type="button"
-          className={`${styles.tab} ${view === 'standup' ? styles.tabActive : ''}`}
-          onClick={() => setView('standup')}
-        >
-          Standup
-        </button>
-        <button
-          type="button"
-          className={`${styles.tab} ${view === 'tokens' ? styles.tabActive : ''}`}
-          onClick={() => setView('tokens')}
-        >
-          Tokens
-        </button>
-      </nav>
       {view === 'board' && (
         <div className={styles.content}>
           <KanbanBoard columns={board.columns} onSelectCard={setSelectedCard} />
