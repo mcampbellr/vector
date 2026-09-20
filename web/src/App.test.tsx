@@ -85,12 +85,12 @@ describe('App command palette wiring', () => {
   it('opens the palette with / from the standup and tokens views', () => {
     renderApp()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Standup' }))
+    fireEvent.click(screen.getByRole('button', { name: 'standup' }))
     openPaletteWithSlash()
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy()
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tokens' }))
+    fireEvent.click(screen.getByRole('button', { name: 'tokens' }))
     openPaletteWithSlash()
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy()
   })
@@ -98,7 +98,7 @@ describe('App command palette wiring', () => {
   it('jumps to the details drawer from standup without changing the active tab', () => {
     renderApp()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Standup' }))
+    fireEvent.click(screen.getByRole('button', { name: 'standup' }))
     openPaletteWithSlash()
     const input = screen.getByRole('combobox')
     fireEvent.change(input, { target: { value: 'dark' } })

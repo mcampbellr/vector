@@ -5,8 +5,10 @@ interface PaletteTriggerProps {
   onOpen: () => void
 }
 
-// PaletteTrigger is the header button that opens the command palette. It owns
-// no open/close logic — that lives in App via useCommandPaletteTrigger.
+// PaletteTrigger is the header control that opens the command palette: the magnifier
+// plus the keycap that names the shortcut, so the trigger teaches the key instead of
+// hiding it in a tooltip. It owns no open/close logic — that lives in App via
+// useCommandPaletteTrigger.
 export function PaletteTrigger({ onOpen }: PaletteTriggerProps) {
   return (
     <button
@@ -16,7 +18,8 @@ export function PaletteTrigger({ onOpen }: PaletteTriggerProps) {
       aria-label="Open command palette"
       title="Search specs (/)"
     >
-      <Search size={16} strokeWidth={2} />
+      <Search size={13} strokeWidth={2} />
+      <span className={styles.keycap}>/</span>
     </button>
   )
 }

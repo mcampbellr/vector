@@ -19,6 +19,23 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
+/**
+ * Board-header freshness: one unit, no "ago", no space — "20s", "5m", "9h", "3d".
+ * The header is a dense status line, not prose; `relativeTime` stays for the
+ * drawer, the timeline and the standup, where the sentence form reads better.
+ */
+export function compactRelativeTime(iso: string, now: number = Date.now()): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const seconds = Math.max(0, Math.round((now - then) / 1000))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.round(hours / 24)}d`
+}
+
 /** "90" → "90 min", "120" → "2 h". */
 export function formatEstimate(minutes: number): string {
   if (minutes < 60) return `${minutes} min`

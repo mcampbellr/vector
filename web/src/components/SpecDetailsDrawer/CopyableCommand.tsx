@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { useCopyFeedback } from '../../lib/useCopyFeedback'
 import styles from './SpecDetailsDrawer.module.css'
 
 interface CopyableCommandProps {
@@ -11,14 +11,10 @@ interface CopyableCommandProps {
 // drawer's useful-commands list — the same copy-to-clipboard pattern as
 // NextCommand, without the collapse (the drawer has room to show every command).
 export function CopyableCommand({ label, command }: CopyableCommandProps) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyFeedback()
 
   function handleCopy() {
-    if (!navigator.clipboard) return
-    navigator.clipboard.writeText(command).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
+    copy(command)
   }
 
   return (

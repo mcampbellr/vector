@@ -1,78 +1,71 @@
 .column {
   display: flex;
   flex-direction: column;
-  min-width: 280px;
-  max-width: 280px;
+  min-width: 290px;
+  max-width: 290px;
   flex: 0 0 auto;
+  height: 100%;
+  min-height: 0;
 }
 
 .header {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-1) var(--space-3);
-  position: sticky;
-  top: 0;
-  background-color: var(--color-app-bg);
-  z-index: 1;
+  gap: 8px;
+  padding: 0 2px 12px;
+  flex: none;
 }
 
-/*
- * El scroll container del board (.board en KanbanBoard) tiene padding-top: var(--space-5).
- * Un sticky header con top:0 se ancla al borde del content box, quedando esa franja de
- * var(--space-5) por encima descubierta: al scrollear, las cards asoman sobre el header.
- * Este pseudo-elemento extiende el fondo del header hacia arriba para cubrir exactamente
- * esa franja. Usa --color-app-bg (igual que el header y el fondo del board) → invisible en
- * reposo y sin costura de color al scrollear.
- */
-.header::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  height: var(--space-5);
-  background-color: var(--color-app-bg);
-  pointer-events: none;
-}
-
-.title {
+.key {
   margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ledger-column-key);
 }
 
 .count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
-  border-radius: 10px;
+  color: var(--ledger-text-dim);
 }
 
+.rule {
+  flex: 1;
+  height: 1px;
+  background: var(--ledger-card-border);
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  /* background comes from statusRailColor(), applied inline. */
+}
+
+/* Vertical scroll belongs to the column; `contain` stops the chain so scrolling
+   past the last card does not start scrolling the board behind it. */
 .cards {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 6px;
   overflow-y: auto;
-  padding: 2px;
+  overscroll-behavior: contain;
+  min-height: 0;
+  /* overflow-y:auto makes the X axis compute to `auto` too, so this container
+     clips. The card's focus ring sits 4px outside its border (2px outline +
+     2px offset) — without this padding it is cut off on every side. */
+  padding: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 .empty {
   margin: 0;
-  padding: var(--space-4);
-  text-align: center;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-card);
+  padding: 10px 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-dim);
 }
