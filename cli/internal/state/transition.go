@@ -140,7 +140,7 @@ func (s *Store) applyTransition(id string, opts transitionOpts) (*SpecState, err
 		spec.Flag = nil
 	}
 
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return nil, err
 	}
 

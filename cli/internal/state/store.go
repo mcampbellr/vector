@@ -14,8 +14,9 @@ import (
 // Store is the single writer of Vector's on-disk state, rooted at a repo's
 // .vector directory. All write methods serialize through mu.
 type Store struct {
-	root string // absolute path to the .vector directory
-	mu   sync.Mutex
+	root      string // absolute path to the .vector directory
+	mu        sync.Mutex
+	fallbacks ArtifactFallbacks // extra read locations for ReadSpecArtifact
 }
 
 // Open returns a Store for the .vector directory under repoRoot, creating the
@@ -151,7 +152,7 @@ func (s *Store) RelateSpec(id string, item RelatedItem, actor string, now time.T
 	now = now.UTC()
 	spec.RelatedTo = append(spec.RelatedTo, item)
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 	if err := s.appendRelatedEvent(spec.ID, spec.Repo, item, now, actor); err != nil {
@@ -274,6 +275,11 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 			return nil, err
 		}
 	}
+	// Snapshot a doc that lives outside .vector (e.g. in a per-spec worktree) so it
+	// survives that worktree's removal; sync-created specs point at an existing doc.
+	if err := s.snapshotSpecDoc(spec); err != nil {
+		return nil, err
+	}
 
 	source, template := p.Source, ""
 	if source == "" {
@@ -343,7 +349,7 @@ func (s *Store) LinkSpec(id string, ticket Ticket, actor string, now time.Time) 
 	linked := ticket
 	spec.Ticket = &linked
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 	if err := s.appendLinkedEvent(spec, now, actor); err != nil {
@@ -399,7 +405,7 @@ func (s *Store) RecordPR(id, url string, number int, draft bool, actor string, n
 	now = now.UTC()
 	spec.PR = &PullRequest{URL: url, Number: number, Draft: draft, OpenedAt: now}
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 	if err := s.appendPROpenedEvent(spec, now, actor); err != nil {
@@ -465,7 +471,7 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ne
 	spec.NeedsUAT = wantUAT
 	spec.UpdatedAt = now
 	setStatusTimestamp(spec, status, now)
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 
@@ -511,7 +517,7 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 	spec.Status = StatusOpen
 	spec.OpenSpec = openSpec
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return nil, err
 	}
 
@@ -566,7 +572,7 @@ func (s *Store) FixSpec(id, classification, validationResult string, artifacts, 
 
 	now = now.UTC()
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return nil, err
 	}
 
@@ -634,7 +640,7 @@ func (s *Store) AttachSketch(id string, file []byte, ref SketchRef, actor string
 		spec.Sketches = append(spec.Sketches, ref)
 	}
 	spec.UpdatedAt = ref.CreatedAt.UTC()
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return "", err
 	}
 
@@ -819,6 +825,16 @@ func (s *Store) appendEvent(e Event) error {
 		return fmt.Errorf("write activity log: %w", err)
 	}
 	return nil
+}
+
+// writeSpecState refreshes the spec doc snapshot (see snapshotSpecDoc) and then
+// persists state.json. The snapshot runs first so a failure leaves state untouched.
+// The caller must hold s.mu.
+func (s *Store) writeSpecState(spec *SpecState) error {
+	if err := s.snapshotSpecDoc(spec); err != nil {
+		return err
+	}
+	return writeSpecFile(s.statePath(spec.ID), spec)
 }
 
 func writeSpecFile(path string, spec *SpecState) error {
