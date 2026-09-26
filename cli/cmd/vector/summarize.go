@@ -278,7 +278,7 @@ func hasWorkLoggedAfter(events []state.Event, id string, t time.Time) bool {
 // the caller never handles a nil or zero value.
 //
 // Priority order (first match wins):
-//  1. spec.proposed  → "<label> proposed (draft → open)"
+//  1. spec.proposed  → "<label> formalized during compatibility migration"
 //  2. spec.closed    → "<label> closed"
 //  3. spec.archived  → "<label> archived"
 //  4. Last status.changed with From and To both non-empty → "<label>: moved from <from> to <to>"
@@ -294,7 +294,7 @@ func buildTemplateSummary(id, title string, events []standup.TimelineEvent) stri
 		te := &events[i]
 		switch te.Type {
 		case string(state.EvtSpecProposed):
-			return label + " proposed (draft → open)"
+			return label + " formalized during compatibility migration"
 		case string(state.EvtSpecClosed):
 			return label + " closed"
 		case string(state.EvtSpecArchived):

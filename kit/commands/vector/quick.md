@@ -8,8 +8,8 @@ tags: [vector, quick-win, refactor, lifecycle]
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git *), Bash(vector *), Bash(go *), Bash(npm *), Bash(npx *), Bash(cargo *), Bash(ruff *), Bash(mypy *), Bash(pnpm *), Bash(yarn *), Agent, AskUserQuestion
 ---
 
-Apply a **small, low-risk change in the same run**. Unlike `/vector:idea` → `/vector:propose` →
-`/vector:apply` (full ceremony + an OpenSpec change), `/vector:quick` is for mechanical work — a
+Apply a **small, low-risk change in the same run**. Unlike `/vector:idea` → `/vector:apply`
+(full specification + an OpenSpec change), `/vector:quick` is for mechanical work — a
 refactor, a symbol rename, an extracted helper, a copy tweak, a missing index, a promoted file.
 It registers a board card **born `in-progress` and marked quick-win**, implements the change,
 validates with the repo's lint/typecheck gate, logs the work, optionally commits (asking), and

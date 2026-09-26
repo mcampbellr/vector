@@ -39,7 +39,7 @@ The calling command pastes these fields into your prompt:
 - **No network.** Do not fetch anything. The sketch is generated from the spec text alone.
 - **Pure JSON output.** `OUTPUT_PATH` must contain a single JSON object and nothing else — no code
   fences, no Markdown, no leading/trailing prose. A malformed document is rejected by the binary
-  (soft failure: the spec stays a clean draft), so validity matters.
+  (soft failure: the spec stays a clean open card), so validity matters.
 
 ## Excalidraw file format
 
@@ -159,11 +159,11 @@ arrows, `null` for lines).
    `.vector/specs/<SPEC_ID>/sketches/`, and updates `state.json`. The `vector serve` watcher then
    live-updates the board.
 3. If the binary reports an error (e.g. invalid JSON), fix the `OUTPUT_PATH` document and re-run the
-   command once. If it still fails, stop — the spec stays a clean draft (soft failure), which is the
+   command once. If it still fails, stop — the spec stays a clean open card (soft failure), which is the
    intended degradation.
 
 ## Result
 
 Return a short confirmation line stating the sketch was attached (or that it soft-failed and why).
-You are spawned async at the tail of the command; the draft card is already on the board regardless
+You are spawned async at the tail of the command; the open card is already on the board regardless
 of your outcome.

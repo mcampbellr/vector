@@ -45,7 +45,7 @@ type CreateSpecParams struct {
 	ID       string // optional; derived from Title via Slug if empty
 	Repo     string
 	Priority Priority // defaults to PriorityNormal if empty
-	Status   Status   // defaults to StatusDraft if empty
+	Status   Status   // defaults to StatusOpen if empty
 	Source   string   // activity source: "raw" (default) | "sync"
 	Body     string   // spec doc content; skipped if empty
 	Actor    string
@@ -204,7 +204,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 
 	status := p.Status
 	if status == "" {
-		status = StatusDraft
+		status = StatusOpen
 	}
 	if !status.Valid() {
 		return nil, fmt.Errorf("invalid status %q", status)
@@ -487,8 +487,9 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ne
 	return true, nil
 }
 
-// ProposeSpec formalizes a draft spec: it records the OpenSpec change provenance
-// and transitions draft → open, appending spec.proposed + status.changed events.
+// ProposeSpec is the internal compatibility transition for state written before
+// v0.8.0. It records OpenSpec provenance and migrates legacy draft → open,
+// appending spec.proposed + status.changed events.
 // It does NOT stamp StartedAt — open means the change exists but work has not
 // started; StartedAt is set later at /vector:apply (in-progress). Errors if the
 // spec is not in draft.
@@ -503,8 +504,8 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 	if err != nil {
 		return nil, err
 	}
-	if spec.Status != StatusDraft {
-		return nil, fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", id, spec.Status)
+	if spec.Status != StatusLegacyDraft {
+		return nil, fmt.Errorf("spec %q is %q, not a legacy draft", id, spec.Status)
 	}
 
 	now = now.UTC()
@@ -522,7 +523,7 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 	if err := s.appendEvent(Event{V: EventVersion, TS: now, Type: EvtSpecProposed, SpecID: id, Repo: spec.Repo, Actor: actor, Data: proposed}); err != nil {
 		return nil, err
 	}
-	changed, err := json.Marshal(StatusChangedData{From: StatusDraft, To: StatusOpen, Trigger: "command"})
+	changed, err := json.Marshal(StatusChangedData{From: StatusLegacyDraft, To: StatusOpen, Trigger: "migration"})
 	if err != nil {
 		return nil, fmt.Errorf("marshal status.changed data: %w", err)
 	}
@@ -534,7 +535,7 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 
 // statusFixable reports whether a spec in the given status may be fixed. A fix is
 // an in-flight correction (/vector:fix), so only specs already in the working set
-// qualify; draft/closed/archived are out of scope.
+// qualify; closed/archived are out of scope.
 func statusFixable(st Status) bool {
 	switch st {
 	case StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview:
@@ -550,7 +551,7 @@ func statusFixable(st Status) bool {
 // additive event, all under one lock — modeled on ProposeSpec. It does NOT
 // transition status: lifecycle moves go through SetStatus (the LOCKED machine),
 // keeping the binary's single-writer guarantee without re-entering the mutex.
-// Errors if the spec is draft/closed/archived (only an open/in-progress/
+// Errors if the spec is closed/archived (only an open/in-progress/
 // needs-attention/review spec can be fixed).
 func (s *Store) FixSpec(id, classification, validationResult string, artifacts, files []string, actor string, now time.Time) (*SpecState, error) {
 	s.mu.Lock()

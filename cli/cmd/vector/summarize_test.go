@@ -254,7 +254,7 @@ func TestSummarizeProjectionHasWorkFalseWhenNoWorkLogged(t *testing.T) {
 	}
 	// Append a status.changed event without any work.logged.
 	payload, _ := json.Marshal(state.StatusChangedData{
-		From:    state.StatusDraft,
+		From:    state.StatusLegacyDraft,
 		To:      state.StatusOpen,
 		Trigger: "command",
 	})
@@ -336,7 +336,7 @@ func TestBuildTemplateSummary(t *testing.T) {
 			id:     "my-spec",
 			title:  "My Spec",
 			events: []standup.TimelineEvent{makeEvent("spec.proposed", "", "")},
-			want:   "My Spec proposed (draft → open)",
+			want:   "My Spec formalized during compatibility migration",
 		},
 		{
 			name:   "spec.closed uses title label",

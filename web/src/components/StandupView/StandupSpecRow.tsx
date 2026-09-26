@@ -9,7 +9,7 @@ interface StandupSpecRowProps {
   spec: StandupSpecDigest
 }
 
-const KNOWN_STATUSES: Status[] = ['draft', 'open', 'in-progress', 'needs-attention', 'review', 'closed']
+const KNOWN_STATUSES: Status[] = ['open', 'in-progress', 'needs-attention', 'review', 'closed']
 
 function isStatus(value: string): value is Status {
   return (KNOWN_STATUSES as string[]).includes(value)

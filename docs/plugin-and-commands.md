@@ -60,13 +60,14 @@ viabilidad** de la idea por lentes (`technical` siempre; `security`/`marketing`/
 señales del texto), delega cada lente a un revisor Sonnet (`vector-feasibility-reviewer`, read-only)
 que reúne su propia evidencia y emite un veredicto `go`/`go-with-risks`/`no-go`, consolida un
 veredicto global, **gatea go/no-go con el usuario** y —solo con go— autora el spec de 20 secciones
-con el **reporte de viabilidad embebido** y registra la card `draft` (reusando el pipeline de `raw`:
-refiner Haiku + validator Sonnet). No corre las cuatro lentes "por si acaso"; pregunta si la
+con el **reporte de viabilidad embebido**, crea sus artefactos OpenSpec y registra la card `open`
+(refiner Haiku + validator Sonnet). No corre las cuatro lentes "por si acaso"; pregunta si la
 detección es ambigua.
 
 `/vector:bug` es la contraparte bug-framed de `/vector:idea`: refina un reporte (Haiku), deduce
 la **causa raíz** vía `git blame`/`git log` (mapeando commits sospechosos a una spec de Vector
-o a un ticket) y registra el bug como card `draft` con relaciones `relatedTo[]` persistidas.
+o a un ticket), crea sus artefactos OpenSpec y registra el bug como card `open` con relaciones
+`relatedTo[]` persistidas.
 
 `/vector:quick` es el equivalente Vector-native de `/quick-win`: aplica un cambio pequeño y de
 bajo riesgo (refactor, rename, helper extraído, ajuste de copy, índice faltante) **en la misma

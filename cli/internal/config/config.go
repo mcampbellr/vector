@@ -58,7 +58,8 @@ type Config struct {
 	// ChangesPath and SpecPath to a concrete worktree, for bare+worktree layouts.
 	ChangesPath string `json:"changesPath,omitempty"`
 	Branch      string `json:"branch,omitempty"`
-	// ProposeBranch overrides which worktree /vector:propose creates a change in
+	// ProposeBranch is a legacy config key that selects the worktree used while
+	// formalizing a change during authoring or compatibility apply.
 	// (bare+worktree layouts); falls back to Branch when empty.
 	ProposeBranch string `json:"proposeBranch,omitempty"`
 	// ApplyMode controls how much /vector:apply decides vs asks when selecting the

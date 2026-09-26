@@ -20,7 +20,7 @@ func TestSpecStateSketchesRoundTrip(t *testing.T) {
 		SchemaVersion: SchemaVersion,
 		ID:            "alpha",
 		Title:         "Alpha",
-		Status:        StatusDraft,
+		Status:        StatusOpen,
 		Priority:      PriorityNormal,
 		CreatedAt:     now,
 		UpdatedAt:     now,

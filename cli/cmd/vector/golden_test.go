@@ -146,7 +146,7 @@ func seedTwoSpecs(t *testing.T) string {
 	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "alpha", Title: "Alpha feature", Status: state.StatusOpen, Priority: state.PriorityNormal, Actor: "tester", Now: goldenClock}); err != nil {
 		t.Fatalf("seed alpha: %v", err)
 	}
-	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "beta", Title: "Beta", Status: state.StatusDraft, Priority: state.PriorityNormal, Actor: "tester", Now: goldenClock}); err != nil {
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "beta", Title: "Beta", Status: state.StatusOpen, Priority: state.PriorityNormal, Actor: "tester", Now: goldenClock}); err != nil {
 		t.Fatalf("seed beta: %v", err)
 	}
 	return root

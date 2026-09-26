@@ -15,7 +15,7 @@ Toda copia/representación del mismo slug colapsa a **una** card.
 |--------|-----------|
 | `changes/<name>/` (todos los worktrees **+** el árbol root) | work-items activos/archivados → cards |
 | `changes/archive/<fecha>-<name>/` | archivados (id sin prefijo de fecha) |
-| spec docs en `spec-path` (todos los worktrees) | specs autorados (`/idea` o manual) → `draft` si no hay change |
+| spec docs en `spec-path` (todos los worktrees) | specs autorados o manuales → `open` si no hay change |
 | `openspec/specs/` (capabilities aplicadas) | **no** se importan (catálogo, no work-items) |
 
 En layouts bare+worktrees los changes suelen estar **repartidos**: los activos en los worktrees y
@@ -37,7 +37,7 @@ spec/change que vive solo en su propio worktree (trabajo en progreso) **nunca se
 ## Dedup cross-slug (Tipo B — spec ↔ change de otro nombre)
 
 Un spec de `/idea` se implementa como un change con **otro slug**; al mergear, el board tendría la
-card del change **y** un draft del mismo feature. La regla "mismo slug gana" no alcanza.
+card del change **y** otra card abierta del mismo feature. La regla "mismo slug gana" no alcanza.
 
 - **Mecanismo determinístico:** el spec declara en su **frontmatter** `supersededBy: <change-slug>`
   (o `status: superseded|implemented`). Sync **suprime** ese spec; el change es la única card.
@@ -54,9 +54,9 @@ hechas, o solo quedan tasks de **QA/verificación manual**). Sin `tasks.md` pars
 
 ## Provenance e idempotencia
 
-- Cards de change: `openspec{change,artifacts}`. Specs sueltos: `draft` con `source:sync`.
+- Cards de change: `openspec{change,artifacts}`. Specs sueltos: `open` con `source:sync`.
 - **Aditivo**: re-sync solo agrega lo que falta; `--reconcile` actualiza el status de cards
-  sync-owned. Drafts de `/vector:idea` y cualquier card existente **nunca** se tocan.
+  sync-owned. Cualquier card existente **nunca** se toca.
 
 ## El patrón de producto (flujo del usuario)
 

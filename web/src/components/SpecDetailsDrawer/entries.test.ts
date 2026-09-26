@@ -7,7 +7,7 @@ function makeCard(overrides: Partial<Card>): Card {
   return {
     id: 'spec-id',
     title: 'A spec',
-    status: 'draft',
+    status: 'open',
     priority: 'normal',
     hasOpenSpec: false,
     savedUsd: 0,
@@ -20,15 +20,15 @@ function makeCard(overrides: Partial<Card>): Card {
 }
 
 describe('entriesFor', () => {
-  it('lists the authored spec doc for a draft card with no OpenSpec artifacts', () => {
+  it('lists the authored spec doc for an open card with no OpenSpec artifacts', () => {
     const entries = entriesFor(makeCard({ specDoc: '.vector/specs/my-spec/spec.md' }))
     expect(entries).toEqual([{ key: 'spec', label: 'spec.md' }])
   })
 
-  // Regression: a non-draft card carries OpenSpec artifacts, but specDoc still
+  // Regression: a card carries OpenSpec artifacts, but specDoc still
   // points at the authored spec (propose never rewrites it). The spec doc must
   // stay listed alongside the OpenSpec artifacts — they are distinct files.
-  it('keeps the spec doc for a non-draft card that also has OpenSpec artifacts', () => {
+  it('keeps the spec doc for a card that also has OpenSpec artifacts', () => {
     const entries = entriesFor(
       makeCard({
         status: 'in-progress',

@@ -4,7 +4,6 @@
 // types (standards/typescript-react.md).
 
 export type Status =
-  | 'draft'
   | 'open'
   | 'in-progress'
   | 'needs-attention'

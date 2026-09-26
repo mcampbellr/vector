@@ -20,7 +20,7 @@ import (
 // its state. The binary makes no LLM calls; the vector-ui-ux-designer agent writes
 // the JSON to a temp path and calls this to commit it. A malformed document is a
 // descriptive error here; the calling command/agent degrades softly (silent reject,
-// the spec stays a clean draft). Mirrors route.go.
+// the spec stays a clean open card). Mirrors route.go.
 func newSpecAttachSketchCmd() *cobra.Command {
 	var (
 		idFlag   string
