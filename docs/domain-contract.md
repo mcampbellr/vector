@@ -6,13 +6,14 @@
 
 ## 1. Estados del spec (vocabulario canónico)
 
-`draft` · `open` · `in-progress` · `needs-attention` · `review` · `closed` · `archived`
+`open` · `in-progress` · `needs-attention` · `review` · `closed` · `archived`
 
 - kebab-case en datos; el frontend mapea a display ("Needs attention", uppercase en pills).
-- `draft` es el estado de **entrada** (output de `/vector:idea`): el **spec está escrito pero
-  todavía no existe el change de OpenSpec**. El change se crea en `/vector:propose`, que mueve
-  el spec a `open`. Un spec puede quedarse en `draft` (idea que no se formaliza) o cerrarse desde ahí.
-  Distinción spec≠change: la card de Vector existe sin change; el `specDoc` apunta al doc autorado.
+- `open` es el estado de entrada. Los flujos de autoría validan el spec y generan los artefactos
+  OpenSpec antes de registrar la card; el siguiente paso de usuario es `/vector:apply`.
+- El valor persistido por versiones anteriores se acepta solo durante migración: `vector update`
+  lo convierte de forma idempotente a `open`, preservando documento y metadata, y apply también
+  puede consumirlo durante la transición de versiones.
 - **Reemplaza** el set antiguo `todo/progress/review/done`. Ese set queda obsoleto.
 - `needs-attention` es de primera clase (feature central): se entra desde `in-progress` o
   `review` cuando surgen preguntas; lo dispara un **hook**, no el modelo.
@@ -33,10 +34,10 @@
 ### Máquina de estados (transiciones permitidas)
 
 ```
-  /vector:idea      /vector:propose     /vector:apply       /vector:status
-      │                  │                   │                   │
-      ▼                  ▼                   ▼                   ▼
-    draft ───────────▶ open ──────────▶ in-progress ─────────▶ review
+  /vector:idea             /vector:apply       /vector:status
+      │                         │                   │
+      ▼                         ▼                   ▼
+    open ─────────────────▶ in-progress ─────────▶ review
                                             │  ▲                 │
                                    hook ────┘  └─ /vector:status ┘
                                             ▼
@@ -46,16 +47,13 @@
     in-progress | review ──/vector:close──▶ closed ──/vector:archive──▶ archived
 ```
 
-- `draft` no tiene change de OpenSpec; `/vector:propose` lo crea y pasa a `open`.
-  Un `draft` también puede ir directo a `closed` (idea descartada) sin formalizarse.
-
 - `needs-attention` es un overlay sobre el trabajo activo: al resolverse vuelve a
   `in-progress` o `review`. Se prioriza/resalta en board y en `/vector:daily`.
 
 ## 2. Board: columnas = ESTADO (single-axis, V1)
 
 - Columnas del kanban = los estados del lifecycle, en orden:
-  `draft | open | in-progress | needs-attention | review | closed`.
+  `open | in-progress | needs-attention | review | closed`.
 - `archived` → vista separada (no columna del board activo).
 - **`stage`** (etapa de workflow, ej. Concept/Design) queda como **campo opcional** del spec,
   **no** como columna en V1. La referencia visual ([[kanban-ui-reference]]) usaba etapas como
@@ -122,10 +120,9 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 
 | Comando | Escribe en `state.json` | Evento en `activity.jsonl` | Efecto OpenSpec |
 |---------|--------------------------|-----------------------------|------------------|
-| `/vector:idea [text]` | crea `<id>/state.json` (`status:draft`, `createdAt`, `specDoc` puntero) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | — (change se crea en propose) |
-| `/vector:bug [report] {scope}` | crea `fix-<id>/state.json` (`status:draft`, prefijo `fix-`) + spec doc bug-framed; siembra `relatedTo[{kind,ref,source}]` (causa deducida por git, idempotente; `--related` inválido **degrada** a card sin relaciones) | `spec.created` + un `spec.related` por relación | — (change se crea en propose) |
+| `/vector:idea [text]` | crea `<id>/state.json` (`status:open`, `createdAt`, `specDoc`, `openspec`) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | crea proposal/design/tasks durante la autoría |
+| `/vector:bug [report] {scope}` | crea `fix-<id>/state.json` (`status:open`, prefijo `fix-`) + spec doc bug-framed; siembra `relatedTo[{kind,ref,source}]` (causa deducida por git, idempotente; `--related` inválido **degrada** a card sin relaciones) | `spec.created` + un `spec.related` por relación | crea proposal/design/tasks durante la autoría |
 | `/vector:quick "<text>" {ticket\|spec-id}` | crea `<id>/state.json` directamente en `status:in-progress` con `quickWin:true` (`createdAt`, `startedAt`, `specDoc` puntero al brief) + opcional `ticket`/`relatedTo`; luego `work.logged` (tras implementar) y `status:review` (`reviewAt`) | `spec.created` [+ `spec.linked`/`spec.related`] + `status.changed` + `work.logged` + `status.changed`(→review) | — (no crea change; apply-in-run nativo) |
-| `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
 | `vector spec relate <id>` (lo invoca `/vector:bug`) | añade un `relatedTo{kind,ref,source}` (idempotente en `{kind,ref}`; **no** cambia `status`) | `spec.related` | — |
 | `/vector:status [id] [status]` | `status` + timestamp del estado (`reviewAt`/etc) | `status.changed` (`trigger:command`) | — |
@@ -134,7 +131,7 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 | `/vector:standup [24h\|today\|7d]` | — (escribe `.vector/local/standup.json`, no `state.json`); avanza el marcador al persistir | lee `activity.jsonl` (proyección read-only); digest NL por agente Haiku | — |
 | `/vector:close [id]` | `status:closed`, `closedAt` | `spec.closed` + `status.changed` | — |
 | `/vector:archive [id]` | `status:archived`, `archivedAt` | `spec.archived` | mover change a `archive/` |
-| `/vector:sync` | crea cards desde `openspec/changes/*` (por tasks) + specs sueltos del `spec-path` → `draft`; en bare+worktrees colapsa copias por slug (identidad = slug; `branch` = preferencia de copia canónica, no filtro); specs con frontmatter `supersededBy`/`status:superseded` se suprimen; auto-detecta ticket por change (`detectTicket`, `auto:true`); `--reconcile` actualiza status y reconcilia el ticket (idempotente, sin pisar manual) | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) / `spec.linked` (`auto:true`) | lee (read-only); no modifica OpenSpec |
+| `/vector:sync` | crea cards desde `openspec/changes/*` (por tasks) + specs sueltos del `spec-path` → `open`; en bare+worktrees colapsa copias por slug; specs con frontmatter `supersededBy`/`status:superseded` se suprimen; `--reconcile` actualiza status y ticket idempotentemente | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) / `spec.linked` (`auto:true`) | lee (read-only); no modifica OpenSpec |
 | `/vector:daily` | — (read-only) | — (lee hoy + git log) | — |
 | **hook** (surgen preguntas) | `status:needs-attention`, `needsAttention{reason,since,source:hook}` | `status.changed` (`trigger:hook`) | — |
 

@@ -181,6 +181,55 @@ func newInitCmd() *cobra.Command {
 // runUpdate re-seeds the /vector:* kit artifacts (commands, agents, template) to
 // match the binary, preserving the repo's config (.vector/config.json) and state
 // (.vector/specs, activity). Use it to refresh a repo after upgrading the binary.
+type legacyDraftMigration struct {
+	Found    int      `json:"found"`
+	Migrated int      `json:"migrated"`
+	IDs      []string `json:"ids,omitempty"`
+}
+
+func migrateLegacyDrafts(root string, cfg *config.Config, dryRun bool) (legacyDraftMigration, error) {
+	report := legacyDraftMigration{}
+	store, err := state.Open(root)
+	if err != nil {
+		return report, err
+	}
+	specs, err := store.ListSpecs()
+	if err != nil {
+		return report, err
+	}
+
+	artifacts := map[string]state.ArtifactSet{}
+	if changes, readErr := readCanonicalChanges(cfg, root); readErr == nil {
+		for _, change := range changes {
+			artifacts[change.Name] = state.ArtifactSet{
+				Proposal: change.HasProposal,
+				Design:   change.HasDesign,
+				Tasks:    change.HasTasks,
+			}
+		}
+	}
+
+	for _, spec := range specs {
+		if spec.Status != state.StatusLegacyDraft {
+			continue
+		}
+		report.Found++
+		report.IDs = append(report.IDs, spec.ID)
+		if dryRun {
+			continue
+		}
+		openSpec := spec.OpenSpec
+		if openSpec == nil || openSpec.Change == "" {
+			openSpec = &state.OpenSpec{Change: spec.ID, Artifacts: artifacts[spec.ID]}
+		}
+		if _, err := store.ProposeSpec(spec.ID, openSpec, resolveActor(), time.Now()); err != nil {
+			return report, fmt.Errorf("migrate legacy draft %q: %w", spec.ID, err)
+		}
+		report.Migrated++
+	}
+	return report, nil
+}
+
 func newUpdateCmd() *cobra.Command {
 	var (
 		repoRoot string
@@ -213,6 +262,10 @@ func newUpdateCmd() *cobra.Command {
 			results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: true, DryRun: dryRun})
 			if err != nil {
 				return fmt.Errorf("re-seed vector kit: %w", err)
+			}
+			migration, err := migrateLegacyDrafts(root, cfg, dryRun)
+			if err != nil {
+				return fmt.Errorf("migrate legacy state: %w", err)
 			}
 			// A provided --language sets/changes the prose language; absent, it is left
 			// as-is (update never clears a configured language).
@@ -247,7 +300,8 @@ func newUpdateCmd() *cobra.Command {
 					FromVersion string                `json:"fromVersion"`
 					ToVersion   string                `json:"toVersion"`
 					Files       []scaffold.FileResult `json:"files"`
-				}{Root: root, DryRun: dryRun, FromVersion: prev, ToVersion: version, Files: results}, "", "  ")
+					Migration   legacyDraftMigration  `json:"legacyDraftMigration"`
+				}{Root: root, DryRun: dryRun, FromVersion: prev, ToVersion: version, Files: results, Migration: migration}, "", "  ")
 				if err != nil {
 					return fmt.Errorf("marshal json result: %w", err)
 				}
@@ -260,6 +314,7 @@ func newUpdateCmd() *cobra.Command {
 			for _, r := range results {
 				fmt.Printf("  %-12s %s\n", r.Action, r.Path)
 			}
+			fmt.Printf("  %-12s %d legacy cards migrated to open\n", "migration", migration.Migrated)
 			if lang := cfg.ResolvedLanguage(); lang != "" {
 				fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
 			}
@@ -281,8 +336,8 @@ func newUpdateCmd() *cobra.Command {
 
 // runSync projects the repo's OpenSpec changes onto the Vector board. It is
 // additive and idempotent: new changes become cards (status by task progress),
-// existing sync-owned cards are left alone unless --reconcile, and /vector:idea
-// drafts are never touched. Applied capability specs (openspec/specs/) are skipped.
+// existing sync-owned cards are left alone unless --reconcile. Applied
+// capability specs (openspec/specs/) are skipped.
 func newSyncCmd() *cobra.Command {
 	var (
 		repoRoot  string
@@ -454,7 +509,7 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 		}
 	}
 
-	// Standalone spec docs with no matching change → import as drafts.
+	// Standalone spec docs with no matching change are actionable open cards.
 	for _, d := range specDocs {
 		if seen[d.Slug] {
 			continue // a change with this slug is authoritative
@@ -475,12 +530,13 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 		switch {
 		case rerr != nil && !errors.Is(rerr, os.ErrNotExist):
 			return rerr
-		case rerr != nil: // not found → create draft
+		case rerr != nil: // not found → create open compatibility card
 			if !dryRun {
 				if _, err := store.CreateSpec(state.CreateSpecParams{
 					ID:         d.Slug,
 					Title:      humanizeSlug(d.Slug),
-					Status:     state.StatusDraft,
+					Status:     state.StatusOpen,
+					OpenSpec:   &state.OpenSpec{Change: d.Slug},
 					Source:     "sync",
 					SpecDocRel: d.Rel,
 					Actor:      actor,
@@ -489,7 +545,7 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 					return err
 				}
 			}
-			results = append(results, syncResult{d.Slug, string(state.StatusDraft), "created"})
+			results = append(results, syncResult{d.Slug, string(state.StatusOpen), "created"})
 		default:
 			results = append(results, syncResult{d.Slug, string(existing.Status), "skipped (exists)"})
 		}
@@ -633,13 +689,12 @@ func newSpecCmd() *cobra.Command {
 		Use:   "spec",
 		Short: "create and transition specs on the board",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|pr|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
+			return fmt.Errorf("usage: vector spec <create|list|apply|fix|link|pr|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
 		},
 	}
 	cmd.AddCommand(
 		newSpecCreateCmd(),
 		newSpecListCmd(),
-		newSpecProposeCmd(),
 		newSpecApplyCmd(),
 		newSpecFixCmd(),
 		newSpecLinkCmd(),
@@ -657,10 +712,8 @@ func newSpecCmd() *cobra.Command {
 	return cmd
 }
 
-// runSpecPropose formalizes a draft spec: records the OpenSpec change provenance
-// and transitions draft → open. The /vector:propose command creates the actual
-// change artifacts (delegated to OpenSpec, or native) and then calls this to flip
-// the board state — the binary stays the sole state writer.
+// newSpecProposeCmd retains the internal compatibility transition for old state.
+// It is deliberately not registered in the public command tree.
 func newSpecProposeCmd() *cobra.Command {
 	var (
 		idFlag    string
@@ -718,8 +771,8 @@ func newSpecProposeCmd() *cobra.Command {
 				fmt.Printf("spec %q is already open (no change)\n", specID)
 				return nil
 			}
-			if spec.Status != state.StatusDraft {
-				return fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", specID, spec.Status)
+			if spec.Status != state.StatusLegacyDraft {
+				return fmt.Errorf("spec %q is %q, not a legacy draft", specID, spec.Status)
 			}
 
 			if dryRun {
@@ -808,6 +861,8 @@ func newSpecCreateCmd() *cobra.Command {
 		ticketJSON  string
 		relatedJSON string
 		quickWin    bool
+		change      string
+		artifacts   string
 		repoRoot    string
 		jsonOut     bool
 	)
@@ -861,6 +916,21 @@ func newSpecCreateCmd() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "warning: ignoring --related (%v); creating card without relations\n", relErr)
 				related = nil
 			}
+			var openSpec *state.OpenSpec
+			if change != "" || artifacts != "" {
+				changeName := change
+				if changeName == "" {
+					changeName = specID
+				}
+				if changeName != state.Slug(changeName) {
+					return fmt.Errorf("invalid --change %q: must be kebab-case", changeName)
+				}
+				arts, parseErr := parseArtifacts(artifacts)
+				if parseErr != nil {
+					return parseErr
+				}
+				openSpec = &state.OpenSpec{Change: changeName, Artifacts: arts}
+			}
 
 			spec, err := store.CreateSpec(state.CreateSpecParams{
 				Title:          title,
@@ -872,6 +942,7 @@ func newSpecCreateCmd() *cobra.Command {
 				QuickWin:       quickWin,
 				Ticket:         ticket,
 				RelatedTo:      related,
+				OpenSpec:       openSpec,
 				Actor:          resolveActor(),
 				Now:            time.Now(),
 				SpecDocAbsPath: docAbs,
@@ -902,11 +973,13 @@ func newSpecCreateCmd() *cobra.Command {
 	f.StringVar(&id, "id", "", "spec id (kebab-case); derived from title if empty")
 	f.StringVar(&repo, "repo", "", "repo name for the board")
 	f.StringVar(&priority, "priority", "normal", "urgent|high|normal|low")
-	f.StringVar(&status, "status", "draft", "draft|open|in-progress|needs-attention|review|closed|archived")
+	f.StringVar(&status, "status", "open", "open|in-progress|needs-attention|review|closed|archived")
 	f.StringVar(&bodyFile, "body-file", "", "path to the spec doc body, or - for stdin")
 	f.StringVar(&ticketJSON, "ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
 	f.StringVar(&relatedJSON, "related", "", "seed cause→bug relations as JSON [{\"kind\":\"spec\",\"ref\":\"id\",\"source\":\"blame\"}]")
 	f.BoolVar(&quickWin, "quick-win", false, "mark the card as a /vector:quick one-run change")
+	f.StringVar(&change, "change", "", "OpenSpec change name (defaults to the spec id when --artifacts is set)")
+	f.StringVar(&artifacts, "artifacts", "", "comma list of existing OpenSpec artifacts: proposal,design,tasks")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
@@ -1170,7 +1243,7 @@ usage:
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector standup [--since 24h|today|7d] [--json]
   vector standup commit --digest-file -|path
-  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--quick-win] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
+  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status open] [--change slug] [--artifacts proposal,design,tasks] [--quick-win] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
   vector spec link <id> <ref> [--provider jira|linear|github|other] [--json]

@@ -57,12 +57,16 @@ Behave per `applyMode`:
   priority") and confirm with `AskUserQuestion` before proceeding.
 - **`always-ask`** → show the candidate list (`vector spec list`) and let the user choose.
 
-If `next` reports nothing actionable (only draft/closed/archived remain), say so and stop —
+If `next` reports nothing actionable (only closed/archived remain), say so and stop —
 there's nothing to apply.
 
 ## 2. Start the spec (transition by current status)
 
 Read `.vector/specs/<id>/state.json`. Then:
+
+- **Legacy pre-v0.8 value** → generate any missing proposal/design/tasks using step 3's
+  delegate/native rules, then call `vector spec apply <id> --json`. The binary migrates and
+  starts the card in one user action. Never tell the user to run another command first.
 
 - **`open`** → `vector spec apply <id> --json`. Transitions `open → in-progress`, stamps
   `startedAt`, logs `spec.applied` + `status.changed (trigger:apply)`. Now implement (step 3+).

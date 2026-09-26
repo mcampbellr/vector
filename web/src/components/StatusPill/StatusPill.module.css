@@ -10,10 +10,6 @@
   white-space: nowrap;
 }
 
-.draft {
-  color: var(--status-draft-fg);
-  background: var(--status-draft-bg);
-}
 .open {
   color: var(--status-open-fg);
   background: var(--status-open-bg);

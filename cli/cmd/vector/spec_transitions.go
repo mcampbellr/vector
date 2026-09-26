@@ -493,7 +493,7 @@ func newSpecNextCmd() *cobra.Command {
 				if jsonOut {
 					return printJSON(map[string]string{"id": "", "applyMode": string(mode), "applyModel": string(applyModel), "note": "nothing actionable"})
 				}
-				fmt.Println("no actionable spec (only draft/closed/archived remain)")
+				fmt.Println("no actionable spec (only closed/archived remain)")
 				return nil
 			}
 			if jsonOut {

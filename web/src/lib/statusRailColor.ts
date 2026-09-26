@@ -1,7 +1,6 @@
 import type { Status } from '../types/board'
 
 const RAIL_VAR: Record<Status, string> = {
-  draft: 'var(--rail-draft)',
   open: 'var(--rail-open)',
   'in-progress': 'var(--rail-in-progress)',
   'needs-attention': 'var(--rail-needs-attention)',

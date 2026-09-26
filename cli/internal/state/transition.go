@@ -9,11 +9,9 @@ import (
 )
 
 // allowedTransitions encodes the LOCKED spec state machine
-// (docs/domain-contract.md §1). draft→open is intentionally excluded here: it is
-// owned by ProposeSpec, which also records the OpenSpec change. Everything else
-// goes through applyTransition.
+// (docs/domain-contract.md §1). Legacy draft is intentionally absent: it is
+// migrated to open by `vector update` or consumed compatibly by ApplySpec.
 var allowedTransitions = map[Status]map[Status]bool{
-	StatusDraft:          {StatusClosed: true},
 	StatusOpen:           {StatusInProgress: true, StatusClosed: true},
 	StatusInProgress:     {StatusReview: true, StatusNeedsAttention: true, StatusClosed: true},
 	StatusReview:         {StatusInProgress: true, StatusNeedsAttention: true, StatusClosed: true},
@@ -171,10 +169,19 @@ func (s *Store) applyTransition(id string, opts transitionOpts) (*SpecState, err
 	return spec, nil
 }
 
-// ApplySpec starts work on an open spec: open → in-progress, stamping StartedAt
-// and emitting spec.applied + status.changed (trigger apply). change is the
-// OpenSpec change being implemented (may be empty for native specs).
+// ApplySpec starts work on an open spec. It also consumes a pre-v0.8 legacy
+// draft atomically: records compatibility OpenSpec provenance, opens it, and then
+// starts work. This keeps stale cards recoverable without exposing a draft lane
+// or a separate formalization command to users.
 func (s *Store) ApplySpec(id, change, actor string, now time.Time) (*SpecState, error) {
+	if spec, err := s.ReadSpec(id); err == nil && spec.Status == StatusLegacyDraft {
+		if change == "" {
+			change = id
+		}
+		if _, err := s.ProposeSpec(id, &OpenSpec{Change: change}, actor, now); err != nil {
+			return nil, err
+		}
+	}
 	return s.applyTransition(id, transitionOpts{
 		to:        StatusInProgress,
 		trigger:   "apply",
@@ -185,7 +192,7 @@ func (s *Store) ApplySpec(id, change, actor string, now time.Time) (*SpecState, 
 	})
 }
 
-// CloseSpec transitions a spec to closed (from draft, in-progress or review),
+// CloseSpec transitions a spec to closed (from open, in-progress or review),
 // emitting spec.closed + status.changed.
 func (s *Store) CloseSpec(id, actor string, now time.Time) (*SpecState, error) {
 	return s.applyTransition(id, transitionOpts{
@@ -217,7 +224,7 @@ func (s *Store) ArchiveSpec(id, actor string, now time.Time) (*SpecState, error)
 func (s *Store) SetStatus(id string, to Status, reason, actor string, now time.Time) (*SpecState, error) {
 	switch to {
 	case StatusOpen:
-		return nil, errors.New("use `vector spec propose` to open a draft")
+		return nil, errors.New("spec is already open")
 	case StatusClosed:
 		return nil, errors.New("use `vector spec close` to close a spec")
 	case StatusArchived:
@@ -264,7 +271,7 @@ var selectionRank = map[Status]int{
 // SelectNext returns the recommended next work-item across specs, using Vector's
 // tracked status + priority signal (the plus over OpenSpec): in-progress >
 // needs-attention > review > open, then by priority, then most-recently-updated.
-// Returns nil when nothing is actionable (only draft/closed/archived remain).
+// Returns nil when nothing is actionable (only closed/archived remain).
 func SelectNext(specs []*SpecState) *SpecState {
 	candidates := make([]*SpecState, 0, len(specs))
 	for _, spec := range specs {

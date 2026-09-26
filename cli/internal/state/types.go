@@ -14,9 +14,9 @@ const SchemaVersion = 1
 type Status string
 
 const (
-	// StatusDraft is a captured spec with no OpenSpec change yet (the output of
-	// /vector:idea). It precedes StatusOpen, which means the change exists.
-	StatusDraft          Status = "draft"
+	// StatusLegacyDraft is accepted only while reading and migrating state written
+	// by Vector versions before v0.8.0. New writes must never create this status.
+	StatusLegacyDraft    Status = "draft"
 	StatusOpen           Status = "open"
 	StatusInProgress     Status = "in-progress"
 	StatusNeedsAttention Status = "needs-attention"
@@ -28,7 +28,7 @@ const (
 // Valid reports whether s is a known status.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusDraft, StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview, StatusClosed, StatusArchived:
+	case StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview, StatusClosed, StatusArchived:
 		return true
 	}
 	return false

@@ -75,6 +75,31 @@ func TestApplyAndCloseAndArchiveHappyPath(t *testing.T) {
 	}
 }
 
+func TestApplyConsumesLegacyDraftInOneAction(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	makeLegacyDraft(t, store, "legacy")
+
+	applied, err := store.ApplySpec("legacy", "legacy", "tester", time.Now())
+	if err != nil {
+		t.Fatalf("ApplySpec legacy: %v", err)
+	}
+	if applied.Status != StatusInProgress || applied.OpenSpec == nil || applied.OpenSpec.Change != "legacy" {
+		t.Fatalf("legacy apply did not formalize and start: %+v", applied)
+	}
+	events, err := store.ReadEvents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var proposed, appliedEvent bool
+	for _, event := range events {
+		proposed = proposed || event.Type == EvtSpecProposed
+		appliedEvent = appliedEvent || event.Type == EvtSpecApplied
+	}
+	if !proposed || !appliedEvent {
+		t.Fatalf("legacy apply events: proposed=%t applied=%t", proposed, appliedEvent)
+	}
+}
+
 func TestIllegalTransitionRejected(t *testing.T) {
 	store, err := Open(t.TempDir())
 	if err != nil {
@@ -136,7 +161,6 @@ func TestSelectNextRanksByStatusThenPriority(t *testing.T) {
 	now := time.Now()
 	specs := []*SpecState{
 		{ID: "open-high", Status: StatusOpen, Priority: PriorityHigh, UpdatedAt: now},
-		{ID: "draft", Status: StatusDraft, Priority: PriorityUrgent, UpdatedAt: now},
 		{ID: "review", Status: StatusReview, Priority: PriorityLow, UpdatedAt: now},
 		{ID: "wip", Status: StatusInProgress, Priority: PriorityLow, UpdatedAt: now},
 		{ID: "closed", Status: StatusClosed, Priority: PriorityUrgent, UpdatedAt: now},
@@ -146,8 +170,8 @@ func TestSelectNextRanksByStatusThenPriority(t *testing.T) {
 		t.Fatalf("SelectNext = %v, want in-progress 'wip' first", got)
 	}
 
-	// With only draft/closed left, nothing is actionable.
-	if SelectNext([]*SpecState{{ID: "d", Status: StatusDraft}, {ID: "c", Status: StatusClosed}}) != nil {
+	// With only terminal cards left, nothing is actionable.
+	if SelectNext([]*SpecState{{ID: "c", Status: StatusClosed}}) != nil {
 		t.Error("SelectNext should return nil when nothing is actionable")
 	}
 }

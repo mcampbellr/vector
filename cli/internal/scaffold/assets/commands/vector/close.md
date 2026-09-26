@@ -15,7 +15,7 @@ short of: apply implements and moves a card to `review`; `/vector:close` is the 
 ## 1. Confirm the target
 
 Read `.vector/specs/<id>/state.json` (or `vector spec list`). `closed` is reachable from
-`draft`, `open`, `in-progress`, or `review` — the normal path is `review → closed` after apply
+`open`, `in-progress`, or `review` — the normal path is `review → closed` after apply
 and any manual UAT passed. If the card is already `closed`/`archived`, say so and stop.
 
 ## 2. Close it

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/mariocampbell/vector/internal/config"
+	"github.com/mariocampbell/vector/internal/state"
 )
 
 // runInitQuiet runs runInit with stdout suppressed (it prints a report we don't
@@ -11,6 +15,53 @@ import (
 func runInitQuiet(t *testing.T, args []string) {
 	t.Helper()
 	captureStdout(t, func() error { return runInit(args) })
+}
+
+func TestUpdateMigratesLegacyDraftsIdempotently(t *testing.T) {
+	root := t.TempDir()
+	runInitQuiet(t, []string{"--repo-root", root})
+	store, err := state.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.CreateSpec(state.CreateSpecParams{
+		ID: "legacy-card", Title: "Legacy card", Priority: state.PriorityHigh,
+		Ticket: &state.Ticket{Provider: state.TicketGitHub, Key: "GH-7"},
+		Actor:  "old-vector", Now: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(store.StatePath(created.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = bytes.Replace(b, []byte(`"status": "open"`), []byte(`"status": "draft"`), 1)
+	if err := os.WriteFile(store.StatePath(created.ID), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runUpdateQuiet(t, []string{"--repo-root", root})
+	migrated, err := store.ReadSpec(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated.Status != state.StatusOpen || migrated.OpenSpec == nil || migrated.OpenSpec.Change != created.ID {
+		t.Fatalf("migration did not open card with compatibility provenance: %+v", migrated)
+	}
+	if migrated.Priority != state.PriorityHigh || migrated.Ticket == nil || migrated.Ticket.Key != "GH-7" {
+		t.Fatalf("migration lost metadata: %+v", migrated)
+	}
+
+	before := migrated.UpdatedAt
+	runUpdateQuiet(t, []string{"--repo-root", root})
+	again, err := store.ReadSpec(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.UpdatedAt.Equal(before) {
+		t.Fatalf("repeated update rewrote migrated state: %v != %v", again.UpdatedAt, before)
+	}
 }
 
 func runUpdateQuiet(t *testing.T, args []string) {

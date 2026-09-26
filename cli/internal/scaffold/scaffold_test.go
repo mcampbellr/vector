@@ -89,6 +89,69 @@ func TestSeedCommandsForceOverwrites(t *testing.T) {
 	}
 }
 
+func TestSeedCommandsForceRemovesObsoleteProposeCommand(t *testing.T) {
+	root := t.TempDir()
+	legacy := filepath.Join(root, ".claude", "commands", "vector", "propose.md")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("legacy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := SeedCommands(root, SeedOptions{Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("obsolete command still exists: %v", err)
+	}
+	if got := actionFor(results, ".claude/commands/vector/propose.md"); got != ActionRemoved {
+		t.Fatalf("obsolete action = %q, want %q", got, ActionRemoved)
+	}
+}
+
+func TestEmbeddedKitHasNoManualProposeWorkflow(t *testing.T) {
+	err := fs.WalkDir(assets, embedRoot, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, readErr := assets.ReadFile(p)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(b), "/vector:propose") {
+			t.Errorf("embedded kit exposes removed workflow in %s", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIdeaCreatesFormalizedOpenCard(t *testing.T) {
+	b, err := assets.ReadFile("assets/commands/vector/idea.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	for _, required := range []string{"--status open", "--change", "--artifacts", "/vector:apply <id>"} {
+		if !strings.Contains(text, required) {
+			t.Errorf("idea command missing %q", required)
+		}
+	}
+	paths, err := CommandPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		if path == ".claude/commands/vector/propose.md" {
+			t.Fatal("removed propose command is still embedded")
+		}
+	}
+}
+
 func TestSeedCommandsDryRunWritesNothing(t *testing.T) {
 	root := t.TempDir()
 

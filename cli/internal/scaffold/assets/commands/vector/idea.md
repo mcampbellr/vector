@@ -1,31 +1,28 @@
 ---
 name: "Vector: Idea"
-description: Turn a raw idea into a complete, validated 20-section Vector spec, register it on the board, and auto-propose its OpenSpec change (draft → open; `--no-propose` keeps it a draft). As powerful as /idea, self-contained in Vector.
+description: Turn a raw idea into a complete, validated 20-section Vector spec, create its OpenSpec artifacts, and register it on the board as open. As powerful as /idea, self-contained in Vector.
 category: Workflow
 tags: [vector, spec, capture, idea]
 ---
 
-Turn the user's raw idea into a **complete, validated spec**, register it as a
-Vector card in `draft` status, and then auto-propose its OpenSpec change (`draft → open`).
+Turn the user's raw idea into a **complete, validated spec**, create its OpenSpec
+change artifacts, and register it as an actionable Vector card in `open` status.
 This is Vector's own spec-authoring engine — as powerful as `/idea`, but self-contained
 (no dependency on `/idea`).
 
 **Input**: `$ARGUMENTS` (the raw idea). If empty, use the user's latest message.
-`--no-propose` may appear anywhere in `$ARGUMENTS`: strip it before reading the rest and hold
-`AUTO_PROPOSE = !present` (default true — see the auto-propose step).
 
 **You never write Vector's state files yourself** — the `vector` binary is the sole
 writer. You author the **spec doc** (a repo artifact) and then call the binary to
 register the card; the binary writes the doc to the repo's configured location and
-creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` is missing.
+creates the open card. See `.claude/CLAUDE.md` distribution notes if `vector` is missing.
 
 > Token routing: refiner runs on **Haiku** (cheap), validator on **Sonnet**, composition
 > in the main loop. Do not run everything on the expensive tier.
 
 ## Hard rules
 
-- **Never implement code.** Stop after the spec is authored, validated, registered, and (unless
-  `--no-propose`) proposed.
+- **Never implement code.** Stop after the spec is authored, validated, formalized, and registered.
 - **No inference of product intent.** When behavior is unclear, ask — do not invent.
 - **Cite, don't guess.** Paths, versions, endpoints must be verified against the repo or
   marked `TBD — ver Open questions`.
@@ -34,8 +31,7 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
 
 ## Steps
 
-1. **Read the raw idea** (`$ARGUMENTS`, or the latest message). Strip `--no-propose` and hold
-   `AUTO_PROPOSE`; hold the rest as `RAW_IDEA`.
+1. **Read the raw idea** (`$ARGUMENTS`, or the latest message). Hold it as `RAW_IDEA`.
 
 2. **Confirm the repo is initialized.** The spec doc location comes from `.vector/config.json`
    (written by `vector init`, migrated from `.project-structure`). If it is missing, run
@@ -135,7 +131,7 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    - `BLOCK` → fix the required items (ask the user if a fix needs info). Re-validate. **Cap 3 cycles**;
      if still blocked, surface the report verbatim and stop without registering.
 
-9. **Register the draft card**.
+9. **Create the OpenSpec artifacts and register the open card**.
 
    a. **Ensure the spec's worktree exists** (bare+worktree layouts only). When `WT_LAYOUT` is
       true, the binary resolves the spec doc under `<WT_ROOT>/<SPEC_ID>/…`, so that per-spec git
@@ -166,9 +162,18 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
         registering the card**. Do not delete or overwrite the user's files. Cleanup of pre-existing
         stubs is out of scope (the user's responsibility).
 
-   b. **Create the card** — pass the validated spec to the binary via file path. The binary reads
-      the doc from `SPEC_PATH` and creates the card in `draft` (writing the doc inside the worktree
-      created in 9a, so it stays tracked on the `<WT_PREFIX><SPEC_ID>` branch):
+   b. **Resolve `CHANGE_DIR`** in the spec worktree for bare+worktree layouts, otherwise at
+      `openspec/changes/<SPEC_ID>/`. If it already exists, preserve it and fill only missing
+      artifacts.
+
+   c. **Generate proposal/design/tasks**. Delegate to the repo's OpenSpec authoring tooling when
+      present; otherwise invoke `vector-proposal-generator` (Sonnet) with `SPEC_PATH`, `SPEC_ID`,
+      and `CHANGE_DIR`. Validation/formalization is part of creation and is not a separate user
+      workflow step. If artifact generation fails, stop without registering a card and report the
+      failure; never leave a non-actionable card behind.
+
+   d. **Create the card** — pass the validated spec and generated artifact list to the binary.
+      The binary writes the doc inside the worktree created in 9a and creates the card in `open`:
 
    ```bash
    vector spec create \
@@ -177,7 +182,9 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
      [--repo "<repo-name>"] \
      [--priority "<priority>"] \
      [--ticket "$TICKET_JSON"] \
-     --status draft \
+     --status open \
+     --change "<SPEC_ID>" \
+     --artifacts "<created,list>" \
      --body-file "$SPEC_PATH" --json
    ```
 
@@ -186,33 +193,7 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
    rejects the `--ticket` (malformed JSON / uninferable provider), re-run `vector spec create`
    **without** `--ticket` and fall through to the `/vector:link` hint.
 
-10. **Auto-propose the OpenSpec change (unless `--no-propose`).** If `AUTO_PROPOSE` is false,
-    skip this step — the card stays `draft`. Otherwise run the `/vector:propose` sequence inline
-    (`propose.md` steps 2–7) for the card just registered. The card is already `draft`, so a
-    failure here never loses it.
-
-    a. **Resolve `CHANGE_DIR`** — `propose.md` step 2 (bare+worktree → the worktree of
-       `proposeBranch`, else `branch`; simple repo → `openspec/changes/<id>/`).
-    b. **Detect `MODE = delegate | native`** — `propose.md` step 3.
-    c. **`CHANGE_DIR` already exists** → ask overwrite / keep via `AskUserQuestion` —
-       `propose.md` step 4. On keep, skip (d) and go to (e).
-    d. **Generate the artifacts** — `propose.md` step 5. `delegate` → the OpenSpec propose tooling,
-       unchanged. `native` → the **`vector-proposal-generator`** subagent (**model: sonnet**) with
-       `SPEC_PATH` (abs path of the registered `specDoc`), `SPEC_ID` (`<id>`) and `CHANGE_DIR`;
-       take the created list from its `Artifacts:` line. Never write the artifacts yourself.
-    e. **Flip the board state** — `propose.md` step 6:
-       `vector spec propose <id> --change <id> --artifacts <created,list> --json` (`draft → open`;
-       logs `spec.proposed` + `status.changed`, the same events as a manual propose).
-    f. **Post-action summary** — `propose.md` step 7 (`--action propose`). Not a gate.
-    g. **On a failure in (d) or (e)**: the card stays `draft` — no rollback, no `needs-attention`.
-       Print the error to stderr, hold it as `PROPOSE_ERROR` for the report, and continue with the
-       routing step.
-
-    Hold for the next steps: `FINAL_STATUS` (`open` on success, else `draft`), `MODE`,
-    `CHANGE_DIR` + the created artifacts, and `PROPOSAL_AGENT_RAN` (true only when the native
-    subagent ran).
-
-11. **Record the token routing** (feeds the board's Token Savings Meter). For **each**
+10. **Record the token routing** (feeds the board's Token Savings Meter). For **each**
     cheap-agent step you ran, call the binary once so the saving the routing produced is
     captured. You never write the JSON yourself — the binary derives cost/saved from the
     model and the token counts and appends the `agent.routed` event:
@@ -243,23 +224,18 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
     precise-looking numbers, round to the nearest thousand). Skip a route you did not run
     (e.g. if validation was not needed). `--baseline` defaults to `opus`; keep it explicit.
 
-12. **Report**: the card id, the final status (`FINAL_STATUS`), the `specDoc` path, and the
+11. **Report**: the card id, status `open`, the `specDoc` path, and the
     validator verdict. For the ticket: if one was seeded, say `linked <KEY> (<provider>)`; if a
     reference was detected but ambiguous (or a bare key without a configured
     `defaultTicketProvider`), say it can be linked with `/vector:link`; if none was found, don't
     mention a ticket.
 
-    **Proposal + next step** (conditional on `FINAL_STATUS`):
-    - `open` → report `draft → open`, `MODE`, `CHANGE_DIR` and the artifacts created; next step:
-      **`/vector:apply <id>`** implements it.
-    - `draft` because of `--no-propose` → next step: **`/vector:propose <id>`** generates the
-      OpenSpec change (proposal/design/tasks) and moves the card `draft → open`.
-    - `draft` because the auto-propose failed → quote `PROPOSE_ERROR`; next step:
-      **`/vector:propose <id>`** retries it.
+    Report `CHANGE_DIR` and the artifacts created. The only implementation next step is
+    **`/vector:apply <id>`**.
 
-13. **Sketch Excalidraw (opt-in)** — after the report, offer a design wireframe when the spec is
+12. **Sketch Excalidraw (opt-in)** — after the report, offer a design wireframe when the spec is
     UI-facing. This step is optional and Sonnet-costly, so it only fires on a strong UI signal and
-    with the user's confirmation; it never blocks the draft (already registered in step 9).
+  with the user's confirmation; it never blocks the open card (already registered in step 9).
 
     a. **Opt-out check.** Skip this step **silently** (no prompt, no mention) if the user passed
        `--no-sketch` **or** `CONTEXT.sketchEnabled === false` (from step 3). Otherwise continue.
@@ -277,14 +253,14 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
     c. **Confirm.** On a strong signal, ask via `AskUserQuestion` — a single **selection** question
        with **two explicit options**, never a free-text prompt:
        - **Generate wireframe** → continue to step 13.d.
-       - **Skip** → **end the command cleanly** (the spec stays a draft with no sketch).
+       - **Skip** → **end the command cleanly** (the spec stays open with no sketch).
 
        Present it exactly as a bounded choice (same select-style question the user answers for spec
        clarifications); do not phrase it as an open prompt the user has to type a reply to.
 
     d. **Spawn the designer (async) + register routing.** Spawn the **`vector-ui-ux-designer`**
        subagent (**model: sonnet**) as a **fresh async agent** and return immediately — do not wait
-       for it (the draft is already on the board; the sketch attaches later via SSE). Pass it:
+       for it (the open card is already on the board; the sketch attaches later via SSE). Pass it:
 
        ```
        SPEC_PATH:   <abs path to specDoc from step 9>
@@ -307,10 +283,7 @@ creates the draft card. See `.claude/CLAUDE.md` distribution notes if `vector` i
 
 ## Notes
 
-- `draft` = spec authored, **no OpenSpec change yet**. By default this command proposes the
-  change itself (step 10) and the card ends `open`; with `--no-propose` (or a failed auto-propose)
-  it stays `draft` until `/vector:propose`. Implementation starts at `/vector:apply`.
-- The id is reused as the OpenSpec change name when proposed/applied.
+- The id is reused as the OpenSpec change name when created/applied.
 - Keep the spec honest: mark unknowns as `TBD — ver Open questions`, never invent detail.
 - If `vector` is not found, the binary isn't installed — tell the user to install it; do not
   write `.vector/` or the spec doc by hand as a substitute for the binary's registration.

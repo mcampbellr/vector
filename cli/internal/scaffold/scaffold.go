@@ -36,6 +36,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -53,7 +54,17 @@ const (
 	ActionCreated     Action = "created"
 	ActionOverwritten Action = "overwritten"
 	ActionSkipped     Action = "skipped" // already present; left untouched
+	ActionRemoved     Action = "removed" // obsolete Vector-managed artifact
 )
+
+// obsoleteManagedPaths are command files shipped by older Vector kits. They are
+// exact paths (never globs), so update can retire them without touching user files.
+var obsoleteManagedPaths = []string{
+	".claude/commands/vector/propose.md",
+	".codex/commands/vector/propose.md",
+	".codex/prompts/vector-propose.md",
+	".Codex/commands/vector/propose.md",
+}
 
 // FileResult is the outcome for one seeded file. Path is relative to the repo root.
 type FileResult struct {
@@ -102,6 +113,23 @@ func SeedCommands(repoRoot string, opts SeedOptions) ([]FileResult, error) {
 	if walkErr != nil {
 		return nil, walkErr
 	}
+	if opts.Force {
+		for _, rel := range obsoleteManagedPaths {
+			target := filepath.Join(repoRoot, filepath.FromSlash(rel))
+			if _, err := os.Stat(target); errors.Is(err, os.ErrNotExist) {
+				continue
+			} else if err != nil {
+				return nil, fmt.Errorf("stat obsolete managed file %s: %w", rel, err)
+			}
+			results = append(results, FileResult{Path: rel, Action: ActionRemoved})
+			if !opts.DryRun {
+				if err := os.Remove(target); err != nil {
+					return nil, fmt.Errorf("remove obsolete managed file %s: %w", rel, err)
+				}
+			}
+		}
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].Path < results[j].Path })
 	if len(results) == 0 {
 		return nil, errors.New("no embedded commands found; run `go generate ./internal/scaffold`")
 	}

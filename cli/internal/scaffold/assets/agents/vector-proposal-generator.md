@@ -2,8 +2,8 @@
 name: vector-proposal-generator
 description: >
   Generates the native OpenSpec change artefacts (proposal.md, design.md, tasks.md) from a
-  validated Vector spec doc, for the native fallback of /vector:propose and the auto-propose
-  step of /vector:idea, /vector:bug and /vector:research. Writes only inside CHANGE_DIR. Pure
+  validated Vector spec doc for the native formalization step of /vector:idea, /vector:bug,
+  /vector:research, and legacy apply. Writes only inside CHANGE_DIR. Pure
   generator — asks no questions, calls no binaries.
 model: sonnet
 tools: Read, Write, Glob

@@ -124,7 +124,6 @@ type Totals struct {
 // columnOrder is the canonical single-axis lane order. Archived lives in a
 // separate view (docs/domain-contract.md) and is excluded from the board.
 var columnOrder = []state.Status{
-	state.StatusDraft,
 	state.StatusOpen,
 	state.StatusInProgress,
 	state.StatusNeedsAttention,
@@ -133,7 +132,6 @@ var columnOrder = []state.Status{
 }
 
 var columnLabels = map[state.Status]string{
-	state.StatusDraft:          "Draft",
 	state.StatusOpen:           "Open",
 	state.StatusInProgress:     "In progress",
 	state.StatusNeedsAttention: "Needs attention",

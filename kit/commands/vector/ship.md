@@ -76,7 +76,7 @@ Read `.vector/specs/<id>/state.json`. If `status` is not `review`, refuse with a
 - `open` / `in-progress` → "implement it first with `/vector:apply <id>`".
 - `needs-attention` → "resolve the blocker, then `/vector:apply <id>`, then ship".
 - `closed` / `archived` → "already finished; nothing to ship".
-- `draft` → "formalize it with `/vector:propose <id>` first".
+- Legacy pre-v0.8 lifecycle value → "run `/vector:apply <id>` to migrate and implement it first".
 
 Do not proceed unless the status is exactly `review`.
 

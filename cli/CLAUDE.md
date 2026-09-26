@@ -10,7 +10,8 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
 
 ## Estado actual
 
-- `internal/state` — paquete dueño del estado: `SpecState`/`Event` (incluye estado `draft`,
+- `internal/state` — paquete dueño del estado: `SpecState`/`Event` (incluye compatibilidad de
+  lectura/migración para el valor legacy pre-v0.8,
   puntero `specDoc`, provenance `openspec`), `Store` (CreateSpec, `ReconcileStatus` para sync,
   `ProposeSpec`, ReadSpec, ListSpecs, AppendEvent, `ReadEvents`), slug, escritura atómica.
   **Máquina de estados LOCKED** (`transition.go`): `CanTransition` + `ApplySpec`/`CloseSpec`/
@@ -36,7 +37,7 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
   config + esqueleto de estado), `vector update` (re-siembra el kit preservando config/state,
   version stamp), `vector sync` (proyecta changes de OpenSpec al board, idempotente/aditivo),
   `vector serve` (panel local: API+SSE+UI embebida, puerto auto, watcher por polling),
-  `vector spec create|list|propose|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch`,
+  `vector spec create|list|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch`,
   `vector standup (+commit)`, `vector detect-ticket`, `vector completion <shell>`, `vector version`
   (`-v`/`--version` en cualquier posición). Suite golden (`golden_test.go` + `testdata/golden/`)
   fija el `--json` byte-idéntico como gate.

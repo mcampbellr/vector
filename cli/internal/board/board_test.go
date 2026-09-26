@@ -89,6 +89,9 @@ func TestBuildGroupsByStatusAndOrdersByPriority(t *testing.T) {
 	}
 	// Archived must not appear in any column.
 	for _, col := range b.Columns {
+		if col.Status == "draft" {
+			t.Fatal("removed draft column is still rendered")
+		}
 		for _, card := range col.Cards {
 			if card.ID == "c" {
 				t.Errorf("archived spec leaked into column %q", col.Status)

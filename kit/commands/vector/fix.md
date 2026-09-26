@@ -44,8 +44,8 @@ Parse the id (first token) and the correction note (the rest). If no id is given
 and stop. Read `.vector/specs/<id>/state.json`:
 
 - Status `open` / `in-progress` / `needs-attention` / `review` → **fixable**, continue.
-- Status `draft` → not yet specified; route the user to `/vector:propose` then `/vector:apply`,
-  and stop.
+- A legacy pre-v0.8 lifecycle value routes directly to `/vector:apply`, which performs
+  compatibility formalization and starts implementation in one action.
 - Status `closed` / `archived` → out of scope for a fix; tell the user and stop.
 
 If the spec id does not exist, say so and stop. Read the spec's artefacts paths
