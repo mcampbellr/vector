@@ -90,7 +90,8 @@ You receive the following in your prompt:
    TODO markers: <n>
    ```
 
-   The caller passes the `Artifacts:` list verbatim to `vector spec propose --artifacts`.
+   The caller passes the `Artifacts:` list verbatim to `vector spec create --status open
+   --change <id> --artifacts` so the card is formalized as part of authoring.
 
 ## Quality bar
 
