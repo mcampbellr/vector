@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,5 +155,43 @@ func TestUpdateLanguageFlag(t *testing.T) {
 	}
 	if kept.Language != "fr" {
 		t.Errorf("update without flag cleared language: got %q, want fr", kept.Language)
+	}
+}
+
+func TestUpdateKitRootSeedsNestedCheckoutWithoutMovingState(t *testing.T) {
+	root := t.TempDir()
+	runInitQuiet(t, []string{"--repo-root", root})
+	kitRoot := filepath.Join(root, "code", "main")
+	legacy := filepath.Join(kitRoot, ".claude", "commands", "vector", "propose.md")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("legacy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runUpdateQuiet(t, []string{"--repo-root", root, "--kit-root", "code/main"})
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("obsolete nested command still exists: %v", err)
+	}
+	applyPath := filepath.Join(kitRoot, ".claude", "commands", "vector", "apply.md")
+	b, err := os.ReadFile(applyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "/vector:propose") {
+		t.Fatalf("nested kit still instructs manual propose: %s", applyPath)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".vector", "config.json")); err != nil {
+		t.Fatalf("canonical config moved or disappeared: %v", err)
+	}
+}
+
+func TestUpdateKitRootRejectsParentDirectory(t *testing.T) {
+	root := t.TempDir()
+	runInitQuiet(t, []string{"--repo-root", root})
+	err := runUpdate([]string{"--repo-root", root, "--kit-root", ".."})
+	if err == nil || !strings.Contains(err.Error(), "must be inside repo root") {
+		t.Fatalf("error = %v, want containment failure", err)
 	}
 }
