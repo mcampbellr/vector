@@ -233,6 +233,7 @@ func migrateLegacyDrafts(root string, cfg *config.Config, dryRun bool) (legacyDr
 func newUpdateCmd() *cobra.Command {
 	var (
 		repoRoot string
+		kitRoot  string
 		dryRun   bool
 		language string
 		jsonOut  bool
@@ -249,6 +250,10 @@ func newUpdateCmd() *cobra.Command {
 			if !config.Exists(root) {
 				return fmt.Errorf("no .vector/config.json in %s — run `vector init` first", root)
 			}
+			commandsRoot, err := resolveKitRoot(root, kitRoot)
+			if err != nil {
+				return err
+			}
 			cfg, err := config.Load(root)
 			if err != nil {
 				return err
@@ -259,7 +264,7 @@ func newUpdateCmd() *cobra.Command {
 			}
 
 			// Force-overwrite the seeded kit artifacts; never touches config or state.
-			results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: true, DryRun: dryRun})
+			results, err := scaffold.SeedCommands(commandsRoot, scaffold.SeedOptions{Force: true, DryRun: dryRun})
 			if err != nil {
 				return fmt.Errorf("re-seed vector kit: %w", err)
 			}
@@ -296,12 +301,13 @@ func newUpdateCmd() *cobra.Command {
 			if jsonOut {
 				b, err := json.MarshalIndent(struct {
 					Root        string                `json:"root"`
+					KitRoot     string                `json:"kitRoot"`
 					DryRun      bool                  `json:"dryRun"`
 					FromVersion string                `json:"fromVersion"`
 					ToVersion   string                `json:"toVersion"`
 					Files       []scaffold.FileResult `json:"files"`
 					Migration   legacyDraftMigration  `json:"legacyDraftMigration"`
-				}{Root: root, DryRun: dryRun, FromVersion: prev, ToVersion: version, Files: results, Migration: migration}, "", "  ")
+				}{Root: root, KitRoot: commandsRoot, DryRun: dryRun, FromVersion: prev, ToVersion: version, Files: results, Migration: migration}, "", "  ")
 				if err != nil {
 					return fmt.Errorf("marshal json result: %w", err)
 				}
@@ -310,6 +316,9 @@ func newUpdateCmd() *cobra.Command {
 			}
 
 			fmt.Printf("vector update: %s\n", root)
+			if commandsRoot != root {
+				fmt.Printf("  %-12s %s\n", "kit root", commandsRoot)
+			}
 			fmt.Printf("  kit %s -> %s\n", prev, version)
 			for _, r := range results {
 				fmt.Printf("  %-12s %s\n", r.Action, r.Path)
@@ -328,10 +337,38 @@ func newUpdateCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.StringVar(&kitRoot, "kit-root", "", "checkout root for generated command files (defaults to repo root; must be inside it)")
 	f.BoolVar(&dryRun, "dry-run", false, "show what would change without writing")
 	f.StringVar(&language, "language", "", "set/change the prose language for Vector agents (e.g. es, Spanish); unset = leave as-is")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
+}
+
+// resolveKitRoot keeps Vector state/config anchored at repoRoot while allowing
+// generated commands to live in a nested checkout (for example code/main in a
+// bare+worktree workspace). Relative paths are resolved from repoRoot. Refusing
+// parents avoids turning an updater invocation into an arbitrary filesystem
+// writer while still covering every supported workspace layout.
+func resolveKitRoot(repoRoot, requested string) (string, error) {
+	if strings.TrimSpace(requested) == "" {
+		return repoRoot, nil
+	}
+	target := requested
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(repoRoot, target)
+	}
+	target, err := filepath.Abs(target)
+	if err != nil {
+		return "", fmt.Errorf("resolve kit root: %w", err)
+	}
+	rel, err := filepath.Rel(repoRoot, target)
+	if err != nil {
+		return "", fmt.Errorf("resolve kit root: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("kit root %s must be inside repo root %s", target, repoRoot)
+	}
+	return target, nil
 }
 
 // runSync projects the repo's OpenSpec changes onto the Vector board. It is
