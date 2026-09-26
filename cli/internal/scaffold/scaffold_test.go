@@ -89,25 +89,38 @@ func TestSeedCommandsForceOverwrites(t *testing.T) {
 	}
 }
 
-func TestSeedCommandsForceRemovesObsoleteProposeCommand(t *testing.T) {
-	root := t.TempDir()
-	legacy := filepath.Join(root, ".claude", "commands", "vector", "propose.md")
-	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(legacy, []byte("legacy"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+func TestSeedCommandsForceRemovesObsoleteLifecycleCommands(t *testing.T) {
+	for _, rel := range obsoleteManagedPaths {
+		t.Run(rel, func(t *testing.T) {
+			root := t.TempDir()
+			legacy := filepath.Join(root, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(legacy, []byte("legacy"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 
-	results, err := SeedCommands(root, SeedOptions{Force: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("obsolete command still exists: %v", err)
-	}
-	if got := actionFor(results, ".claude/commands/vector/propose.md"); got != ActionRemoved {
-		t.Fatalf("obsolete action = %q, want %q", got, ActionRemoved)
+			results, err := SeedCommands(root, SeedOptions{Force: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+				t.Fatalf("obsolete command still exists: %v", err)
+			}
+			got := actionFor(results, rel)
+			if got == "" {
+				for _, result := range results {
+					if strings.EqualFold(result.Path, rel) {
+						got = result.Action
+						break
+					}
+				}
+			}
+			if got != ActionRemoved {
+				t.Fatalf("obsolete action = %q, want %q", got, ActionRemoved)
+			}
+		})
 	}
 }
 
@@ -120,8 +133,11 @@ func TestEmbeddedKitHasNoManualProposeWorkflow(t *testing.T) {
 		if readErr != nil {
 			return readErr
 		}
-		if strings.Contains(string(b), "/vector:propose") {
-			t.Errorf("embedded kit exposes removed workflow in %s", p)
+		text := string(b)
+		for _, forbidden := range []string{"/vector:propose", "vector spec propose"} {
+			if strings.Contains(text, forbidden) {
+				t.Errorf("embedded kit exposes removed workflow %q in %s", forbidden, p)
+			}
 		}
 		return nil
 	})
@@ -146,8 +162,8 @@ func TestIdeaCreatesFormalizedOpenCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range paths {
-		if path == ".claude/commands/vector/propose.md" {
-			t.Fatal("removed propose command is still embedded")
+		if path == ".claude/commands/vector/propose.md" || path == ".claude/commands/vector/raw.md" {
+			t.Fatalf("removed lifecycle command is still embedded: %s", path)
 		}
 	}
 }

@@ -61,9 +61,13 @@ const (
 // exact paths (never globs), so update can retire them without touching user files.
 var obsoleteManagedPaths = []string{
 	".claude/commands/vector/propose.md",
+	".claude/commands/vector/raw.md",
 	".codex/commands/vector/propose.md",
+	".codex/commands/vector/raw.md",
 	".codex/prompts/vector-propose.md",
+	".codex/prompts/vector-raw.md",
 	".Codex/commands/vector/propose.md",
+	".Codex/commands/vector/raw.md",
 }
 
 // FileResult is the outcome for one seeded file. Path is relative to the repo root.
