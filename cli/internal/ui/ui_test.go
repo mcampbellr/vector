@@ -58,3 +58,29 @@ func TestKeyValueContainsBoth(t *testing.T) {
 		t.Errorf("KeyValue = %q, want both label and value", out)
 	}
 }
+
+// TestTitleContainsInput asserts Title wraps, never drops, its input.
+func TestTitleContainsInput(t *testing.T) {
+	if got := Title("vector"); !strings.Contains(got, "vector") {
+		t.Errorf("Title(%q) = %q, does not contain input", "vector", got)
+	}
+}
+
+// TestWarningBlockIndentsDetails asserts WarningBlock keeps the headline and puts
+// each detail on its own line, indented under the message.
+func TestWarningBlockIndentsDetails(t *testing.T) {
+	out := WarningBlock("port busy", "first detail", "  nested detail")
+	lines := strings.Split(out, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("WarningBlock produced %d lines, want 3:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[0], "port busy") {
+		t.Errorf("headline line = %q, want it to contain the headline", lines[0])
+	}
+	if lines[1] != "  first detail" {
+		t.Errorf("detail line = %q, want %q", lines[1], "  first detail")
+	}
+	if lines[2] != "    nested detail" {
+		t.Errorf("nested detail line = %q, want %q", lines[2], "    nested detail")
+	}
+}

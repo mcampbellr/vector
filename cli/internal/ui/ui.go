@@ -1,11 +1,11 @@
 // Package ui is Vector's terminal presentation layer — the analog of
 // internal/webui but for the CLI. It wraps lipgloss styles behind small helpers
-// (Bold/Green/Red/Dim/Cyan, Success/Info/Warning/Error, Table, KeyValue) that the
-// human output branch of cmd/vector uses. It is applied ONLY in the human branch:
-// no ui.* call ever sits inside an `if jsonOut` branch, so the --json contract
-// stays byte-identical and machine-consumable. lipgloss auto-degrades to plain
-// text under NO_COLOR, TERM=dumb, or a non-TTY stdout — defense in depth on top of
-// that hard rule.
+// (Bold/Green/Red/Dim/Cyan, Title, Success/Info/Warning/Error, WarningBlock, Table,
+// KeyValue) that the human output branch of cmd/vector uses. It is applied ONLY in
+// the human branch: no ui.* call ever sits inside an `if jsonOut` branch, so the
+// --json contract stays byte-identical and machine-consumable. lipgloss
+// auto-degrades to plain text under NO_COLOR, TERM=dumb, or a non-TTY stdout —
+// defense in depth on top of that hard rule.
 //
 // The palette reuses flagify's hex tokens as a documented placeholder (no Vector
 // brand palette is recorded in the repo yet — Open question #1 of the change
@@ -15,6 +15,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -49,6 +50,23 @@ func Success(msg string) string { return fmt.Sprintf("%s %s", successStyle.Rende
 func Info(msg string) string    { return fmt.Sprintf("%s %s", dimStyle.Render("●"), msg) }
 func Warning(msg string) string { return fmt.Sprintf("%s %s", warnStyle.Render("⚠"), msg) }
 func Error(msg string) string   { return redStyle.Render("✗ " + msg) }
+
+// Title renders s in the brand title style (bold cyan) — the same style the help
+// header uses for "vector".
+func Title(s string) string { return titleStyle.Render(s) }
+
+// WarningBlock renders a Warning headline followed by detail lines indented under
+// the message text, for multi-line notices (a detail may carry extra leading
+// spaces to nest further). The result has no trailing newline.
+func WarningBlock(headline string, details ...string) string {
+	var b strings.Builder
+	b.WriteString(Warning(headline))
+	for _, detail := range details {
+		b.WriteString("\n  ")
+		b.WriteString(detail)
+	}
+	return b.String()
+}
 
 // Table renders a bordered table with a bold cyan header row, using
 // charmbracelet/lipgloss/table.
