@@ -111,7 +111,30 @@ creates the open card. See `.claude/CLAUDE.md` distribution notes if `vector` is
 
    c. **Priority** only if the idea clearly implies one; else omit (defaults to `normal`).
 
-   d. **Invoke `vector-spec-composer`** (**model: sonnet**, may write a file) with:
+   d. **Epic (optional grouping).** List the epics once (`EPIC_ID` feeds `vector spec create` in step 9d):
+
+      ```bash
+      EPICS_JSON=$(vector epic list --json 2>/dev/null)
+      ```
+
+      Resolve `EPIC_ID` from the user's request and clarifications (one list call, no extra agent):
+      - **Named or one clear match**: the request names an existing epic, or clearly matches
+        exactly one by `id`/`title`/`description` → set `EPIC_ID` to its `id`; don't ask.
+      - **Ambiguous**: more than one plausible epic, or only a weak match → ask once with
+        `AskUserQuestion`: one option per plausible epic (`<title> (<id>)`) plus **No epic**.
+      - **Fits an epic that doesn't exist** (e.g. "for the App Mobile epic" and there is none) →
+        propose it with `AskUserQuestion`, showing the title, a suggested kebab-case id, and one
+        color from `slate|blue|teal|green|amber|orange|red|pink|violet`: **Create and assign** /
+        **No epic**. Only on **Create and assign** run
+        `vector epic create --title "<title>" --id "<id>" --color <color> --json` and set
+        `EPIC_ID` to the returned `id`; if it fails, show the error and continue without an epic.
+      - **No epics, a failed list, or nothing plausibly fits** → leave `EPIC_ID` unset; don't ask
+        and don't mention epics.
+
+      Pass `--epic "$EPIC_ID"` only when set. The epic never blocks creation: if the binary
+      rejects `--epic`, re-run `vector spec create` without it and report the error.
+
+   e. **Invoke `vector-spec-composer`** (**model: sonnet**, may write a file) with:
       - `BRIEF` (full refiner output from step 5)
       - `CLARIFICATIONS` (all Q&A pairs from step 6, in order)
       - `TEMPLATE_PATH`: absolute path to `.claude/vector/spec-template.md`
@@ -182,13 +205,15 @@ creates the open card. See `.claude/CLAUDE.md` distribution notes if `vector` is
      [--repo "<repo-name>"] \
      [--priority "<priority>"] \
      [--ticket "$TICKET_JSON"] \
+     [--epic "$EPIC_ID"] \
      --status open \
      --change "<SPEC_ID>" \
      --artifacts "<created,list>" \
      --body-file "$SPEC_PATH" --json
    ```
 
-   Include `--ticket` only when step 7 set `TICKET_JSON`. Parse the JSON for `id`, `status`,
+   Include `--ticket` only when step 7 set `TICKET_JSON`, and `--epic` only when step 7d set
+   `EPIC_ID`. Parse the JSON for `id`, `status`,
    and `specDoc` (where the doc landed). **Never block creation on linking**: if the binary
    rejects the `--ticket` (malformed JSON / uninferable provider), re-run `vector spec create`
    **without** `--ticket` and fall through to the `/vector:link` hint.
@@ -228,7 +253,7 @@ creates the open card. See `.claude/CLAUDE.md` distribution notes if `vector` is
     validator verdict. For the ticket: if one was seeded, say `linked <KEY> (<provider>)`; if a
     reference was detected but ambiguous (or a bare key without a configured
     `defaultTicketProvider`), say it can be linked with `/vector:link`; if none was found, don't
-    mention a ticket.
+    mention a ticket. If an epic was assigned (or created in step 7d), say `epic <id>`.
 
     Report `CHANGE_DIR` and the artifacts created. The only implementation next step is
     **`/vector:apply <id>`**.

@@ -51,7 +51,7 @@ tags: [vector, spec, capture]
 
 ## Decisión: los slash commands bajo el namespace `vector`
 
-`/vector:idea` · `/vector:research` · `/vector:bug` · `/vector:quick` · `/vector:link` ·
+`/vector:idea` · `/vector:research` · `/vector:bug` · `/vector:quick` · `/vector:epic` · `/vector:link` ·
 `/vector:status` · `/vector:daily` · `/vector:apply` · `/vector:close` · `/vector:archive` ·
 `/vector:comment`
 
@@ -77,6 +77,16 @@ gate de lint/typecheck del repo, loguea el trabajo (`work.logged`), commitea opc
 (preguntando) y la deja en `review`. No crea un change de OpenSpec; si el cambio crece, escala a
 `/vector:idea`.
 
+`/vector:epic` administra **épicas** en lenguaje natural: crea/lista/muestra/edita/borra épicas y
+asigna o quita specs existentes ("meteme estos 5 specs en la épica App Mobile"). Resuelve las
+referencias con `vector epic list --json` + `vector spec list --json`, confirma con
+`AskUserQuestion` las operaciones en lote, ambiguas, que mueven un spec de épica o que borran, y
+escribe solo vía `vector epic …` / `vector spec epic …` (el binario rechaza borrar una épica
+mientras haya specs asignados). Los commands que crean specs (`idea`/`bug`/`quick`/`research`)
+eligen la épica antes de `vector spec create`: la pasan con `--epic` si el pedido la nombra o calza
+con una sola, preguntan si hay más de una plausible y proponen crearla si el pedido nombra una que
+no existe.
+
 `init` queda **fuera** de los slash commands: es el subcomando de terminal `vector init` que
 bootstrapea el repo y siembra los de arriba (ver §Distribución).
 
@@ -93,6 +103,7 @@ kit/                              # fuente versionada en el repo Vector
         ├── research.md           # → /vector:research (raw + feasibility lenses + go/no-go gate)
         ├── bug.md                # → /vector:bug  (raw bug-framed + traza de causa)
         ├── quick.md              # → /vector:quick (apply-in-run ≈ /quick-win)
+        ├── epic.md               # → /vector:epic (épicas en lenguaje natural)
         ├── link.md
         ├── status.md
         ├── daily.md

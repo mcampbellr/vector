@@ -216,6 +216,11 @@ vector epic update app-mobile --description "iOS and Android clients"
 vector epic delete app-mobile                     # refused while any spec still belongs to it
 ```
 
+From Claude Code, `/vector:epic` does the same in natural language ("put these 5 specs in the App
+Mobile epic", "what's in the payments epic"), and `/vector:idea`, `/vector:bug`, `/vector:quick`,
+and `/vector:research` tag a new spec with the epic your request names or clearly matches, asking
+only when more than one fits.
+
 Board writes go through the same binary-owned mutators as the CLI and are accepted only from the
 board's own page (same-origin), so other sites cannot change your state.
 
@@ -252,6 +257,7 @@ the commands call it rather than editing `.vector/` by hand.
 | `/vector:fix` | Correct work already specified on the board (a missed detail, a UAT finding, a small course-correction) through the refiner and clarity gate. |
 | `/vector:quick` | Apply a small, low-risk change in a single run: register a quick-win card, implement it, run the gate, and land it in review. |
 | `/vector:comment` | Evaluate a review or ticket comment against the real diff with a skeptical agent, and implement only when the comment is valid and low-risk. |
+| `/vector:epic` | Manage epics in natural language: create, list, show, update, or delete epics and assign or unassign existing specs, confirming bulk or ambiguous changes. |
 | `/vector:link` | Link a spec card to its external ticket (Jira, Linear, GitHub), inferring the provider from the reference. |
 | `/vector:status` | Move a spec to a target status when the transition is legal. Use it to flag or clear needs-attention. |
 | `/vector:close` | Close a finished spec, flipping its card to closed after review. |

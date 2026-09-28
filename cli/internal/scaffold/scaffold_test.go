@@ -20,6 +20,7 @@ const (
 	quickRefiner      = ".claude/agents/vector-quick-refiner.md"
 	researchCommand   = ".claude/commands/vector/research.md"
 	feasibilityAgent  = ".claude/agents/vector-feasibility-reviewer.md"
+	epicCommand       = ".claude/commands/vector/epic.md"
 )
 
 func TestSeedCommandsCreatesUnderClaude(t *testing.T) {
@@ -278,6 +279,37 @@ func TestSeedCommandsSeedsResearchCommandAndReviewer(t *testing.T) {
 		}
 		if got := actionFor(results, rel); got != ActionCreated {
 			t.Fatalf("%s action = %q, want %q", rel, got, ActionCreated)
+		}
+	}
+}
+
+// TestSeedCommandsSeedsEpicCommand guards that `vector init`/`update` write the
+// /vector:epic command, and that every spec-creating command resolves an epic
+// before `vector spec create` and threads it through `--epic`.
+func TestSeedCommandsSeedsEpicCommand(t *testing.T) {
+	root := t.TempDir()
+
+	results, err := SeedCommands(root, SeedOptions{})
+	if err != nil {
+		t.Fatalf("SeedCommands: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, epicCommand)); err != nil {
+		t.Fatalf("expected %s to be seeded: %v", epicCommand, err)
+	}
+	if got := actionFor(results, epicCommand); got != ActionCreated {
+		t.Fatalf("%s action = %q, want %q", epicCommand, got, ActionCreated)
+	}
+
+	for _, name := range []string{"idea.md", "bug.md", "quick.md", "research.md"} {
+		body, err := assets.ReadFile("assets/commands/vector/" + name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		text := string(body)
+		for _, want := range []string{"vector epic list --json", `[--epic "$EPIC_ID"]`, "**No epic**"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: missing epic-selection fragment %q", name, want)
+			}
 		}
 	}
 }

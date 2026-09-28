@@ -152,6 +152,7 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
 | `vector spec focus\|unfocus <id>` / board pin (`POST /api/specs/{id}/focus`) | `focus`, `focusedAt` (no toca `status`/`priority`) | `spec.focused` / `spec.unfocused` | — |
 | `vector spec epic <id> <epic-id>\|--clear` / `spec create --epic` / board (`POST /api/specs/{id}/epic`) | `epic` (valida que exista) | `spec.epic-assigned{epic,previous}` | — |
+| `/vector:epic "<pedido>"` | lo mismo que `vector epic create\|update\|delete` y `vector spec epic` (una llamada por spec); los commands de creación (`idea`/`bug`/`quick`/`research`) usan `spec create --epic` | los mismos eventos de las filas de épicas | — |
 | `vector epic create\|update\|delete` / board (`POST /api/epics`, `PATCH /api/epics/{id}`) | `.vector/epics/<id>.json` (delete rechazado si algún spec la referencia) | `epic.created` / `epic.updated` / `epic.deleted` (sin `specId`) | — |
 | `vector spec relate <id>` (lo invoca `/vector:bug`) | añade un `relatedTo{kind,ref,source}` (idempotente en `{kind,ref}`; **no** cambia `status`) | `spec.related` | — |
 | `/vector:status [id] [status]` | `status` + timestamp del estado (`reviewAt`/etc) | `status.changed` (`trigger:command`) | — |
