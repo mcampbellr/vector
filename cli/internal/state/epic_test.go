@@ -262,17 +262,23 @@ func TestDeleteEpicRefusesWhileReferenced(t *testing.T) {
 func TestCountEpicSpecs(t *testing.T) {
 	specs := []*SpecState{
 		{ID: "a", Status: StatusOpen, Epic: "mobile"},
-		{ID: "b", Status: StatusClosed, Epic: "mobile"},
-		{ID: "c", Status: StatusArchived, Epic: "mobile"},
+		{ID: "b", Status: StatusClosed, Epic: "mobile"},                               // legacy closed → done
+		{ID: "c", Status: StatusArchived, Epic: "mobile", Resolution: ResolutionDone}, // explicit done
+		{ID: "c2", Status: StatusArchived, Epic: "mobile"},                            // legacy archived → not done
+		{ID: "x", Status: StatusClosed, Epic: "mobile", Resolution: ResolutionDuplicate},
+		{ID: "y", Status: StatusArchived, Epic: "mobile", Resolution: ResolutionObsolete},
 		{ID: "d", Status: StatusInProgress, Epic: "web"},
 		{ID: "e", Status: StatusOpen},
 	}
 	counts := CountEpicSpecs(specs)
 	mobile := counts["mobile"]
-	if mobile.Total != 3 || mobile.Done != 2 || mobile.ByStatus[StatusOpen] != 1 || mobile.ByStatus[StatusArchived] != 1 {
-		t.Errorf("mobile = %+v, want total 3, done 2 (closed+archived)", mobile)
+	if mobile.Total != 4 || mobile.Done != 2 || mobile.Dropped != 2 {
+		t.Errorf("mobile = %+v, want total 4 (a,b,c,c2), done 2 (b legacy closed, c done), dropped 2 (x,y)", mobile)
 	}
-	if web := counts["web"]; web.Total != 1 || web.Done != 0 {
+	if mobile.ByStatus[StatusOpen] != 1 || mobile.ByStatus[StatusArchived] != 3 || mobile.ByStatus[StatusClosed] != 2 {
+		t.Errorf("byStatus must cover every member, dropped included: %+v", mobile.ByStatus)
+	}
+	if web := counts["web"]; web.Total != 1 || web.Done != 0 || web.Dropped != 0 {
 		t.Errorf("web = %+v", web)
 	}
 	if _, ok := counts[""]; ok {

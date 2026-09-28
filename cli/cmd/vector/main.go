@@ -1053,14 +1053,25 @@ func formatRelations(items []state.RelatedItem) string {
 
 func newSpecListCmd() *cobra.Command {
 	var (
-		repoRoot string
-		jsonOut  bool
+		epicFilter   string
+		noEpic       bool
+		statusFilter string
+		focusOnly    bool
+		repoRoot     string
+		jsonOut      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "list specs on the board",
+		Short: "list specs on the board (filter with --epic/--no-epic, --status, --focus)",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if epicFilter != "" && noEpic {
+				return errors.New("--epic and --no-epic are mutually exclusive")
+			}
+			statuses, err := parseStatusFilter(statusFilter)
+			if err != nil {
+				return err
+			}
 			root, err := resolveRepoRoot(repoRoot)
 			if err != nil {
 				return err
@@ -1069,10 +1080,29 @@ func newSpecListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			specs, err := store.ListSpecs()
+			if epicFilter != "" {
+				if _, err := store.GetEpic(epicFilter); err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						return fmt.Errorf("unknown epic %q (list them with `vector epic list`)", epicFilter)
+					}
+					return err
+				}
+			}
+			allSpecs, err := store.ListSpecs()
 			if err != nil {
 				return err
 			}
+			epics, err := store.ListEpics()
+			if err != nil {
+				return err
+			}
+			epicIndex := state.NewEpicIndex(epics)
+			specs := filterSpecs(allSpecs, specListFilter{
+				epic:     epicFilter,
+				noEpic:   noEpic,
+				statuses: statuses,
+				focus:    focusOnly,
+			}, epicIndex)
 			if jsonOut {
 				// A robust contract for cause deduction: id/title/status/priority + the
 				// OpenSpec change name (commits map to it) and any existing relations.
@@ -1098,6 +1128,18 @@ func newSpecListCmd() *cobra.Command {
 					if s.Epic != "" {
 						entry["epic"] = s.Epic
 					}
+					if epicIndex.InheritsFocus(s) {
+						entry["focusInherited"] = true
+					}
+					if s.Flag != nil {
+						entry["needsAttention"] = s.Flag
+					}
+					if s.Resolution != "" {
+						entry["resolution"] = string(s.Resolution)
+					}
+					if s.ResolutionNote != "" {
+						entry["resolutionNote"] = s.ResolutionNote
+					}
 					out = append(out, entry)
 				}
 				return printJSONValue(out)
@@ -1106,21 +1148,85 @@ func newSpecListCmd() *cobra.Command {
 				fmt.Println("no specs")
 				return nil
 			}
-			// "*" marks a focused spec; the epic, when set, trails the title.
+			// "*" marks a focused spec ("~" focus inherited from its epic); the epic,
+			// the needs-attention summary and a non-done resolution trail the title.
 			for _, s := range specs {
-				epicSuffix := ""
+				suffix := ""
 				if s.Epic != "" {
-					epicSuffix = "  [epic: " + s.Epic + "]"
+					suffix += "  [epic: " + s.Epic + "]"
 				}
-				fmt.Printf("%s %-40s %-16s %-8s %s%s\n", focusMarker(s.Focus), s.ID, s.Status, s.Priority, s.Title, epicSuffix)
+				if s.Flag != nil {
+					summary := s.Flag.Summary
+					if summary == "" {
+						summary = s.Flag.Reason
+					}
+					suffix += "  [needs attention: " + summary + "]"
+				}
+				if s.Resolution != "" && s.Resolution != state.ResolutionDone {
+					suffix += "  [" + string(s.Resolution) + "]"
+				}
+				marker := focusMarker(s.Focus)
+				if epicIndex.InheritsFocus(s) {
+					marker = "~"
+				}
+				fmt.Printf("%s %-40s %-16s %-8s %s%s\n", marker, s.ID, s.Status, s.Priority, s.Title, suffix)
 			}
 			return nil
 		},
 	}
 	f := cmd.Flags()
+	f.StringVar(&epicFilter, "epic", "", "only specs in this epic")
+	f.BoolVar(&noEpic, "no-epic", false, "only specs without an epic")
+	f.StringVar(&statusFilter, "status", "", "only specs in these statuses (comma list, e.g. open,in-progress)")
+	f.BoolVar(&focusOnly, "focus", false, "only specs with effective focus (own, or inherited from a focused epic)")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit specs as a JSON array for tooling (cause resolution)")
 	return cmd
+}
+
+// specListFilter narrows `vector spec list`; the zero value keeps every spec.
+type specListFilter struct {
+	epic     string
+	noEpic   bool
+	statuses map[state.Status]bool
+	focus    bool
+}
+
+// filterSpecs applies filter, preserving the input order. focus matches the
+// effective focus (own marker or inherited from a focused epic).
+func filterSpecs(specs []*state.SpecState, filter specListFilter, epicIndex state.EpicIndex) []*state.SpecState {
+	out := make([]*state.SpecState, 0, len(specs))
+	for _, spec := range specs {
+		switch {
+		case filter.epic != "" && spec.Epic != filter.epic:
+			continue
+		case filter.noEpic && spec.Epic != "":
+			continue
+		case len(filter.statuses) > 0 && !filter.statuses[spec.Status]:
+			continue
+		case filter.focus && !epicIndex.EffectiveFocus(spec):
+			continue
+		}
+		out = append(out, spec)
+	}
+	return out
+}
+
+// parseStatusFilter parses a comma list of statuses, rejecting unknown ones.
+func parseStatusFilter(list string) (map[state.Status]bool, error) {
+	values := splitCSV(list)
+	if len(values) == 0 {
+		return nil, nil
+	}
+	statuses := make(map[state.Status]bool, len(values))
+	for _, value := range values {
+		status := state.Status(value)
+		if !status.Valid() {
+			return nil, fmt.Errorf("invalid --status %q (want open|in-progress|needs-attention|review|closed|archived)", value)
+		}
+		statuses[status] = true
+	}
+	return statuses, nil
 }
 
 func readBody(path string) (string, error) {

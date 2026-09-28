@@ -26,6 +26,15 @@ export function EpicSpecRow({ card, onSelect }: EpicSpecRowProps) {
             <Pin size={11} strokeWidth={2} fill="currentColor" />
           </span>
         )}
+        {!card.focus && card.focusInherited && (
+          <span
+            className={styles.specFocusInherited}
+            title="Focus inherited from the epic"
+            aria-label="Focus inherited from the epic"
+          >
+            <Pin size={11} strokeWidth={2} fill="none" />
+          </span>
+        )}
         <span className={styles.specId}>{card.id}</span>
       </button>
     </li>

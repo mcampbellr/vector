@@ -34,7 +34,18 @@ const (
 	EvtEpicCreated    EventType = "epic.created"
 	EvtEpicUpdated    EventType = "epic.updated"
 	EvtEpicDeleted    EventType = "epic.deleted"
+	EvtEpicFocused    EventType = "epic.focused"   // the epic's specs inherit focus (never transitions)
+	EvtEpicUnfocused  EventType = "epic.unfocused" // the epic's focus marker was removed
 )
+
+// ResolutionData is the payload of EvtSpecClosed (always, since a close records
+// its resolution) and of EvtSpecArchived when the archive overrides the
+// resolution. Additive: spec.closed events written before resolutions existed
+// carry no data.
+type ResolutionData struct {
+	Resolution Resolution `json:"resolution"`
+	Note       string     `json:"note,omitempty"`
+}
 
 // EpicAssignedData is the payload for EvtEpicAssigned: the epic a spec now belongs
 // to (Epic, "" when cleared) and the one it left (Previous, "" when it had none).

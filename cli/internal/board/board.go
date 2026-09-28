@@ -41,35 +41,41 @@ type Column struct {
 // Card is a spec projected for display. Token economics churn per run and are
 // personal, so SavedUSD is derived from the activity log, not stored on state.
 type Card struct {
-	ID                string            `json:"id"`
-	Title             string            `json:"title"`
-	Status            string            `json:"status"`
-	Priority          string            `json:"priority"`
-	Repo              string            `json:"repo,omitempty"`
-	Stage             string            `json:"stage,omitempty"`
-	Assignee          string            `json:"assignee,omitempty"`
-	Labels            []string          `json:"labels,omitempty"`
-	EstimateMin       int               `json:"estimateMinutes,omitempty"`
-	Ticket            *Ticket           `json:"ticket,omitempty"`
-	RelatedTo         []RelatedItem     `json:"relatedTo,omitempty"`
-	HasOpenSpec       bool              `json:"hasOpenSpec"`
-	SpecDoc           string            `json:"specDoc,omitempty"` // repo-relative path to the authored spec doc
-	Artifacts         *Artifacts        `json:"artifacts,omitempty"`
-	AttentionReason   string            `json:"attentionReason,omitempty"`
-	AttentionCategory string            `json:"attentionCategory,omitempty"`
-	AttentionSummary  string            `json:"attentionSummary,omitempty"`
-	AttentionDetail   string            `json:"attentionDetail,omitempty"`
-	NeedsUAT          bool              `json:"needsUat,omitempty"` // review awaiting manual UAT
-	QuickWin          bool              `json:"quickWin,omitempty"` // /vector:quick one-run change
-	Focus             bool              `json:"focus,omitempty"`    // developer-marked "work on this first"
-	Epic              string            `json:"epic,omitempty"`     // id of the epic the spec belongs to
-	Sketches          []state.SketchRef `json:"sketches,omitempty"` // attached Excalidraw wireframes (download-only)
-	SavedUSD          float64           `json:"savedUsd"`
-	Routes            int               `json:"routes"`
-	TokensIn          int               `json:"tokensIn"`
-	TokensOut         int               `json:"tokensOut"`
-	ByModel           []ModelRollup     `json:"byModel,omitempty"` // this spec's per-model token breakdown
-	UpdatedAt         time.Time         `json:"updatedAt"`
+	ID                string        `json:"id"`
+	Title             string        `json:"title"`
+	Status            string        `json:"status"`
+	Priority          string        `json:"priority"`
+	Repo              string        `json:"repo,omitempty"`
+	Stage             string        `json:"stage,omitempty"`
+	Assignee          string        `json:"assignee,omitempty"`
+	Labels            []string      `json:"labels,omitempty"`
+	EstimateMin       int           `json:"estimateMinutes,omitempty"`
+	Ticket            *Ticket       `json:"ticket,omitempty"`
+	RelatedTo         []RelatedItem `json:"relatedTo,omitempty"`
+	HasOpenSpec       bool          `json:"hasOpenSpec"`
+	SpecDoc           string        `json:"specDoc,omitempty"` // repo-relative path to the authored spec doc
+	Artifacts         *Artifacts    `json:"artifacts,omitempty"`
+	AttentionReason   string        `json:"attentionReason,omitempty"`
+	AttentionCategory string        `json:"attentionCategory,omitempty"`
+	AttentionSummary  string        `json:"attentionSummary,omitempty"`
+	AttentionDetail   string        `json:"attentionDetail,omitempty"`
+	NeedsUAT          bool          `json:"needsUat,omitempty"` // review awaiting manual UAT
+	QuickWin          bool          `json:"quickWin,omitempty"` // /vector:quick one-run change
+	Focus             bool          `json:"focus,omitempty"`    // the spec's OWN "work on this first" marker
+	// FocusInherited is true when the card has effective focus only through its
+	// focused epic (Focus is false, the spec is not closed/archived). The column
+	// sort uses effective focus = Focus || FocusInherited.
+	FocusInherited bool              `json:"focusInherited,omitempty"`
+	Epic           string            `json:"epic,omitempty"`           // id of the epic the spec belongs to
+	Resolution     string            `json:"resolution,omitempty"`     // why the spec was closed (done|obsolete|duplicate|superseded)
+	ResolutionNote string            `json:"resolutionNote,omitempty"` // optional free-text note for the resolution
+	Sketches       []state.SketchRef `json:"sketches,omitempty"`       // attached Excalidraw wireframes (download-only)
+	SavedUSD       float64           `json:"savedUsd"`
+	Routes         int               `json:"routes"`
+	TokensIn       int               `json:"tokensIn"`
+	TokensOut      int               `json:"tokensOut"`
+	ByModel        []ModelRollup     `json:"byModel,omitempty"` // this spec's per-model token breakdown
+	UpdatedAt      time.Time         `json:"updatedAt"`
 }
 
 // Ticket mirrors the linked tracker (subset of state.Ticket for display).
@@ -122,16 +128,21 @@ type ModelRollup struct {
 }
 
 // EpicSummary is an epic projected for the board: identity plus how many specs
-// point to it. Done counts closed + archived; ByStatus includes archived even
-// though archived cards are not on the board columns, so progress reflects the
-// whole epic. Only non-zero statuses appear in ByStatus.
+// point to it. Done/Total/Dropped follow state.EpicCounts (dropped =
+// obsolete/duplicate/superseded, excluded from done and total); ByStatus covers
+// every member, archived included even though archived cards are not on the
+// board columns. Only non-zero statuses appear in ByStatus. Epics are listed in
+// display order (order, then title).
 type EpicSummary struct {
 	ID          string         `json:"id"`
 	Title       string         `json:"title"`
 	Description string         `json:"description,omitempty"`
 	Color       string         `json:"color,omitempty"`
+	Order       int            `json:"order,omitempty"`
+	Focus       bool           `json:"focus,omitempty"`
 	Total       int            `json:"total"`
 	Done        int            `json:"done"`
+	Dropped     int            `json:"dropped,omitempty"`
 	ByStatus    map[string]int `json:"byStatus"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
 }
@@ -198,6 +209,7 @@ func Build(src Source, repo string, now time.Time) (*Board, error) {
 	}
 
 	savings, perSpec := rollupSavings(events)
+	epicIndex := state.NewEpicIndex(epics)
 
 	byStatus := make(map[state.Status][]Card, len(columnOrder))
 	var latest time.Time
@@ -206,6 +218,7 @@ func Build(src Source, repo string, now time.Time) (*Board, error) {
 			continue // archived has its own view
 		}
 		card := toCard(spec, perSpec[spec.ID])
+		card.FocusInherited = epicIndex.InheritsFocus(spec)
 		byStatus[spec.Status] = append(byStatus[spec.Status], card)
 		if spec.UpdatedAt.After(latest) {
 			latest = spec.UpdatedAt
@@ -256,6 +269,7 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 		QuickWin:    spec.QuickWin,
 		Focus:       spec.Focus,
 		Epic:        spec.Epic,
+		Resolution:  string(spec.Resolution),
 		Sketches:    spec.Sketches,
 		SavedUSD:    econ.savedUSD,
 		Routes:      econ.routes,
@@ -264,6 +278,7 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 		ByModel:     econ.byModel,
 		UpdatedAt:   spec.UpdatedAt.UTC(),
 	}
+	card.ResolutionNote = spec.ResolutionNote
 	if spec.Ticket != nil {
 		card.Ticket = &Ticket{Provider: string(spec.Ticket.Provider), Key: spec.Ticket.Key, URL: spec.Ticket.URL}
 	}
@@ -286,13 +301,15 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 	return card
 }
 
-// sortCards orders focused cards first (the developer's explicit "work on this
-// first", a separate axis from priority), then by priority, then
-// most-recently-updated first.
+// sortCards orders cards with effective focus first (own focus or inherited from
+// a focused epic — the developer's explicit "work on this first", a separate axis
+// from priority), then by priority, then most-recently-updated first. Epic order
+// deliberately does not reorder columns (it only ranks `spec next`).
 func sortCards(cards []Card) {
 	sort.SliceStable(cards, func(i, j int) bool {
-		if cards[i].Focus != cards[j].Focus {
-			return cards[i].Focus
+		fi, fj := cards[i].Focus || cards[i].FocusInherited, cards[j].Focus || cards[j].FocusInherited
+		if fi != fj {
+			return fi
 		}
 		ri, rj := priorityRank[state.Priority(cards[i].Priority)], priorityRank[state.Priority(cards[j].Priority)]
 		if ri != rj {
@@ -302,10 +319,13 @@ func sortCards(cards []Card) {
 	})
 }
 
-// summarizeEpics projects every epic with its membership counts, in id order
-// (ListEpics already sorts). Always returns a non-nil slice so the contract
-// serializes [] rather than null.
+// summarizeEpics projects every epic with its membership counts, in display
+// order (state.SortEpics: order, then title). Always returns a non-nil slice so
+// the contract serializes [] rather than null.
 func summarizeEpics(epics []*state.Epic, specs []*state.SpecState) []EpicSummary {
+	ordered := append([]*state.Epic(nil), epics...)
+	state.SortEpics(ordered)
+	epics = ordered
 	counts := state.CountEpicSpecs(specs)
 	summaries := make([]EpicSummary, 0, len(epics))
 	for _, epic := range epics {
@@ -319,8 +339,11 @@ func summarizeEpics(epics []*state.Epic, specs []*state.SpecState) []EpicSummary
 			Title:       epic.Title,
 			Description: epic.Description,
 			Color:       string(epic.Color),
+			Order:       epic.Order,
+			Focus:       epic.Focus,
 			Total:       entry.Total,
 			Done:        entry.Done,
+			Dropped:     entry.Dropped,
 			ByStatus:    byStatus,
 			UpdatedAt:   epic.UpdatedAt.UTC(),
 		})

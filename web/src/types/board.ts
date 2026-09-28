@@ -12,6 +12,10 @@ export type Status =
 
 export type Priority = 'urgent' | 'high' | 'normal' | 'low'
 
+/** Why a spec was closed; mirrors Go state.Resolution. Only `done` counts toward
+ *  epic progress — the others mark a dropped spec. */
+export type Resolution = 'done' | 'obsolete' | 'duplicate' | 'superseded'
+
 export interface Ticket {
   provider: string
   key: string
@@ -67,9 +71,15 @@ export interface Card {
   needsUat?: boolean
   /** /vector:quick one-run change; rendered as a read-only badge. */
   quickWin?: boolean
-  /** Developer-marked "work on this first" (separate axis from priority); the
-   *  server already sorts focused cards first in their column. */
+  /** The spec's OWN "work on this first" marker (separate axis from priority);
+   *  the server already sorts focused cards first in their column. */
   focus?: boolean
+  /** True when the card has focus only through its focused epic (never set
+   *  together with `focus`; never on closed cards). Sorts like `focus`. */
+  focusInherited?: boolean
+  /** Why a closed spec was closed; absent on legacy closed cards (read: done). */
+  resolution?: Resolution
+  resolutionNote?: string
   /** Id of the epic the spec belongs to (resolve it against Board.epics). */
   epic?: string
   /** Attached Excalidraw wireframes; each is a download-only artifact entry. */
@@ -147,15 +157,23 @@ export type EpicColor = (typeof EPIC_COLORS)[number]
 export type EpicMemberStatus = Status | 'archived'
 
 /** An epic projected for the board; mirrors Go board.EpicSummary. `done` counts
- *  closed + archived; `byStatus` holds only non-zero statuses (archived included
- *  even though archived cards are not on the board). */
+ *  closed/archived specs resolved as done (legacy: closed without a resolution
+ *  counts, archived without one does not); `dropped` counts
+ *  obsolete/duplicate/superseded specs, excluded from `done` and `total`.
+ *  `byStatus` holds only non-zero statuses (every member, archived included).
+ *  Board.epics is already in display order (order, then title). */
 export interface EpicSummary {
   id: string
   title: string
   description?: string
   color?: EpicColor
+  /** 1 = first; absent when unordered. */
+  order?: number
+  /** Epic-level focus: its non-closed specs inherit it (Card.focusInherited). */
+  focus?: boolean
   total: number
   done: number
+  dropped?: number
   byStatus: Partial<Record<EpicMemberStatus, number>>
   updatedAt: string
 }

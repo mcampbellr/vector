@@ -348,3 +348,11 @@
 .attentionSummaryLegacy {
   color: var(--status-attention-fg);
 }
+
+/* A dropped resolution (obsolete/duplicate/superseded): muted and struck through
+   so a closed-but-not-delivered card never reads as shipped work. */
+.resolution {
+  color: var(--ledger-text-dim);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}

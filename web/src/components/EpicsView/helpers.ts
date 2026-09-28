@@ -31,3 +31,12 @@ export function progressPercent(done: number, total: number): number {
   if (total <= 0) return 0
   return Math.round((done / total) * 100)
 }
+
+/** Parses the order field: '' → unordered (0); otherwise a whole number ≥ 0
+ *  (validated again by the server). */
+export function parseOrderInput(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return 0
+  if (!/^\d+$/.test(trimmed)) return null
+  return Number(trimmed)
+}

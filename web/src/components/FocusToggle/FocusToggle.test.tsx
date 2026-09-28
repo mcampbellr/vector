@@ -78,4 +78,25 @@ describe('FocusToggle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Focus spec' }))
     expect(onCardClick).not.toHaveBeenCalled()
   })
+
+  it('renders an inherited focus as an outlined pin that sets the spec’s own focus', () => {
+    const { requests } = stubFetch(async () => jsonResponse(200, { id: 'x', focus: true, changed: true }))
+    render(<FocusToggle specId="x" focused={false} canFocus variant="card" inheritedFrom="App Mobile" />)
+
+    const button = screen.getByRole('button', { name: 'Focus spec (focus currently inherited from epic App Mobile)' })
+    expect(button.getAttribute('aria-pressed')).toBe('false')
+    expect(button.getAttribute('title')).toContain('inherited from epic “App Mobile”')
+    expect(button.textContent).toBe('focus')
+    // Outlined: the own-focus pin is filled, the inherited one is not.
+    expect(button.querySelector('svg')?.getAttribute('fill')).toBe('none')
+    fireEvent.click(button)
+    expect(requests[0]).toEqual({ url: '/api/specs/x/focus', method: 'POST', body: { focus: true } })
+  })
+
+  it('fills the pin for an own focus even when the epic is focused too', () => {
+    stubFetch(async () => jsonResponse(200, {}))
+    render(<FocusToggle specId="x" focused canFocus variant="card" inheritedFrom="App Mobile" />)
+    const button = screen.getByRole('button', { name: 'Unfocus spec' })
+    expect(button.querySelector('svg')?.getAttribute('fill')).toBe('currentColor')
+  })
 })

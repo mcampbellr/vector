@@ -543,3 +543,23 @@
   padding: var(--space-1) var(--space-2);
   text-align: left;
 }
+
+/* Resolution section — why a closed spec was closed, plus the optional note. */
+.resolutionText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.resolutionText .muted {
+  font-size: 12px;
+}
+
+.resolutionNote {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text-secondary, var(--color-text));
+  overflow-wrap: anywhere;
+}

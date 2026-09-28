@@ -111,3 +111,24 @@ describe('SpecDetailsDrawer focus and epic controls', () => {
     expect(screen.getByRole('button', { name: 'Unfocus spec' })).toBeTruthy()
   })
 })
+
+describe('SpecDetailsDrawer resolution', () => {
+  it('shows the resolution and its note for a closed spec', () => {
+    render(
+      <SpecDetailsDrawer
+        card={makeCard({ status: 'closed', resolution: 'superseded', resolutionNote: 'replaced by checkout-v2' })}
+        epics={[]}
+        onClose={() => {}}
+      />,
+    )
+    const section = screen.getByRole('region', { name: 'Resolution' })
+    expect(section.textContent).toContain('Closed as superseded')
+    expect(section.textContent).toContain('not counted toward epic progress')
+    expect(section.textContent).toContain('replaced by checkout-v2')
+  })
+
+  it('has no resolution section when the spec has none', () => {
+    render(<SpecDetailsDrawer card={makeCard({ status: 'open' })} epics={[]} onClose={() => {}} />)
+    expect(screen.queryByRole('region', { name: 'Resolution' })).toBeNull()
+  })
+})

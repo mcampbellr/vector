@@ -160,6 +160,16 @@ type SpecState struct {
 	// SchemaVersion stays 1 (additive, no migration).
 	Epic string `json:"epic,omitempty"`
 
+	// Resolution records why a spec was closed: done (the default — the work
+	// shipped), or obsolete/duplicate/superseded (dropped without being real work).
+	// Written by CloseSpecWith (and optionally overridden by ArchiveSpecWith); kept
+	// when a closed spec is archived. ResolutionNote is an optional free-text
+	// explanation (e.g. "duplicate of login-v2"). Both omitempty: specs closed
+	// before this field existed carry none (see EffectiveResolution for the legacy
+	// rule). SchemaVersion stays 1 (additive, no migration).
+	Resolution     Resolution `json:"resolution,omitempty"`
+	ResolutionNote string     `json:"resolutionNote,omitempty"`
+
 	// Sketches records the Excalidraw design wireframes attached to this spec
 	// (produced by /vector:idea and /vector:research via the vector-ui-ux-designer
 	// agent, written by `vector spec attach-sketch`). Optional and omitempty, so
@@ -278,4 +288,53 @@ type Attention struct {
 	Detail   string            `json:"detail,omitempty"`
 	Since    time.Time         `json:"since"`
 	Source   string            `json:"source,omitempty"` // "hook" | "command"
+}
+
+// Resolution is why a spec reached closed. Only done counts as delivered work
+// toward epic progress; the others mark a spec that was dropped.
+type Resolution string
+
+const (
+	ResolutionDone       Resolution = "done"
+	ResolutionObsolete   Resolution = "obsolete"
+	ResolutionDuplicate  Resolution = "duplicate"
+	ResolutionSuperseded Resolution = "superseded"
+)
+
+// Resolutions lists the known resolutions in display order (validation messages
+// and CLI help).
+var Resolutions = []Resolution{ResolutionDone, ResolutionObsolete, ResolutionDuplicate, ResolutionSuperseded}
+
+// Valid reports whether r is a known resolution.
+func (r Resolution) Valid() bool {
+	for _, known := range Resolutions {
+		if r == known {
+			return true
+		}
+	}
+	return false
+}
+
+// Dropped reports whether r marks a spec closed without delivering real work
+// (obsolete, duplicate or superseded).
+func (r Resolution) Dropped() bool {
+	return r == ResolutionObsolete || r == ResolutionDuplicate || r == ResolutionSuperseded
+}
+
+// EffectiveResolution is the resolution used for progress math. An explicit
+// resolution always wins. Legacy rule for specs written before resolutions
+// existed: a closed spec without one counts as done; an archived spec without one
+// has no effective resolution ("") — it was archived blind, so it is neither done
+// nor dropped. Non-terminal specs have no resolution.
+func (s *SpecState) EffectiveResolution() Resolution {
+	if !s.Status.IsTerminal() {
+		return ""
+	}
+	if s.Resolution != "" {
+		return s.Resolution
+	}
+	if s.Status == StatusClosed {
+		return ResolutionDone
+	}
+	return ""
 }

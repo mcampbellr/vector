@@ -25,6 +25,7 @@ type Writer interface {
 	AssignEpic(specID, epicID, actor string, now time.Time) (bool, error)
 	CreateEpic(p state.CreateEpicParams) (*state.Epic, error)
 	UpdateEpic(id string, p state.UpdateEpicParams, actor string, now time.Time) (*state.Epic, bool, error)
+	SetEpicFocus(id string, focus bool, actor string, now time.Time) (bool, error)
 }
 
 // maxWriteBody caps a write request body; every payload is a handful of short
@@ -234,6 +235,7 @@ type epicCreateRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Color       string `json:"color"`
+	Order       int    `json:"order"`
 }
 
 // handleEpicCreate creates an epic (POST /api/epics) → 201 with the epic.
@@ -247,6 +249,7 @@ func (s *Server) handleEpicCreate(w http.ResponseWriter, r *http.Request) {
 		Title:       req.Title,
 		Description: req.Description,
 		Color:       state.EpicColor(req.Color),
+		Order:       req.Order,
 		Actor:       s.actor,
 		Now:         time.Now(),
 	})
@@ -258,11 +261,12 @@ func (s *Server) handleEpicCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // epicUpdateRequest is the body of PATCH /api/epics/{id}; absent fields are left
-// untouched, "" clears description/color.
+// untouched, "" clears description/color, order 0 unsets the order.
 type epicUpdateRequest struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
 	Color       *string `json:"color"`
+	Order       *int    `json:"order"`
 }
 
 // handleEpicUpdate edits an epic's title/description/color (PATCH /api/epics/{id}).
@@ -271,7 +275,7 @@ func (s *Server) handleEpicUpdate(w http.ResponseWriter, r *http.Request) {
 	if !s.decodeWrite(w, r, http.MethodPatch, &req) {
 		return
 	}
-	params := state.UpdateEpicParams{Title: req.Title, Description: req.Description}
+	params := state.UpdateEpicParams{Title: req.Title, Description: req.Description, Order: req.Order}
 	if req.Color != nil {
 		color := state.EpicColor(*req.Color)
 		params.Color = &color
@@ -282,4 +286,32 @@ func (s *Server) handleEpicUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, epic)
+}
+
+// EpicFocusResponse is the result of POST /api/epics/{id}/focus.
+type EpicFocusResponse struct {
+	ID      string `json:"id"`
+	Focus   bool   `json:"focus"`
+	Changed bool   `json:"changed"`
+}
+
+// handleEpicFocus toggles an epic's focus marker (POST /api/epics/{id}/focus),
+// mirroring the spec focus endpoint. The epic's specs inherit it at projection
+// time; none of them is rewritten.
+func (s *Server) handleEpicFocus(w http.ResponseWriter, r *http.Request) {
+	var req focusRequest
+	if !s.decodeWrite(w, r, http.MethodPost, &req) {
+		return
+	}
+	if req.Focus == nil {
+		writeJSONError(w, http.StatusBadRequest, `missing "focus" (true|false)`)
+		return
+	}
+	id := r.PathValue("id")
+	changed, err := s.writer.SetEpicFocus(id, *req.Focus, s.actor, time.Now())
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, EpicFocusResponse{ID: id, Focus: *req.Focus, Changed: changed})
 }

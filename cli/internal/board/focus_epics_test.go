@@ -46,7 +46,8 @@ func TestBuildProjectsEpics(t *testing.T) {
 		specs: []*state.SpecState{
 			{ID: "a", Title: "A", Status: state.StatusOpen, Priority: state.PriorityNormal, Epic: "app-mobile"},
 			{ID: "b", Title: "B", Status: state.StatusClosed, Priority: state.PriorityNormal, Epic: "app-mobile"},
-			{ID: "c", Title: "C", Status: state.StatusArchived, Priority: state.PriorityNormal, Epic: "app-mobile"},
+			{ID: "c", Title: "C", Status: state.StatusArchived, Priority: state.PriorityNormal, Epic: "app-mobile", Resolution: state.ResolutionDone},
+			{ID: "dup", Title: "Dup", Status: state.StatusClosed, Priority: state.PriorityNormal, Epic: "app-mobile", Resolution: state.ResolutionDuplicate},
 			{ID: "d", Title: "D", Status: state.StatusOpen, Priority: state.PriorityNormal},
 		},
 	}
@@ -61,8 +62,8 @@ func TestBuildProjectsEpics(t *testing.T) {
 	if mobile.ID != "app-mobile" || mobile.Title != "App Mobile" || mobile.Color != "blue" || mobile.Description != "iOS + Android" {
 		t.Errorf("epic identity = %+v", mobile)
 	}
-	if mobile.Total != 3 || mobile.Done != 2 || mobile.ByStatus["open"] != 1 || mobile.ByStatus["archived"] != 1 {
-		t.Errorf("epic counts = %+v, want total 3 / done 2 incl. archived", mobile)
+	if mobile.Total != 3 || mobile.Done != 2 || mobile.Dropped != 1 || mobile.ByStatus["open"] != 1 || mobile.ByStatus["archived"] != 1 {
+		t.Errorf("epic counts = %+v, want total 3 / done 2 incl. archived / dropped 1", mobile)
 	}
 	if empty := b.Epics[1]; empty.Total != 0 || empty.ByStatus == nil {
 		t.Errorf("an epic without specs still serializes an empty byStatus: %+v", empty)

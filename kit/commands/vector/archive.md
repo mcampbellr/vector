@@ -10,7 +10,8 @@ Archive a finished, closed spec so it leaves the active board for the archived v
 into `archived`). **You never write Vector's state yourself** — you call `vector spec archive`,
 which flips board state (CLI-owns-writes).
 
-**Input**: `$ARGUMENTS` (the spec id). If empty, run `vector spec list` and ask which to archive.
+**Input**: `$ARGUMENTS` (the spec id, optionally followed by a resolution correction). If no id
+is given, run `vector spec list` and ask which to archive.
 
 ## 1. Confirm it is closed
 
@@ -25,7 +26,15 @@ vector spec archive <id> --json
 ```
 
 The binary transitions the card to `archived`, stamps `archivedAt`, and logs `spec.archived` +
-`status.changed`. Archived cards live in a separate view, not the active columns.
+`status.changed`. Archived cards live in a separate view, not the active columns. The
+**resolution recorded at close is kept** (`resolution` in the JSON).
+
+Pass `--resolution done|obsolete|duplicate|superseded [--note "..."]` **only** to correct it:
+the user says the spec was actually obsolete/duplicate/replaced, or the card is a legacy
+`closed` spec with no `resolution` in its `state.json` (closed before resolutions existed). For
+that legacy case, archiving without a resolution means the spec will **not** count as done in its
+epic's progress — if the work did ship, pass `--resolution done`; if unclear, ask with
+`AskUserQuestion` (`done` first). Do not ask when the card already has a resolution.
 
 ## 3. Summarize what was done (post-action)
 

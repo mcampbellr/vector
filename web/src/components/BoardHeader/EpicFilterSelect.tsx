@@ -31,6 +31,8 @@ function fromValue(value: string): EpicFilter {
 }
 
 // EpicFilterSelect narrows the kanban to one epic (or to specs with no epic).
+// Epics are listed in the board's display order (epic order, then title); a
+// focused epic is labelled so.
 // A native <select>: keyboard, screen-reader and touch behaviour come for free,
 // and it fits the 56px header. The active filter is tinted so a narrowed board
 // never passes for the whole board.
@@ -54,7 +56,7 @@ export function EpicFilterSelect({ epics, filter, onChange }: EpicFilterSelectPr
         <option value={NONE_VALUE}>no epic</option>
         {epics.map((epic) => (
           <option key={epic.id} value={`epic:${epic.id}`}>
-            {epic.title}
+            {epic.focus ? `${epic.title} (focused)` : epic.title}
           </option>
         ))}
       </select>

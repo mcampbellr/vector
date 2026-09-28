@@ -65,6 +65,16 @@ func TestJSONGoldenUnchanged(t *testing.T) {
 		{"epic-list", seedEpicRepo, newEpicListCmd, func(r string) []string { return []string{"--json", "--repo-root", r} }},
 		{"epic-show", seedEpicRepo, newEpicShowCmd, func(r string) []string { return []string{"app-mobile", "--json", "--repo-root", r} }},
 		{"epic-delete", seedEpicRepo, newEpicDeleteCmd, func(r string) []string { return []string{"web", "--json", "--repo-root", r} }},
+		{"spec-close-resolution", seedSpecStatus("alpha", state.StatusReview), newSpecCloseCmd, func(r string) []string {
+			return []string{"alpha", "--resolution", "superseded", "--note", "replaced by beta", "--json", "--repo-root", r}
+		}},
+		{"spec-epic-bulk", seedEpicRepo, newSpecEpicCmd, func(r string) []string {
+			return []string{"--epic", "web", "alpha", "beta", "--json", "--repo-root", r}
+		}},
+		{"spec-list-filtered", seedEpicRepo, newSpecListCmd, func(r string) []string {
+			return []string{"--status", "open", "--focus", "--json", "--repo-root", r}
+		}},
+		{"epic-focus", seedEpicRepo, newEpicFocusCmd, func(r string) []string { return []string{"app-mobile", "--json", "--repo-root", r} }},
 	}
 
 	for _, tc := range cases {

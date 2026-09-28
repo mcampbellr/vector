@@ -192,8 +192,9 @@ each change.
 | **token routing** | Each command sends a task to the cheapest capable agent. Trivial work goes to Haiku or Sonnet; implementation goes to Opus. |
 | **`/vector:*` commands** | Project commands that run inside Claude Code, seeded into `.claude/commands/vector/`. See [`docs/plugin-and-commands.md`](docs/plugin-and-commands.md). |
 | **`vector init`** | The terminal subcommand that bootstraps a repo: it seeds the commands, detects your stack, and asks for consent before touching anything. |
-| **focus** | Your "work on this first" marker, separate from priority. Focused specs sort first in their column and win `/vector:apply` selection within the same status tier. |
-| **epic** | A named group of specs (e.g. "App Mobile") stored in `.vector/epics/<id>.json`, with progress (done of total) on the board's epics view. |
+| **focus** | Your "work on this first" marker, separate from priority. Focused specs sort first in their column and win `/vector:apply` selection within the same status tier. Focusing an **epic** gives every open spec in it focus (inherited, shown as an outlined pin). |
+| **epic** | A named group of specs (e.g. "App Mobile") stored in `.vector/epics/<id>.json`, with an optional order (1 = first) and progress (done of total) on the board's epics view. |
+| **resolution** | Why a spec was closed: `done` (default), `obsolete`, `duplicate` or `superseded`. Only `done` counts toward epic progress; the others are reported as *dropped*. |
 
 Click a card to open its details drawer — status, priority, ticket, the next command to run, the
 activity history, and the spec files. Open a file to read the spec itself, rendered from disk.
@@ -208,16 +209,36 @@ or straight from the board (the pin on a card, the epic select in the details dr
 
 ```bash
 vector spec focus add-login                       # sorts ahead of priority; `vector spec unfocus` clears it
-vector epic create --title "App Mobile" --color blue
-vector spec epic add-login app-mobile             # or --clear; `vector spec create --epic app-mobile`
-vector epic list                                  # progress per epic (done = closed + archived)
+vector epic create --title "App Mobile" --color blue --order 1
+vector spec epic --epic app-mobile add-login add-signup   # bulk assign (validated first; --stdin reads ids)
+vector spec epic --clear add-login                # or the single form: vector spec epic add-login app-mobile
+vector epic focus app-mobile                      # every open spec in it inherits focus; `epic unfocus` clears
+vector epic update app-mobile --order 2           # 1 = first; --order 0 unsets it
+vector epic list                                  # in order, with progress (done/total, dropped)
 vector epic show app-mobile                       # the epic and its specs
-vector epic update app-mobile --description "iOS and Android clients"
+vector spec list --epic app-mobile --status open,in-progress --focus   # or --no-epic
 vector epic delete app-mobile                     # refused while any spec still belongs to it
 ```
 
+`vector spec next` (and `/vector:apply`) rank within a status tier by focus (own or inherited from
+the epic), then **epic order** (specs of lower-order epics first; no epic / unordered last), then
+priority, then recency. Board columns keep focus → priority → recency.
+
+Closing records a **resolution**:
+
+```bash
+vector spec close add-login                                   # resolution done (default)
+vector spec close login-v1 --resolution duplicate --note "duplicate of login-v2"
+vector spec archive old-spec --resolution done                # override when archiving (e.g. legacy closes)
+```
+
+Epic progress counts `done` resolutions only; obsolete/duplicate/superseded specs are *dropped*
+(out of done and total). Specs closed before resolutions existed: closed ones count as done,
+archived ones do not. An illegal transition (e.g. closing a `needs-attention` spec) fails with the
+legal next statuses and the command for each.
+
 From Claude Code, `/vector:epic` does the same in natural language ("put these 5 specs in the App
-Mobile epic", "what's in the payments epic"), and `/vector:idea`, `/vector:bug`, `/vector:quick`,
+Mobile epic", "put App Mobile first", "pin the payments epic", "what's in the payments epic"), and `/vector:idea`, `/vector:bug`, `/vector:quick`,
 and `/vector:research` tag a new spec with the epic your request names or clearly matches, asking
 only when more than one fits.
 
@@ -257,10 +278,10 @@ the commands call it rather than editing `.vector/` by hand.
 | `/vector:fix` | Correct work already specified on the board (a missed detail, a UAT finding, a small course-correction) through the refiner and clarity gate. |
 | `/vector:quick` | Apply a small, low-risk change in a single run: register a quick-win card, implement it, run the gate, and land it in review. |
 | `/vector:comment` | Evaluate a review or ticket comment against the real diff with a skeptical agent, and implement only when the comment is valid and low-risk. |
-| `/vector:epic` | Manage epics in natural language: create, list, show, update, or delete epics and assign or unassign existing specs, confirming bulk or ambiguous changes. |
+| `/vector:epic` | Manage epics in natural language: create, list, show, update, reorder, focus, or delete epics and assign or unassign existing specs, confirming bulk or ambiguous changes. |
 | `/vector:link` | Link a spec card to its external ticket (Jira, Linear, GitHub), inferring the provider from the reference. |
 | `/vector:status` | Move a spec to a target status when the transition is legal. Use it to flag or clear needs-attention. |
-| `/vector:close` | Close a finished spec, flipping its card to closed after review. |
+| `/vector:close` | Close a finished spec, flipping its card to closed after review and recording its resolution (done, obsolete, duplicate, superseded). |
 | `/vector:archive` | Archive a closed spec, moving its card out of the active board into the archived view. |
 | `/vector:standup` | Project the activity since your last standup and generate a scrum digest with a cheap agent. |
 | `/vector:sync` | Import a repo's existing OpenSpec changes onto the board, idempotently. |
