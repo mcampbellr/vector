@@ -15,6 +15,7 @@ import { CopyableSlug } from '../CopyableSlug/CopyableSlug'
 import { FocusToggle } from '../FocusToggle/FocusToggle'
 import { EpicAssignSelect } from './EpicAssignSelect'
 import { relativeTime } from '../../lib/format'
+import { RESOLUTION_LABELS, isDroppedResolution } from '../../lib/resolution'
 import { useNow } from '../../lib/useNow'
 import styles from './SpecDetailsDrawer.module.css'
 
@@ -79,6 +80,9 @@ export function SpecDetailsDrawer({ card, epics, onClose }: SpecDetailsDrawerPro
             focused={card.focus === true}
             canFocus={card.status !== 'closed'}
             variant="drawer"
+            inheritedFrom={
+              card.focusInherited ? (epics.find((epic) => epic.id === card.epic)?.title ?? card.epic) : undefined
+            }
           />
           {card.ticket && (
             <a
@@ -109,6 +113,19 @@ export function SpecDetailsDrawer({ card, epics, onClose }: SpecDetailsDrawerPro
                 </div>
               </Suspense>
             )}
+          </section>
+        )}
+
+        {card.resolution && (
+          <section className={styles.section} aria-label="Resolution">
+            <h3 className={styles.sectionTitle}>Resolution</h3>
+            <p className={styles.resolutionText}>
+              Closed as <strong>{RESOLUTION_LABELS[card.resolution]}</strong>
+              {isDroppedResolution(card.resolution) && (
+                <span className={styles.muted}> · not counted toward epic progress</span>
+              )}
+            </p>
+            {card.resolutionNote && <p className={styles.resolutionNote}>{card.resolutionNote}</p>}
           </section>
         )}
 

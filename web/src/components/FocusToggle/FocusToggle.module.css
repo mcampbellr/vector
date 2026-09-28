@@ -44,6 +44,18 @@
   color: var(--ledger-text-dim);
 }
 
+/* Inherited from a focused epic: same accent hue as an own focus but an
+   outlined pin (no fill) and a dashed underline, so the two never read alike.
+   It stays visible on the card (it affects the column order). */
+.inherited {
+  color: var(--color-accent);
+}
+
+.inherited span {
+  text-decoration: underline dashed;
+  text-underline-offset: 2px;
+}
+
 .off:not(:disabled):hover {
   color: var(--color-text);
 }
@@ -76,6 +88,11 @@
 .drawer .on {
   border-color: var(--color-accent);
   background: var(--color-accent-bg);
+}
+
+.drawer .inherited {
+  border-style: dashed;
+  border-color: var(--color-accent);
 }
 
 .drawer .toggle:disabled:not([aria-busy='true']) {

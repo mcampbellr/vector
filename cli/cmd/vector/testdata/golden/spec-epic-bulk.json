@@ -1,0 +1,16 @@
+{
+  "epic": "web",
+  "specs": [
+    {
+      "id": "alpha",
+      "changed": true,
+      "previous": "app-mobile"
+    },
+    {
+      "id": "beta",
+      "changed": true
+    }
+  ],
+  "changed": 2,
+  "unchanged": 0
+}

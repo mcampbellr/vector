@@ -157,7 +157,50 @@ describe('EpicsView', () => {
     expect(requests[0]).toEqual({
       url: '/api/epics/app-mobile',
       method: 'PATCH',
-      body: { title: 'Mobile', description: 'iOS and Android clients', color: 'blue' },
+      body: { title: 'Mobile', description: 'iOS and Android clients', color: 'blue', order: 0 },
     })
+  })
+
+  it('shows the order, the dropped count and edits the order through PATCH', async () => {
+    const ordered: EpicSummary = { ...mobile, order: 2, dropped: 1 }
+    const { requests } = stubFetch(async () => jsonResponse(200, { ...ordered, schemaVersion: 1, createdAt: '' }))
+    render(<EpicsView board={makeBoard([ordered])} onSelectCard={() => {}} onShowOnBoard={() => {}} />)
+
+    const section = screen.getByRole('region', { name: 'Epic App Mobile' })
+    expect(section.textContent).toContain('#2')
+    expect(section.textContent).toContain('2 of 3 done · 1 dropped')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit epic App Mobile' }))
+    const orderInput = screen.getByLabelText('order') as HTMLInputElement
+    expect(orderInput.value).toBe('2')
+    fireEvent.change(orderInput, { target: { value: 'x' } })
+    const submit = screen.getByRole('button', { name: 'save' }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(orderInput, { target: { value: '1' } })
+    fireEvent.submit(screen.getByRole('form', { name: 'Edit epic App Mobile' }))
+
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0].body).toEqual({ title: 'App Mobile', description: 'iOS and Android clients', color: 'blue', order: 1 })
+  })
+
+  it('focuses an epic from its pin and marks inherited focus on its specs', async () => {
+    const focusedEpic: EpicSummary = { ...mobile, focus: true }
+    const board = makeBoard([focusedEpic])
+    board.columns[0].cards[0] = makeCard({
+      id: 'push',
+      title: 'Push notifications',
+      status: 'in-progress',
+      epic: 'app-mobile',
+      focusInherited: true,
+    })
+    const { requests } = stubFetch(async () => jsonResponse(200, { id: 'app-mobile', focus: false, changed: true }))
+    render(<EpicsView board={board} onSelectCard={() => {}} onShowOnBoard={() => {}} />)
+
+    expect(screen.getByLabelText('Focus inherited from the epic')).toBeTruthy()
+    const pin = screen.getByRole('button', { name: 'Unfocus epic App Mobile' })
+    expect(pin.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(pin)
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0]).toEqual({ url: '/api/epics/app-mobile/focus', method: 'POST', body: { focus: false } })
   })
 })

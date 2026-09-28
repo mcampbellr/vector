@@ -8,6 +8,7 @@ import { CardAttentionRow } from './CardAttentionRow'
 import { CardPriorityFlag } from './CardPriorityFlag'
 import { CardSlugButton } from './CardSlugButton'
 import { CardVerbButton } from './CardVerbButton'
+import { ResolutionBadge } from './ResolutionBadge'
 import { clipTitle } from './clipTitle'
 import { shortTicketRef } from './shortTicketRef'
 import { formatCompact, formatEstimate } from '../../lib/format'
@@ -92,9 +93,11 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
               focused={card.focus === true}
               canFocus={card.status !== 'closed'}
               variant="card"
+              inheritedFrom={card.focusInherited ? (epic?.title ?? card.epic) : undefined}
             />
           </span>
           <CardPriorityFlag priority={card.priority} status={card.status} />
+          <ResolutionBadge resolution={card.resolution} note={card.resolutionNote} />
           {card.quickWin && (
             <span className={styles.glyph} title="Quick win" aria-label="Quick win">
               <Zap size={11} strokeWidth={2} />

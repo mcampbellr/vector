@@ -5,6 +5,7 @@ import type { EpicRecord, NewEpicInput } from '../../api/boardWrites'
 import { useWriteAction } from '../../api/useWriteAction'
 import type { EpicColor, EpicSummary } from '../../types/board'
 import { EpicColorSwatches } from './EpicColorSwatches'
+import { parseOrderInput } from './helpers'
 import styles from './EpicsView.module.css'
 
 interface EpicFormProps {
@@ -22,11 +23,13 @@ function saveEpic(existingId: string | null, input: NewEpicInput): Promise<EpicR
     title: input.title,
     description: input.description ?? '',
     color: input.color ?? '',
+    order: input.order ?? 0,
   })
 }
 
 // EpicForm creates an epic (POST /api/epics) or edits one (PATCH
-// /api/epics/{id}): title (required), optional description and palette colour.
+// /api/epics/{id}): title (required), optional description, palette colour and
+// order (1 = first; empty = unordered, sorted after the ordered epics by title).
 // Inputs are disabled while the request is pending; the server's validation
 // message is shown inline. The new epic appears through the SSE board push.
 export function EpicForm({ epic, onDone, onCancel }: EpicFormProps) {
@@ -34,15 +37,19 @@ export function EpicForm({ epic, onDone, onCancel }: EpicFormProps) {
   const [title, setTitle] = useState(epic?.title ?? '')
   const [description, setDescription] = useState(epic?.description ?? '')
   const [color, setColor] = useState<EpicColor | ''>(epic?.color ?? '')
+  const [orderText, setOrderText] = useState(epic?.order ? String(epic.order) : '')
   const { run, pending, error } = useWriteAction(saveEpic)
   const editing = epic !== undefined
+  const order = parseOrderInput(orderText)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (order === null) return
     const saved = await run(epic?.id ?? null, {
       title: title.trim(),
       description: description.trim() || undefined,
       color: color || undefined,
+      order: order > 0 ? order : undefined,
     })
     if (saved) onDone()
   }
@@ -79,6 +86,27 @@ export function EpicForm({ epic, onDone, onCancel }: EpicFormProps) {
         />
       </label>
       <div className={styles.field}>
+        <label className={styles.fieldLabel} htmlFor={`${formId}-order`}>
+          order
+        </label>
+        <input
+          id={`${formId}-order`}
+          className={`${styles.input} ${styles.orderInput}`}
+          value={orderText}
+          onChange={(event) => setOrderText(event.target.value)}
+          inputMode="numeric"
+          placeholder="—"
+          aria-describedby={`${formId}-order-hint`}
+          aria-invalid={order === null || undefined}
+          disabled={pending}
+        />
+        <span id={`${formId}-order-hint`} className={styles.fieldHint}>
+          {order === null
+            ? 'Use a whole number (1 = first), or leave empty.'
+            : '1 = first. Empty = unordered (after the ordered epics).'}
+        </span>
+      </div>
+      <div className={styles.field}>
         <span className={styles.fieldLabel}>color</span>
         <EpicColorSwatches name={`${formId}-color`} value={color} onChange={setColor} disabled={pending} />
       </div>
@@ -88,7 +116,11 @@ export function EpicForm({ epic, onDone, onCancel }: EpicFormProps) {
         </p>
       )}
       <div className={styles.formActions}>
-        <button type="submit" className={styles.primaryButton} disabled={pending || title.trim() === ''}>
+        <button
+          type="submit"
+          className={styles.primaryButton}
+          disabled={pending || title.trim() === '' || order === null}
+        >
           {pending ? 'saving…' : editing ? 'save' : 'create epic'}
         </button>
         <button type="button" className={styles.secondaryButton} onClick={onCancel} disabled={pending}>

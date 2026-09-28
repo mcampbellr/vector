@@ -14,6 +14,8 @@ export interface EpicRecord {
   title: string
   description?: string
   color?: EpicColor
+  order?: number
+  focus?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -35,6 +37,8 @@ export interface NewEpicInput {
   title: string
   description?: string
   color?: EpicColor
+  /** 1 = first; 0/absent = unordered. */
+  order?: number
 }
 
 export interface EpicPatch {
@@ -42,6 +46,8 @@ export interface EpicPatch {
   description?: string
   /** '' clears the color. */
   color?: EpicColor | ''
+  /** 0 unsets the order. */
+  order?: number
 }
 
 // sendJSON issues a same-origin JSON write and returns the parsed body, or throws
@@ -74,6 +80,12 @@ export function assignSpecEpic(specId: string, epicId: string | null): Promise<E
   return sendJSON<EpicAssignResult>('POST', `/api/specs/${encodeURIComponent(specId)}/epic`, {
     epic: epicId,
   })
+}
+
+/** Toggles an epic's focus (POST /api/epics/{id}/focus); its non-closed specs
+ *  inherit it on the next board push. */
+export function setEpicFocus(epicId: string, focus: boolean): Promise<FocusResult> {
+  return sendJSON<FocusResult>('POST', `/api/epics/${encodeURIComponent(epicId)}/focus`, { focus })
 }
 
 export function createEpic(input: NewEpicInput): Promise<EpicRecord> {

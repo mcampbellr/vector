@@ -299,4 +299,30 @@ describe('SpecCard focus and epic', () => {
     expect(onSelect).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
+
+  it('badges a dropped resolution and not a done one', () => {
+    const { unmount } = render(
+      <SpecCard
+        card={makeCard({ status: 'closed', resolution: 'duplicate', resolutionNote: 'dup of login-v2' })}
+        onSelect={() => {}}
+      />,
+    )
+    const badge = screen.getByLabelText('Closed as duplicate — dup of login-v2 (not counted as done)')
+    expect(badge.textContent).toBe('duplicate')
+    unmount()
+
+    render(<SpecCard card={makeCard({ status: 'closed', resolution: 'done' })} onSelect={() => {}} />)
+    expect(screen.queryByLabelText(/Closed as/)).toBeNull()
+  })
+
+  it('shows an inherited focus pin naming the epic', () => {
+    render(
+      <SpecCard
+        card={makeCard({ epic: 'app-mobile', focusInherited: true })}
+        epic={{ id: 'app-mobile', title: 'App Mobile', total: 1, done: 0, byStatus: {}, updatedAt: '', focus: true }}
+        onSelect={() => {}}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Focus spec (focus currently inherited from epic App Mobile)' })).toBeTruthy()
+  })
 })

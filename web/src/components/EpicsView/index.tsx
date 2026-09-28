@@ -55,7 +55,7 @@ export function EpicsView({ board, onSelectCard, onShowOnBoard }: EpicsViewProps
           <code className={styles.command}>vector epic create --title "App Mobile"</code>
           <p className={styles.hint}>
             Then assign specs from their details drawer, or with{' '}
-            <code className={styles.inlineCode}>vector spec epic &lt;spec-id&gt; app-mobile</code>.
+            <code className={styles.inlineCode}>vector spec epic --epic app-mobile &lt;spec-id&gt;…</code>.
           </p>
         </div>
       )}

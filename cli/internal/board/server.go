@@ -47,6 +47,7 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/specs/{id}/epic", s.handleSpecEpic)
 	mux.HandleFunc("/api/epics", s.handleEpicCreate)
 	mux.HandleFunc("/api/epics/{id}", s.handleEpicUpdate)
+	mux.HandleFunc("/api/epics/{id}/focus", s.handleEpicFocus)
 	if static != nil {
 		mux.Handle("/", static)
 	}

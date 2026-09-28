@@ -165,13 +165,13 @@ func TestSelectNextRanksByStatusThenPriority(t *testing.T) {
 		{ID: "wip", Status: StatusInProgress, Priority: PriorityLow, UpdatedAt: now},
 		{ID: "closed", Status: StatusClosed, Priority: PriorityUrgent, UpdatedAt: now},
 	}
-	got := SelectNext(specs)
+	got := SelectNext(specs, nil)
 	if got == nil || got.ID != "wip" {
 		t.Fatalf("SelectNext = %v, want in-progress 'wip' first", got)
 	}
 
 	// With only terminal cards left, nothing is actionable.
-	if SelectNext([]*SpecState{{ID: "c", Status: StatusClosed}}) != nil {
+	if SelectNext([]*SpecState{{ID: "c", Status: StatusClosed}}, nil) != nil {
 		t.Error("SelectNext should return nil when nothing is actionable")
 	}
 }
@@ -229,7 +229,7 @@ func TestSelectNextFocusWithinStatusTier(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pick := SelectNext(tc.specs)
+			pick := SelectNext(tc.specs, nil)
 			if pick == nil || pick.ID != tc.want {
 				t.Fatalf("SelectNext = %v, want %s", pick, tc.want)
 			}

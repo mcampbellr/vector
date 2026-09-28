@@ -400,26 +400,46 @@ func buildStructuredAttention(target state.Status, reason, category, summary, de
 	return state.Attention{Category: cat, Summary: summary, Detail: detailText}, nil
 }
 
-// newSpecCloseCmd / newSpecArchiveCmd are the closing transitions.
+// newSpecCloseCmd / newSpecArchiveCmd are the closing transitions. Both accept
+// --resolution/--note: close always records a resolution (default done);
+// archive keeps the close-time one unless --resolution overrides it.
 func newSpecCloseCmd() *cobra.Command {
-	return newClosingTransitionCmd("close", "close a finished spec (→ closed)", func(store *state.Store, id string) (*state.SpecState, error) {
-		return store.CloseSpec(id, resolveActor(), time.Now())
-	})
+	return newClosingTransitionCmd("close", "close a finished spec (→ closed) with a resolution",
+		"why the spec is closed: "+resolutionHelp()+" (default done)",
+		func(store *state.Store, id string, resolution state.Resolution, note string) (*state.SpecState, error) {
+			return store.CloseSpecWith(id, resolution, note, resolveActor(), time.Now())
+		})
 }
 
 func newSpecArchiveCmd() *cobra.Command {
-	return newClosingTransitionCmd("archive", "archive a closed spec (→ archived)", func(store *state.Store, id string) (*state.SpecState, error) {
-		return store.ArchiveSpec(id, resolveActor(), time.Now())
-	})
+	return newClosingTransitionCmd("archive", "archive a closed spec (→ archived)",
+		"override the close-time resolution: "+resolutionHelp()+" (default: keep it)",
+		func(store *state.Store, id string, resolution state.Resolution, note string) (*state.SpecState, error) {
+			return store.ArchiveSpecWith(id, resolution, note, resolveActor(), time.Now())
+		})
 }
 
+// resolutionHelp lists the known resolutions for flag help and errors.
+func resolutionHelp() string {
+	names := make([]string, 0, len(state.Resolutions))
+	for _, resolution := range state.Resolutions {
+		names = append(names, string(resolution))
+	}
+	return strings.Join(names, "|")
+}
+
+// closingTransition performs the state move of a close/archive command.
+type closingTransition func(store *state.Store, id string, resolution state.Resolution, note string) (*state.SpecState, error)
+
 // newClosingTransitionCmd builds the shared close/archive command: a leading id
-// positional (or --id), delegating the state move to do.
-func newClosingTransitionCmd(name, short string, do func(*state.Store, string) (*state.SpecState, error)) *cobra.Command {
+// positional (or --id) plus --resolution/--note, delegating the state move to do.
+func newClosingTransitionCmd(name, short, resolutionUsage string, do closingTransition) *cobra.Command {
 	var (
-		idFlag   string
-		repoRoot string
-		jsonOut  bool
+		idFlag     string
+		resolution string
+		note       string
+		repoRoot   string
+		jsonOut    bool
 	)
 	cmd := &cobra.Command{
 		Use:   name + " [id]",
@@ -430,33 +450,53 @@ func newClosingTransitionCmd(name, short string, do func(*state.Store, string) (
 				id = idFlag
 			}
 			if id == "" {
-				return fmt.Errorf("usage: vector spec %s <id>", name)
+				return fmt.Errorf("usage: vector spec %s <id> [--resolution %s] [--note \"...\"]", name, resolutionHelp())
+			}
+			parsed := state.Resolution(strings.TrimSpace(resolution))
+			if parsed != "" && !parsed.Valid() {
+				return fmt.Errorf("invalid --resolution %q (want %s)", resolution, resolutionHelp())
 			}
 			store, err := openStore(repoRoot)
 			if err != nil {
 				return err
 			}
-			updated, err := do(store, id)
+			updated, err := do(store, id, parsed, note)
 			if err != nil {
 				return err
 			}
 			if jsonOut {
-				return printJSON(map[string]string{"id": updated.ID, "status": string(updated.Status)})
+				result := map[string]string{"id": updated.ID, "status": string(updated.Status)}
+				// Additive and present only when set (a legacy closed spec archived
+				// without --resolution keeps the pre-existing shape).
+				if updated.Resolution != "" {
+					result["resolution"] = string(updated.Resolution)
+				}
+				if updated.ResolutionNote != "" {
+					result["resolutionNote"] = updated.ResolutionNote
+				}
+				return printJSON(result)
 			}
-			fmt.Printf("%sd spec %q (status: %s)\n", name, updated.ID, updated.Status)
+			resolutionSuffix := ""
+			if updated.Resolution != "" {
+				resolutionSuffix = ", resolution: " + string(updated.Resolution)
+			}
+			fmt.Printf("%sd spec %q (status: %s%s)\n", name, updated.ID, updated.Status, resolutionSuffix)
 			return nil
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&idFlag, "id", "", "spec id")
+	f.StringVar(&resolution, "resolution", "", resolutionUsage)
+	f.StringVar(&note, "note", "", "optional free-text note for the resolution (e.g. \"duplicate of login-v2\")")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
 }
 
 // runSpecNext recommends the next work-item using Vector's tracked status +
-// focus + priority signal — the plus over OpenSpec that powers /vector:apply
-// selection (focused specs first within a status tier, see state.SelectNext).
+// focus + epic order + priority signal — the plus over OpenSpec that powers
+// /vector:apply selection (effective focus, then epic order, within a status
+// tier; see state.SelectNext).
 func newSpecNextCmd() *cobra.Command {
 	var (
 		repoRoot string
@@ -479,6 +519,10 @@ func newSpecNextCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			epics, err := store.ListEpics()
+			if err != nil {
+				return err
+			}
 			// applyMode steers how /vector:apply uses this pick; default ask when unset.
 			// applyModel controls which model tier /vector:apply uses for implementation;
 			// default opus (current behavior) when unset.
@@ -489,7 +533,8 @@ func newSpecNextCmd() *cobra.Command {
 				applyModel = cfg.ResolvedApplyModel()
 			}
 
-			pick := state.SelectNext(specs)
+			pick := state.SelectNext(specs, epics)
+			inherited := pick != nil && state.NewEpicIndex(epics).InheritsFocus(pick)
 			if pick == nil {
 				if jsonOut {
 					return printJSON(map[string]string{"id": "", "applyMode": string(mode), "applyModel": string(applyModel), "note": "nothing actionable"})
@@ -507,11 +552,17 @@ func newSpecNextCmd() *cobra.Command {
 				if pick.Focus {
 					result["focus"] = "true"
 				}
+				if inherited {
+					result["focusInherited"] = "true"
+				}
 				return printJSON(result)
 			}
 			focusNote := ""
-			if pick.Focus {
+			switch {
+			case pick.Focus:
 				focusNote = " · focused"
+			case inherited:
+				focusNote = " · focused via epic " + pick.Epic
 			}
 			fmt.Printf("next: %s  (%s · %s%s)  [applyMode: %s]  [applyModel: %s]\n  %s\n", pick.ID, pick.Status, pick.Priority, focusNote, mode, applyModel, pick.Title)
 			return nil

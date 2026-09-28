@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Filter, Pencil } from 'lucide-react'
 import type { Card, EpicSummary } from '../../types/board'
 import { EpicChip } from '../EpicChip/EpicChip'
+import { EpicFocusToggle } from './EpicFocusToggle'
 import { EpicForm } from './EpicForm'
 import { EpicSpecRow } from './EpicSpecRow'
 import { EpicStatusBreakdown } from './EpicStatusBreakdown'
@@ -17,9 +18,11 @@ interface EpicSectionProps {
   onShowOnBoard: (epicId: string) => void
 }
 
-// EpicSection is one epic in the epics view: identity, progress (done of total,
-// done = closed + archived), status breakdown and its specs. "show on board"
-// narrows the kanban to this epic; "edit" swaps the header for the edit form.
+// EpicSection is one epic in the epics view: order, identity, progress (done of
+// total; dropped specs — obsolete/duplicate/superseded — are excluded and shown
+// apart), status breakdown and its specs. The pin focuses the epic (its open
+// specs inherit focus); "show on board" narrows the kanban to this epic; "edit"
+// swaps the header for the edit form (title, description, color, order).
 export function EpicSection({ epic, cards, onSelectCard, onShowOnBoard }: EpicSectionProps) {
   const [editing, setEditing] = useState(false)
   const percent = progressPercent(epic.done, epic.total)
@@ -32,10 +35,16 @@ export function EpicSection({ epic, cards, onSelectCard, onShowOnBoard }: EpicSe
       ) : (
         <header className={styles.epicHeader}>
           <div className={styles.epicIdentity}>
+            {epic.order !== undefined && epic.order > 0 && (
+              <span className={styles.epicOrder} title={`Epic order ${epic.order} (1 = first)`}>
+                #{epic.order}
+              </span>
+            )}
             <EpicChip epicId={epic.id} epic={epic} />
             <span className={styles.epicId}>{epic.id}</span>
           </div>
           <div className={styles.epicActions}>
+            <EpicFocusToggle epic={epic} />
             <button
               type="button"
               className={styles.secondaryButton}
@@ -73,6 +82,12 @@ export function EpicSection({ epic, cards, onSelectCard, onShowOnBoard }: EpicSe
         </div>
         <span className={styles.progressText}>
           {epic.done} of {epic.total} done
+          {epic.dropped ? (
+            <span title="Closed as obsolete, duplicate or superseded — not counted in done or total">
+              {' '}
+              · {epic.dropped} dropped
+            </span>
+          ) : null}
         </span>
       </div>
 
@@ -87,7 +102,7 @@ export function EpicSection({ epic, cards, onSelectCard, onShowOnBoard }: EpicSe
       ) : (
         <p className={styles.muted}>
           {epic.total === 0
-            ? `No specs yet — assign one from its details drawer, or run vector spec epic <spec-id> ${epic.id}`
+            ? `No specs yet — assign one from its details drawer, or run vector spec epic --epic ${epic.id} <spec-id>...`
             : 'Every spec of this epic is archived.'}
         </p>
       )}
