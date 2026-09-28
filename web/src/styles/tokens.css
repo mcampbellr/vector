@@ -81,6 +81,17 @@
   --rail-review: #6366f1;
   --rail-closed: #047857;
 
+  /* Epic chip palette: the token names are the colors `vector epic --color` accepts. */
+  --epic-slate: #475569;
+  --epic-blue: #1d4ed8;
+  --epic-teal: #0f766e;
+  --epic-green: #047857;
+  --epic-amber: #b45309;
+  --epic-orange: #c2410c;
+  --epic-red: #b91c1c;
+  --epic-pink: #be185d;
+  --epic-violet: #7c3aed;
+
   /* Radii */
   --radius-card: 12px;
   --radius-pill: 6px;
@@ -184,6 +195,17 @@
   --rail-needs-attention: #ff5555;
   --rail-review: #bd93f9;
   --rail-closed: #50fa7b;
+
+  /* Epic chip palette */
+  --epic-slate: #c8cee0;
+  --epic-blue: #8be9fd;
+  --epic-teal: #5eead4;
+  --epic-green: #50fa7b;
+  --epic-amber: #f1fa8c;
+  --epic-orange: #ffb86c;
+  --epic-red: #ff6e6e;
+  --epic-pink: #ff79c6;
+  --epic-violet: #bd93f9;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -262,6 +284,17 @@
     --rail-needs-attention: #ff5555;
     --rail-review: #bd93f9;
     --rail-closed: #50fa7b;
+
+    /* Epic chip palette */
+    --epic-slate: #c8cee0;
+    --epic-blue: #8be9fd;
+    --epic-teal: #5eead4;
+    --epic-green: #50fa7b;
+    --epic-amber: #f1fa8c;
+    --epic-orange: #ffb86c;
+    --epic-red: #ff6e6e;
+    --epic-pink: #ff79c6;
+    --epic-violet: #bd93f9;
   }
 }
 
@@ -329,6 +362,17 @@
   --rail-needs-attention: #dc2626;
   --rail-review: #6366f1;
   --rail-closed: #047857;
+
+  /* Epic chip palette */
+  --epic-slate: #475569;
+  --epic-blue: #1d4ed8;
+  --epic-teal: #0f766e;
+  --epic-green: #047857;
+  --epic-amber: #b45309;
+  --epic-orange: #c2410c;
+  --epic-red: #b91c1c;
+  --epic-pink: #be185d;
+  --epic-violet: #7c3aed;
 }
 
 * {

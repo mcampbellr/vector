@@ -726,7 +726,7 @@ func newSpecCmd() *cobra.Command {
 		Use:   "spec",
 		Short: "create and transition specs on the board",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return fmt.Errorf("usage: vector spec <create|list|apply|fix|link|pr|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
+			return fmt.Errorf("usage: vector spec <create|list|apply|fix|link|pr|relate|status|close|archive|next|focus|unfocus|epic|worklog|summarize|route|attach-sketch> ...")
 		},
 	}
 	cmd.AddCommand(
@@ -741,6 +741,9 @@ func newSpecCmd() *cobra.Command {
 		newSpecCloseCmd(),
 		newSpecArchiveCmd(),
 		newSpecNextCmd(),
+		newSpecFocusCmd(),
+		newSpecUnfocusCmd(),
+		newSpecEpicCmd(),
 		newSpecWorklogCmd(),
 		newSpecSummarizeCmd(),
 		newSpecRouteCmd(),
@@ -898,6 +901,7 @@ func newSpecCreateCmd() *cobra.Command {
 		ticketJSON  string
 		relatedJSON string
 		quickWin    bool
+		epic        string
 		change      string
 		artifacts   string
 		repoRoot    string
@@ -979,6 +983,7 @@ func newSpecCreateCmd() *cobra.Command {
 				QuickWin:       quickWin,
 				Ticket:         ticket,
 				RelatedTo:      related,
+				Epic:           epic,
 				OpenSpec:       openSpec,
 				Actor:          resolveActor(),
 				Now:            time.Now(),
@@ -1015,6 +1020,7 @@ func newSpecCreateCmd() *cobra.Command {
 	f.StringVar(&ticketJSON, "ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
 	f.StringVar(&relatedJSON, "related", "", "seed cause→bug relations as JSON [{\"kind\":\"spec\",\"ref\":\"id\",\"source\":\"blame\"}]")
 	f.BoolVar(&quickWin, "quick-win", false, "mark the card as a /vector:quick one-run change")
+	f.StringVar(&epic, "epic", "", "group the card under an existing epic (id from `vector epic list`)")
 	f.StringVar(&change, "change", "", "OpenSpec change name (defaults to the spec id when --artifacts is set)")
 	f.StringVar(&artifacts, "artifacts", "", "comma list of existing OpenSpec artifacts: proposal,design,tasks")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
@@ -1084,6 +1090,14 @@ func newSpecListCmd() *cobra.Command {
 					if len(s.RelatedTo) > 0 {
 						entry["relatedTo"] = s.RelatedTo
 					}
+					// Additive, present only when set, so specs without them keep the
+					// exact pre-existing shape.
+					if s.Focus {
+						entry["focus"] = true
+					}
+					if s.Epic != "" {
+						entry["epic"] = s.Epic
+					}
 					out = append(out, entry)
 				}
 				return printJSONValue(out)
@@ -1092,8 +1106,13 @@ func newSpecListCmd() *cobra.Command {
 				fmt.Println("no specs")
 				return nil
 			}
+			// "*" marks a focused spec; the epic, when set, trails the title.
 			for _, s := range specs {
-				fmt.Printf("%-40s %-16s %-8s %s\n", s.ID, s.Status, s.Priority, s.Title)
+				epicSuffix := ""
+				if s.Epic != "" {
+					epicSuffix = "  [epic: " + s.Epic + "]"
+				}
+				fmt.Printf("%s %-40s %-16s %-8s %s%s\n", focusMarker(s.Focus), s.ID, s.Status, s.Priority, s.Title, epicSuffix)
 			}
 			return nil
 		},
@@ -1280,7 +1299,7 @@ usage:
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector standup [--since 24h|today|7d] [--json]
   vector standup commit --digest-file -|path
-  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status open] [--change slug] [--artifacts proposal,design,tasks] [--quick-win] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
+  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status open] [--change slug] [--artifacts proposal,design,tasks] [--quick-win] [--epic id] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
   vector spec link <id> <ref> [--provider jira|linear|github|other] [--json]
@@ -1290,6 +1309,14 @@ usage:
   vector spec close <id> [--json]
   vector spec archive <id> [--json]
   vector spec next [--json]
+  vector spec focus <id> [--json]
+  vector spec unfocus <id> [--json]
+  vector spec epic <id> <epic-id> | --clear [--json]
+  vector epic create --title "..." [--id slug] [--description "..."] [--color slate|blue|teal|green|amber|orange|red|pink|violet] [--json]
+  vector epic list [--json]
+  vector epic show <id> [--json]
+  vector epic update <id> [--title "..."] [--description "..."] [--color token] [--json]
+  vector epic delete <id> [--json]
   vector spec worklog <id> [--files a.go,b.go] [--tasks "DTO mapper"] [--note "..."] [--json]
   vector spec summarize <id> [--json]
   vector spec summarize commit <id> --action <name> --summary-file -|path [--json]

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "app-mobile",
+    "title": "App Mobile",
+    "description": "iOS and Android clients",
+    "color": "blue",
+    "total": 1,
+    "done": 0,
+    "byStatus": {
+      "open": 1
+    },
+    "createdAt": "2026-01-02T03:04:05Z",
+    "updatedAt": "2026-01-02T03:04:05Z"
+  },
+  {
+    "id": "web",
+    "title": "Web",
+    "total": 0,
+    "done": 0,
+    "byStatus": {},
+    "createdAt": "2026-01-02T03:04:05Z",
+    "updatedAt": "2026-01-02T03:04:05Z"
+  }
+]

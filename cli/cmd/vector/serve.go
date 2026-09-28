@@ -20,8 +20,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runServe starts the local board panel: the read-only HTTP API (/api/board,
-// /api/events SSE) plus the embedded web UI. It is an ephemeral local server —
+// runServe starts the local board panel: the HTTP API (/api/board, /api/events
+// SSE, and the same-origin write endpoints for focus/epics) plus the embedded web
+// UI. It is an ephemeral local server —
 // it runs only while the dev manages Vector. It binds 8787 by default (the port
 // the Vite dev proxy targets), falling back to a free port if 8787 is taken
 // unless --port was given explicitly (architecture/distribution-packaging.md).
@@ -74,6 +75,13 @@ func newServeCmd() *cobra.Command {
 				} else {
 					return fmt.Errorf("listen on %s: %w", addr, listenErr)
 				}
+			}
+
+			// Writes are only accepted for the address actually bound (the fallback
+			// port included), so the same-origin guard matches what the browser uses.
+			if err := srv.EnableWrites(store, resolveActor(), listener.Addr().String()); err != nil {
+				listener.Close()
+				return fmt.Errorf("enable board writes: %w", err)
 			}
 
 			return runServeLoop(root, httpServer, listener, uiSource, pollMs, srv.Broadcast)
@@ -184,8 +192,12 @@ func fingerprint(dir string) string {
 	return fmt.Sprintf("%d:%d:%d", count, totalSize, latest)
 }
 
-// withCORS allows the Vite dev server (a different origin) to call the API during
-// development. The server binds to localhost and is ephemeral, so this is safe.
+// withCORS allows the Vite dev server (a different origin) to call the read API
+// during development. The server binds to localhost and is ephemeral, so this is
+// safe for GETs. Writes are NOT opened to other origins: POST/PATCH with a JSON
+// body need a preflight that this header set does not grant, and the write
+// handlers additionally enforce same-origin (board.Server.checkSameOrigin). The
+// Vite proxy rewrites Origin to the API target so dev writes pass that check.
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

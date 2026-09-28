@@ -1,11 +1,13 @@
 import type { CSSProperties } from 'react'
-import type { Card, Column } from '../../types/board'
+import type { Card, Column, EpicSummary } from '../../types/board'
 import { SpecCard } from '../SpecCard/SpecCard'
 import { statusRailColor } from '../../lib/statusRailColor'
 import styles from './BoardColumn.module.css'
 
 interface BoardColumnProps {
   column: Column
+  /** Board epics by id, so each card can render its epic chip. */
+  epicsById: ReadonlyMap<string, EpicSummary>
   onSelectCard: (card: Card) => void
 }
 
@@ -13,7 +15,7 @@ interface BoardColumnProps {
 // rail dot) that stays put, over its own vertical scroller. The header sits
 // outside the scroll area, so it needs no sticky trick, and the scroller carries
 // overscroll-behavior:contain so reaching the end does not drag the board row.
-export function BoardColumn({ column, onSelectCard }: BoardColumnProps) {
+export function BoardColumn({ column, epicsById, onSelectCard }: BoardColumnProps) {
   const cards = column.cards ?? []
   const dotStyle: CSSProperties = { background: statusRailColor(column.status) }
 
@@ -31,7 +33,14 @@ export function BoardColumn({ column, onSelectCard }: BoardColumnProps) {
         {cards.length === 0 ? (
           <p className={styles.empty}>— no specs</p>
         ) : (
-          cards.map((card) => <SpecCard key={card.id} card={card} onSelect={onSelectCard} />)
+          cards.map((card) => (
+            <SpecCard
+              key={card.id}
+              card={card}
+              epic={card.epic ? epicsById.get(card.epic) : undefined}
+              onSelect={onSelectCard}
+            />
+          ))
         )}
       </div>
     </section>

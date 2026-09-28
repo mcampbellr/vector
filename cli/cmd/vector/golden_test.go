@@ -56,6 +56,15 @@ func TestJSONGoldenUnchanged(t *testing.T) {
 		{"spec-attach-sketch", seedSketchRepo, newSpecAttachSketchCmd, func(r string) []string {
 			return []string{"alpha", "--file", filepath.Join(r, "sketch.excalidraw"), "--json", "--repo-root", r}
 		}},
+		{"spec-focus", seedSpecStatus("alpha", state.StatusOpen), newSpecFocusCmd, func(r string) []string { return []string{"alpha", "--json", "--repo-root", r} }},
+		{"spec-unfocus", seedEpicRepo, newSpecUnfocusCmd, func(r string) []string { return []string{"alpha", "--json", "--repo-root", r} }},
+		{"spec-epic", seedEpicRepo, newSpecEpicCmd, func(r string) []string { return []string{"beta", "app-mobile", "--json", "--repo-root", r} }},
+		{"spec-epic-clear", seedEpicRepo, newSpecEpicCmd, func(r string) []string { return []string{"alpha", "--clear", "--json", "--repo-root", r} }},
+		{"spec-list-focus-epic", seedEpicRepo, newSpecListCmd, func(r string) []string { return []string{"--json", "--repo-root", r} }},
+		{"spec-next-focused", seedEpicRepo, newSpecNextCmd, func(r string) []string { return []string{"--json", "--repo-root", r} }},
+		{"epic-list", seedEpicRepo, newEpicListCmd, func(r string) []string { return []string{"--json", "--repo-root", r} }},
+		{"epic-show", seedEpicRepo, newEpicShowCmd, func(r string) []string { return []string{"app-mobile", "--json", "--repo-root", r} }},
+		{"epic-delete", seedEpicRepo, newEpicDeleteCmd, func(r string) []string { return []string{"web", "--json", "--repo-root", r} }},
 	}
 
 	for _, tc := range cases {
@@ -166,6 +175,41 @@ func seedSpecStatus(id string, status state.Status) func(t *testing.T) string {
 		}
 		return root
 	}
+}
+
+// seedEpicRepo seeds a config, two epics (app-mobile, web) and two open specs:
+// alpha (focused, low priority, in app-mobile) and beta (normal, no epic). Every
+// write is stamped with goldenClock, so epic timestamps in --json stay stable.
+// The "web" epic has no specs, so epic-delete can remove it.
+func seedEpicRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := config.Write(root, config.Resolve(root)); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	store, err := state.Open(root)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	for _, params := range []state.CreateEpicParams{
+		{Title: "App Mobile", Description: "iOS and Android clients", Color: state.EpicColorBlue},
+		{Title: "Web"},
+	} {
+		params.Actor, params.Now = "tester", goldenClock
+		if _, err := store.CreateEpic(params); err != nil {
+			t.Fatalf("seed epic: %v", err)
+		}
+	}
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "alpha", Title: "Alpha feature", Status: state.StatusOpen, Priority: state.PriorityLow, Epic: "app-mobile", Actor: "tester", Now: goldenClock}); err != nil {
+		t.Fatalf("seed alpha: %v", err)
+	}
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "beta", Title: "Beta", Status: state.StatusOpen, Priority: state.PriorityNormal, Actor: "tester", Now: goldenClock}); err != nil {
+		t.Fatalf("seed beta: %v", err)
+	}
+	if _, err := store.SetFocus("alpha", true, "tester", goldenClock); err != nil {
+		t.Fatalf("focus alpha: %v", err)
+	}
+	return root
 }
 
 // seedSketchRepo seeds a spec plus a minimal valid .excalidraw file for

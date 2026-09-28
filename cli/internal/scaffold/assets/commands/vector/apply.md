@@ -47,14 +47,17 @@ from the repo's manifests in step 4 as before.
 ## 1. Select the work-item (skip if an id was given)
 
 Run `vector spec next --json`. It returns the recommended `id`, its `status`/`priority`, and
-the repo's `applyMode`. Selection ranks **in-progress > needs-attention > review > open**, then
-by priority — continue what's started before opening new work.
+the repo's `applyMode` (plus `"focus": "true"` when the pick carries the developer's focus
+marker). Selection ranks **in-progress > needs-attention > review > open**; within each status
+tier **focused specs come first** (set with `vector spec focus <id>` or the board's pin toggle),
+then priority, then most recently updated — continue what's started before opening new work.
+Focus never lifts a spec across status tiers.
 
 Behave per `applyMode`:
 
 - **`auto`** → take the recommended pick and proceed without asking.
 - **`ask`** (default) → propose the pick **with its reason** ("`<id>` is in-progress, highest
-  priority") and confirm with `AskUserQuestion` before proceeding.
+  priority", or "`<id>` is open and focused") and confirm with `AskUserQuestion` before proceeding.
 - **`always-ask`** → show the candidate list (`vector spec list`) and let the user choose.
 
 If `next` reports nothing actionable (only closed/archived remain), say so and stop —

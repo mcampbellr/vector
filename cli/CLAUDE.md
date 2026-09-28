@@ -16,7 +16,10 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
   `ProposeSpec`, ReadSpec, ListSpecs, AppendEvent, `ReadEvents`), slug, escritura atómica.
   **Máquina de estados LOCKED** (`transition.go`): `CanTransition` + `ApplySpec`/`CloseSpec`/
   `ArchiveSpec`/`SetStatus` (primitiva validada con flag de needs-attention) + `SelectNext`
-  (ranking status+prioridad para apply). Con tests.
+  (ranking status → focus → prioridad → recencia para apply). `SetFocus` (marcador focus) y
+  épicas (`epic.go`: `CreateEpic`/`GetEpic`/`ListEpics`/`UpdateEpic`/`DeleteEpic`/`AssignEpic`,
+  `.vector/epics/<id>.json`, `CountEpicSpecs`); errores clasificados `ErrInvalidInput`/
+  `ErrConflict` (`errors.go`). Con tests.
 - `internal/config` — `.vector/config.json` (specPath/store/source/kitVersion/**applyMode**);
   `Resolve` migra de `.project-structure`, auto-detecta o cae al fallback `.vector/`. Con tests.
 - `internal/openspec` — lectura read-only de `openspec/changes/*` (artefactos + progreso de
@@ -24,8 +27,10 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
 - `internal/scaffold` — embebe `kit/{commands,agents,vector}` (`embed.FS`, sync por
   `go generate`) y siembra el motor en `<repo>/.claude/` de forma aditiva. Con tests.
 - `internal/board` — proyección read-only del board (columnas=estado, cards) + roll-up del
-  **Token Savings Meter** desde `activity.jsonl` (`agent.routed`). `Server` expone la API HTTP
-  (`/api/board`) y el stream SSE (`/api/events`). Con tests.
+  **Token Savings Meter** desde `activity.jsonl` (`agent.routed`) + `epics[]` con roll-up.
+  `Server` expone la API HTTP (`/api/board`), el stream SSE (`/api/events`) y las escrituras
+  same-origin (`writes.go`: focus, asignar épica, crear/editar épica — vía `Writer` = mutators
+  del `Store`; `EnableWrites` las activa con la dirección bindeada). Con tests.
 - `internal/webui` — embebe la SPA buildada de `web/` (`embed.FS` de `dist/`) y la sirve como
   SPA (fallback a `index.html`); `--web-dir` sirve desde disco en dev.
 - `internal/ui` — capa de **presentación de terminal** (análogo de `internal/webui` para el CLI):
@@ -37,12 +42,14 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
   config + esqueleto de estado), `vector update` (re-siembra el kit preservando config/state,
   version stamp), `vector sync` (proyecta changes de OpenSpec al board, idempotente/aditivo),
   `vector serve` (panel local: API+SSE+UI embebida, puerto auto, watcher por polling),
-  `vector spec create|list|apply|fix|link|relate|status|close|archive|next|worklog|summarize|route|attach-sketch`,
+  `vector spec create|list|apply|fix|link|relate|status|close|archive|next|focus|unfocus|epic|worklog|summarize|route|attach-sketch`,
+  `vector epic create|list|show|update|delete`,
   `vector standup (+commit)`, `vector detect-ticket`, `vector completion <shell>`, `vector version`
   (`-v`/`--version` en cualquier posición). Suite golden (`golden_test.go` + `testdata/golden/`)
   fija el `--json` byte-idéntico como gate.
 - Pendiente: detección/reorg de repo en `init` (pregunta abierta), endpoints HTTP de escritura
-  (para drag-and-drop del board; hoy las transiciones son por CLI), `vector:link/status/close/
+  para transiciones de status (drag-and-drop del board; hoy solo focus/épicas se escriben desde
+  el board), `vector:link/status/close/
   archive/daily` (commands del resto del contrato; el binario ya soporta las transiciones).
 
 ## Stack

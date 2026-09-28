@@ -28,7 +28,30 @@ const (
 	EvtWorkLogged     EventType = "work.logged"     // enriched apply trace for the standup digest
 	EvtSketchAttached EventType = "sketch.attached" // a UI wireframe was attached to a spec
 	EvtPROpened       EventType = "pr.opened"       // a /vector:ship pull request (additive; never transitions)
+	EvtSpecFocused    EventType = "spec.focused"    // the developer marked a spec to work on first (never transitions)
+	EvtSpecUnfocused  EventType = "spec.unfocused"  // the focus marker was removed (never transitions)
+	EvtEpicAssigned   EventType = "spec.epic-assigned"
+	EvtEpicCreated    EventType = "epic.created"
+	EvtEpicUpdated    EventType = "epic.updated"
+	EvtEpicDeleted    EventType = "epic.deleted"
 )
+
+// EpicAssignedData is the payload for EvtEpicAssigned: the epic a spec now belongs
+// to (Epic, "" when cleared) and the one it left (Previous, "" when it had none).
+// Purely additive — assigning an epic never transitions status.
+type EpicAssignedData struct {
+	Epic     string `json:"epic"`
+	Previous string `json:"previous,omitempty"`
+}
+
+// EpicEventData is the payload for EvtEpicCreated/EvtEpicUpdated/EvtEpicDeleted.
+// Epic events carry no SpecID (an epic is not a spec), so spec-scoped projections
+// such as the standup digest and the per-spec timeline skip them.
+type EpicEventData struct {
+	ID    string    `json:"id"`
+	Title string    `json:"title"`
+	Color EpicColor `json:"color,omitempty"`
+}
 
 // Event is one line of .vector/local/activity.jsonl (append-only, gitignored,
 // personal). Data carries a type-specific payload (decode by Type).

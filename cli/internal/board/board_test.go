@@ -11,6 +11,7 @@ import (
 
 type fakeSource struct {
 	specs     []*state.SpecState
+	epics     []*state.Epic
 	events    []state.Event
 	standup   *state.StandupDigest
 	summaries map[string]state.SpecSummary
@@ -20,6 +21,7 @@ type fakeSource struct {
 
 func (f fakeSource) ListSpecs() ([]*state.SpecState, error) { return f.specs, nil }
 func (f fakeSource) ReadEvents() ([]state.Event, error)     { return f.events, nil }
+func (f fakeSource) ListEpics() ([]*state.Epic, error)      { return f.epics, nil }
 func (f fakeSource) ReadStandup() (*state.StandupDigest, error) {
 	if f.standup == nil {
 		return &state.StandupDigest{}, nil

@@ -10,6 +10,7 @@
 ```
 .vector/
 ├── specs/<id>/state.json     # committed, 1 archivo por spec (sharded → conflictos locales)
+├── epics/<id>.json           # committed, 1 archivo por épica (se crea con la primera épica)
 ├── local/activity.jsonl      # gitignored, append-only, personal → /vector:daily + token meter
 └── board.json                # gitignored, DERIVADO (lo regenera `vector serve`)
 openspec/changes/<id>/        # proposal/design/tasks (lo crea /vector:apply); state lo referencia
@@ -66,6 +67,9 @@ type SpecState struct {
 	Labels        []string `json:"labels,omitempty"`
 	EstimateMin   int      `json:"estimateMinutes,omitempty"`
 	QuickWin      bool     `json:"quickWin,omitempty"`   // /vector:quick one-run change marker
+	Focus         bool       `json:"focus,omitempty"`     // "trabajar esto primero" (eje aparte de priority)
+	FocusedAt     *time.Time `json:"focusedAt,omitempty"` // cuándo se marcó el focus
+	Epic          string     `json:"epic,omitempty"`      // id de .vector/epics/<id>.json
 	Sketches      []SketchRef `json:"sketches,omitempty"` // Excalidraw wireframes (/vector:idea + /vector:research)
 
 	Ticket    *Ticket       `json:"ticket,omitempty"`
@@ -81,6 +85,24 @@ type SpecState struct {
 	ClosedAt   *time.Time `json:"closedAt,omitempty"`
 	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
+}
+
+// Focus / Epic: aditivos + omitempty → specs sin ellos serializan idéntico (SchemaVersion
+// sigue en 1, sin migración). Focus lo escribe solo Store.SetFocus (`vector spec focus|unfocus`
+// o POST /api/specs/{id}/focus) y se limpia al pasar a closed/archived; ordena primero dentro
+// de la columna y del tier de status de `spec next`, antes que priority. Epic lo escriben
+// Store.AssignEpic / CreateSpec, que validan que la épica exista.
+
+// Epic vive en .vector/epics/<id>.json (committed). No guarda la lista de miembros: la
+// membresía es SpecState.Epic (una sola fuente de verdad).
+type Epic struct {
+	SchemaVersion int       `json:"schemaVersion"`         // EpicSchemaVersion = 1
+	ID            string    `json:"id"`                    // slug kebab-case (Slug(title) si no se da)
+	Title         string    `json:"title"`
+	Description   string    `json:"description,omitempty"`
+	Color         EpicColor `json:"color,omitempty"`       // slate|blue|teal|green|amber|orange|red|pink|violet
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type Ticket struct {
@@ -170,6 +192,12 @@ const (
 	EvtBoardMoved    EventType = "board.moved"
 	EvtAgentRouted   EventType = "agent.routed" // Token Savings Meter
 	EvtWorkLogged    EventType = "work.logged"  // standup digest: trabajo hecho por apply
+	EvtSpecFocused   EventType = "spec.focused"   // sin payload
+	EvtSpecUnfocused EventType = "spec.unfocused" // sin payload
+	EvtEpicAssigned  EventType = "spec.epic-assigned" // EpicAssignedData
+	EvtEpicCreated   EventType = "epic.created"   // EpicEventData, sin specId
+	EvtEpicUpdated   EventType = "epic.updated"   // EpicEventData, sin specId
+	EvtEpicDeleted   EventType = "epic.deleted"   // EpicEventData, sin specId
 )
 
 // Event is one line of .vector/local/activity.jsonl.
@@ -190,6 +218,8 @@ type NoteAddedData     struct{ Text string; Pinned bool }
 type ReminderSetData   struct{ Text string; DueAt *time.Time }
 type BoardMovedData    struct{ From, To string }
 type SpecRelatedData   struct{ Kind RelatedKind; Ref string; Source RelatedSource } // espejo de RelatedItem; aditivo para timeline/standup
+type EpicAssignedData  struct{ Epic, Previous string } // Epic "" = se limpió; nunca transiciona status
+type EpicEventData     struct{ ID, Title string; Color EpicColor } // eventos de épica: sin specId → standup/timeline los ignoran
 
 // AgentRoutedData is the commercialization wedge: every cheap-agent route logs
 // what it would have cost on the baseline model.
@@ -234,7 +264,8 @@ servida en `GET /api/standup`.
 ## `board.json` (derivado, no committed)
 
 `vector serve` escanea `.vector/specs/*/state.json` → agrupa por `status` (columnas) y ordena
-por `priority`+`updatedAt`; cruza `activity.jsonl` para el roll-up de tokens ahorrados. Se
+por `focus` (primero) + `priority` + `updatedAt`; proyecta `.vector/epics/*.json` en `epics[]`
+(con `total`/`done`/`byStatus` por épica); cruza `activity.jsonl` para el roll-up de tokens ahorrados. Se
 regenera, nunca se edita a mano → cero conflictos.
 
 ## Decisiones de diseño (por qué)
