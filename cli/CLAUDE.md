@@ -48,7 +48,9 @@ de estado** (CLI-owns-writes). Los commands `/vector:*` (`kit/commands/vector/`)
   `vector serve` (panel local: API+SSE+UI embebida, puerto auto, watcher por polling),
   `vector spec create|list|apply|fix|link|relate|status|close|archive|next|focus|unfocus|epic|worklog|summarize|route|attach-sketch`,
   `vector epic create|list|show|update|focus|unfocus|delete`,
-  `vector standup (+commit)`, `vector detect-ticket`, `vector completion <shell>`, `vector version`
+  `vector open [id]` (ventana de tmux del spec con Claude + próximo comando; read-only sobre el
+  state, `runner` inyectable, `buildTmuxArgs` puro), `vector standup (+commit)`,
+  `vector detect-ticket`, `vector completion <shell>`, `vector version`
   (`-v`/`--version` en cualquier posición). Suite golden (`golden_test.go` + `testdata/golden/`)
   fija el `--json` byte-idéntico como gate.
 - Pendiente: detección/reorg de repo en `init` (pregunta abierta), endpoints HTTP de escritura
