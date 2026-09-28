@@ -175,3 +175,64 @@ func TestSelectNextRanksByStatusThenPriority(t *testing.T) {
 		t.Error("SelectNext should return nil when nothing is actionable")
 	}
 }
+
+// TestSelectNextFocusWithinStatusTier pins the ordering rule: within a status tier
+// a focused spec beats any priority, but focus never lifts a spec across tiers
+// (continuing started work still wins over a focused open spec).
+func TestSelectNextFocusWithinStatusTier(t *testing.T) {
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name  string
+		specs []*SpecState
+		want  string
+	}{
+		{
+			name: "focused low beats unfocused urgent in the same tier",
+			specs: []*SpecState{
+				{ID: "urgent-open", Status: StatusOpen, Priority: PriorityUrgent, UpdatedAt: base.Add(2)},
+				{ID: "focused-low", Status: StatusOpen, Priority: PriorityLow, Focus: true, UpdatedAt: base},
+			},
+			want: "focused-low",
+		},
+		{
+			name: "status tier still wins over focus",
+			specs: []*SpecState{
+				{ID: "focused-open", Status: StatusOpen, Priority: PriorityUrgent, Focus: true, UpdatedAt: base.Add(5)},
+				{ID: "started", Status: StatusInProgress, Priority: PriorityLow, UpdatedAt: base},
+			},
+			want: "started",
+		},
+		{
+			name: "among focused specs priority decides",
+			specs: []*SpecState{
+				{ID: "focused-normal", Status: StatusOpen, Priority: PriorityNormal, Focus: true, UpdatedAt: base.Add(5)},
+				{ID: "focused-high", Status: StatusOpen, Priority: PriorityHigh, Focus: true, UpdatedAt: base},
+			},
+			want: "focused-high",
+		},
+		{
+			name: "same focus and priority falls back to recency",
+			specs: []*SpecState{
+				{ID: "older", Status: StatusOpen, Priority: PriorityHigh, Focus: true, UpdatedAt: base},
+				{ID: "newer", Status: StatusOpen, Priority: PriorityHigh, Focus: true, UpdatedAt: base.Add(1)},
+			},
+			want: "newer",
+		},
+		{
+			name: "a focused closed spec is not actionable",
+			specs: []*SpecState{
+				{ID: "closed", Status: StatusClosed, Priority: PriorityUrgent, Focus: true, UpdatedAt: base},
+				{ID: "open", Status: StatusOpen, Priority: PriorityLow, UpdatedAt: base},
+			},
+			want: "open",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pick := SelectNext(tc.specs)
+			if pick == nil || pick.ID != tc.want {
+				t.Fatalf("SelectNext = %v, want %s", pick, tc.want)
+			}
+		})
+	}
+}

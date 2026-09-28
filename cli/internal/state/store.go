@@ -80,6 +80,11 @@ type CreateSpecParams struct {
 	// the caller that wants degrade semantics validates/filters before calling.
 	// Each persisted relation also emits a spec.related event.
 	RelatedTo []RelatedItem
+
+	// Epic, when set, groups the new spec under an existing epic. The epic must
+	// exist (ErrInvalidInput otherwise); a spec.epic-assigned event is emitted
+	// alongside spec.created.
+	Epic string
 }
 
 // normalizeRelated lowercases the kind/source, trims the ref, and defaults an
@@ -230,6 +235,13 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		}
 	}
 
+	epicID := strings.TrimSpace(p.Epic)
+	if epicID != "" {
+		if err := s.requireEpic(epicID); err != nil {
+			return nil, err
+		}
+	}
+
 	// Resolve where the spec doc lives: the caller's path (repo convention or an
 	// OpenSpec change), or the .vector fallback when neither is given.
 	docAbs, docRel := p.SpecDocAbsPath, p.SpecDocRel
@@ -252,6 +264,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		QuickWin:      p.QuickWin,
 		Ticket:        p.Ticket,
 		RelatedTo:     related,
+		Epic:          epicID,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -305,6 +318,11 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 	}
 	for _, item := range spec.RelatedTo {
 		if err := s.appendRelatedEvent(spec.ID, spec.Repo, item, now, p.Actor); err != nil {
+			return nil, err
+		}
+	}
+	if spec.Epic != "" {
+		if err := s.appendEpicAssignedEvent(spec, "", now, p.Actor); err != nil {
 			return nil, err
 		}
 	}

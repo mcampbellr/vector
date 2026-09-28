@@ -20,9 +20,14 @@ usuario.
 
 - `src/types/board.ts` — contrato espejo de `cli/internal/board` (única forma que renderiza).
 - `src/api/useBoard.ts` — suscripción SSE a `/api/events` (push del board; auto-reconnect).
+- `src/api/boardWrites.ts` + `useWriteAction.ts` — las únicas escrituras (focus, épica de un spec,
+  crear/editar épica) como intents a la API; sin copia optimista: el resultado llega por SSE.
 - `src/components/*` — un componente por carpeta (`KanbanBoard`, `BoardColumn`, `SpecCard`,
   `StatusPill`, `PriorityFlag`, `BoardHeader`, **`TokenSavingsMeter`** = el diferenciador).
-- `src/lib/` — `format.ts` (USD/tiempo/relativo), `useNow.ts` (tick de frescura).
+- `src/lib/` — `format.ts` (USD/tiempo/relativo), `useNow.ts` (tick de frescura),
+  `epicFilter.ts` + `useEpicFilter.ts` (filtro por épica del kanban, persistido en `?epic=`).
+- Vistas: `board` (kanban), `epics` (`EpicsView`: progreso, breakdown, specs, form de épica),
+  `standup`, `tokens`.
 
 ## Dev loop
 

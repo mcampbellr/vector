@@ -141,6 +141,57 @@
   background: var(--conn-error);
 }
 
+/* Epic filter: a native select dressed as a header control. */
+.epicFilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 200px;
+  padding: 3px 6px;
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ledger-text-dim);
+}
+
+.epicFilter:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.epicFilter:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* A narrowed board must never pass for the whole board. */
+.epicFilterActive {
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+}
+
+.epicFilterSelect {
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.epicFilterSelect:focus {
+  outline: none;
+}
+
+.epicFilterSelect option {
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
 /* The keycap is what changes tone on hover: it is what the user is about to
    press. */
 .paletteTrigger {
@@ -214,5 +265,45 @@
   }
   50% {
     opacity: 0.3;
+  }
+}
+
+/* Narrow screens: four tabs, the epic filter and the controls do not fit one
+   56px line, so the header wraps — identity and controls on the first row, the
+   view tabs on their own row (scrolling inside it, never the page). */
+@media (max-width: 760px) {
+  .header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    padding: 8px 16px;
+    row-gap: 6px;
+    column-gap: 12px;
+  }
+
+  .brand {
+    flex: 1 1 0;
+    overflow: hidden;
+  }
+
+  .freshness {
+    display: none;
+  }
+
+  .tabs {
+    order: 3;
+    flex: 1 0 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .actions {
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .epicFilter {
+    max-width: 130px;
   }
 }

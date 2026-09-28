@@ -24,6 +24,8 @@
   width: min(440px, 92vw);
   height: 100%;
   overflow-y: auto;
+  /* Reaching the end of the drawer must not scroll the board behind it. */
+  overscroll-behavior: contain;
   padding: var(--space-5);
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
@@ -135,6 +137,39 @@
   font-weight: 600;
   line-height: 1.4;
   color: var(--status-attention-fg);
+}
+
+.epicAssign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.epicSelect {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.epicSelect:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.epicSelect:disabled {
+  opacity: 0.6;
+}
+
+.epicAssign .error,
+.epicAssign .muted {
+  flex-basis: 100%;
 }
 
 .section {
@@ -389,6 +424,7 @@
 .modalBody {
   padding: var(--space-4) var(--space-5);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modalError {

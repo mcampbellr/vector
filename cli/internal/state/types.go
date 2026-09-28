@@ -144,6 +144,22 @@ type SpecState struct {
 	// compatible (omitempty) so specs without it read/serialize byte-identically.
 	QuickWin bool `json:"quickWin,omitempty"`
 
+	// Focus is the developer's "work on this first" marker. It is deliberately a
+	// separate axis from Priority (which keeps its urgent/high/normal/low meaning):
+	// within a board column and within a `spec next` status tier, focused specs rank
+	// ahead of the priority order. Written only by Store.SetFocus (and cleared when
+	// the spec reaches closed/archived). FocusedAt records when it was last turned
+	// on. Both are omitempty, so unfocused specs serialize byte-identically;
+	// SchemaVersion stays 1 (additive, no migration).
+	Focus     bool       `json:"focus,omitempty"`
+	FocusedAt *time.Time `json:"focusedAt,omitempty"`
+
+	// Epic is the id of the epic (.vector/epics/<id>.json) this spec belongs to.
+	// Written only by Store.AssignEpic / CreateSpec, which validate that the epic
+	// exists. omitempty, so specs without an epic serialize byte-identically;
+	// SchemaVersion stays 1 (additive, no migration).
+	Epic string `json:"epic,omitempty"`
+
 	// Sketches records the Excalidraw design wireframes attached to this spec
 	// (produced by /vector:idea and /vector:research via the vector-ui-ux-designer
 	// agent, written by `vector spec attach-sketch`). Optional and omitempty, so

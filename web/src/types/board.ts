@@ -67,6 +67,11 @@ export interface Card {
   needsUat?: boolean
   /** /vector:quick one-run change; rendered as a read-only badge. */
   quickWin?: boolean
+  /** Developer-marked "work on this first" (separate axis from priority); the
+   *  server already sorts focused cards first in their column. */
+  focus?: boolean
+  /** Id of the epic the spec belongs to (resolve it against Board.epics). */
+  epic?: string
   /** Attached Excalidraw wireframes; each is a download-only artifact entry. */
   sketches?: SketchRef[]
   savedUsd: number
@@ -122,6 +127,39 @@ export interface TokenSavings {
   precision?: 'actual' | 'estimated'
 }
 
+/** Palette tokens an epic may carry; mirrors Go state.EpicColors. Each maps to a
+ *  `--epic-<token>` CSS variable with light and dark values. */
+export const EPIC_COLORS = [
+  'slate',
+  'blue',
+  'teal',
+  'green',
+  'amber',
+  'orange',
+  'red',
+  'pink',
+  'violet',
+] as const
+
+export type EpicColor = (typeof EPIC_COLORS)[number]
+
+/** Statuses an epic's roll-up can count — the board columns plus archived. */
+export type EpicMemberStatus = Status | 'archived'
+
+/** An epic projected for the board; mirrors Go board.EpicSummary. `done` counts
+ *  closed + archived; `byStatus` holds only non-zero statuses (archived included
+ *  even though archived cards are not on the board). */
+export interface EpicSummary {
+  id: string
+  title: string
+  description?: string
+  color?: EpicColor
+  total: number
+  done: number
+  byStatus: Partial<Record<EpicMemberStatus, number>>
+  updatedAt: string
+}
+
 export interface Totals {
   specs: number
 }
@@ -132,6 +170,8 @@ export interface Board {
   generatedAt: string
   updatedAt: string
   columns: Column[]
+  /** Every epic with its roll-up; [] when none exist. */
+  epics: EpicSummary[]
   tokenSavings: TokenSavings
   totals: Totals
 }

@@ -192,11 +192,32 @@ each change.
 | **token routing** | Each command sends a task to the cheapest capable agent. Trivial work goes to Haiku or Sonnet; implementation goes to Opus. |
 | **`/vector:*` commands** | Project commands that run inside Claude Code, seeded into `.claude/commands/vector/`. See [`docs/plugin-and-commands.md`](docs/plugin-and-commands.md). |
 | **`vector init`** | The terminal subcommand that bootstraps a repo: it seeds the commands, detects your stack, and asks for consent before touching anything. |
+| **focus** | Your "work on this first" marker, separate from priority. Focused specs sort first in their column and win `/vector:apply` selection within the same status tier. |
+| **epic** | A named group of specs (e.g. "App Mobile") stored in `.vector/epics/<id>.json`, with progress (done of total) on the board's epics view. |
 
 Click a card to open its details drawer — status, priority, ticket, the next command to run, the
 activity history, and the spec files. Open a file to read the spec itself, rendered from disk.
 
 ![A spec's details drawer open beside a modal rendering the spec.md markdown — goal, scope, and user flow](docs/assets/spec-view.png)
+
+## Focus and epics
+
+Mark the specs you want picked up first, and group related specs under epics — from the terminal
+or straight from the board (the pin on a card, the epic select in the details drawer, and the
+**epics** tab with its "new epic" form; the header filter narrows the kanban to one epic).
+
+```bash
+vector spec focus add-login                       # sorts ahead of priority; `vector spec unfocus` clears it
+vector epic create --title "App Mobile" --color blue
+vector spec epic add-login app-mobile             # or --clear; `vector spec create --epic app-mobile`
+vector epic list                                  # progress per epic (done = closed + archived)
+vector epic show app-mobile                       # the epic and its specs
+vector epic update app-mobile --description "iOS and Android clients"
+vector epic delete app-mobile                     # refused while any spec still belongs to it
+```
+
+Board writes go through the same binary-owned mutators as the CLI and are accepted only from the
+board's own page (same-origin), so other sites cannot change your state.
 
 ## Design sketches
 

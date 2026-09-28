@@ -137,6 +137,12 @@ func (s *Store) applyTransition(id string, opts transitionOpts) (*SpecState, err
 	case from == StatusNeedsAttention:
 		spec.Flag = nil
 	}
+	// Focus means "work on this first"; a closed/archived spec has no work left, so
+	// the marker is dropped with the terminal move rather than lingering as noise.
+	if opts.to.IsTerminal() {
+		spec.Focus = false
+		spec.FocusedAt = nil
+	}
 
 	if err := writeSpecFile(s.statePath(id), spec); err != nil {
 		return nil, err
@@ -270,7 +276,10 @@ var selectionRank = map[Status]int{
 
 // SelectNext returns the recommended next work-item across specs, using Vector's
 // tracked status + priority signal (the plus over OpenSpec): in-progress >
-// needs-attention > review > open, then by priority, then most-recently-updated.
+// needs-attention > review > open; within each status tier focused specs come
+// first (the developer's explicit "work on this first"), then priority, then
+// most-recently-updated. Focus never lifts a spec across status tiers, so
+// finishing started work still wins over a focused open spec.
 // Returns nil when nothing is actionable (only closed/archived remain).
 func SelectNext(specs []*SpecState) *SpecState {
 	candidates := make([]*SpecState, 0, len(specs))
@@ -286,6 +295,9 @@ func SelectNext(specs []*SpecState) *SpecState {
 		ri, rj := selectionRank[candidates[i].Status], selectionRank[candidates[j].Status]
 		if ri != rj {
 			return ri < rj
+		}
+		if candidates[i].Focus != candidates[j].Focus {
+			return candidates[i].Focus
 		}
 		pi, pj := priorityRank(candidates[i].Priority), priorityRank(candidates[j].Priority)
 		if pi != pj {

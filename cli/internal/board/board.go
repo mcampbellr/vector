@@ -18,13 +18,16 @@ const SchemaVersion = 2
 // Board is the full projection served at GET /api/board. The web frontend owns
 // no canonical state; this is the single shape it renders.
 type Board struct {
-	SchemaVersion int          `json:"schemaVersion"`
-	Repo          string       `json:"repo"`
-	GeneratedAt   time.Time    `json:"generatedAt"`
-	UpdatedAt     time.Time    `json:"updatedAt"` // latest spec mutation → board freshness
-	Columns       []Column     `json:"columns"`
-	TokenSavings  TokenSavings `json:"tokenSavings"`
-	Totals        Totals       `json:"totals"`
+	SchemaVersion int       `json:"schemaVersion"`
+	Repo          string    `json:"repo"`
+	GeneratedAt   time.Time `json:"generatedAt"`
+	UpdatedAt     time.Time `json:"updatedAt"` // latest spec mutation → board freshness
+	Columns       []Column  `json:"columns"`
+	// Epics lists every epic with its membership roll-up (always an array, [] when
+	// none exist). Additive to the v2 contract: older clients ignore it.
+	Epics        []EpicSummary `json:"epics"`
+	TokenSavings TokenSavings  `json:"tokenSavings"`
+	Totals       Totals        `json:"totals"`
 }
 
 // Column is one status lane (single-axis board: column == lifecycle status).
@@ -58,6 +61,8 @@ type Card struct {
 	AttentionDetail   string            `json:"attentionDetail,omitempty"`
 	NeedsUAT          bool              `json:"needsUat,omitempty"` // review awaiting manual UAT
 	QuickWin          bool              `json:"quickWin,omitempty"` // /vector:quick one-run change
+	Focus             bool              `json:"focus,omitempty"`    // developer-marked "work on this first"
+	Epic              string            `json:"epic,omitempty"`     // id of the epic the spec belongs to
 	Sketches          []state.SketchRef `json:"sketches,omitempty"` // attached Excalidraw wireframes (download-only)
 	SavedUSD          float64           `json:"savedUsd"`
 	Routes            int               `json:"routes"`
@@ -116,6 +121,21 @@ type ModelRollup struct {
 	SavedUSD  float64 `json:"savedUsd"`
 }
 
+// EpicSummary is an epic projected for the board: identity plus how many specs
+// point to it. Done counts closed + archived; ByStatus includes archived even
+// though archived cards are not on the board columns, so progress reflects the
+// whole epic. Only non-zero statuses appear in ByStatus.
+type EpicSummary struct {
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Description string         `json:"description,omitempty"`
+	Color       string         `json:"color,omitempty"`
+	Total       int            `json:"total"`
+	Done        int            `json:"done"`
+	ByStatus    map[string]int `json:"byStatus"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+}
+
 // Totals are board-wide counters.
 type Totals struct {
 	Specs int `json:"specs"`
@@ -150,9 +170,10 @@ var priorityRank = map[state.Priority]int{
 // Source is what the server reads from — satisfied by *state.Store. Build uses
 // ListSpecs + ReadEvents; the standup/activity handlers also read the persisted
 // digest via ReadStandup, and the summary handler the persisted per-spec summary
-// via ReadSummary.
+// via ReadSummary. ListEpics feeds the epic roll-up.
 type Source interface {
 	ListSpecs() ([]*state.SpecState, error)
+	ListEpics() ([]*state.Epic, error)
 	ReadEvents() ([]state.Event, error)
 	ReadStandup() (*state.StandupDigest, error)
 	ReadSummary(id string) (*state.SpecSummary, error)
@@ -168,6 +189,10 @@ func Build(src Source, repo string, now time.Time) (*Board, error) {
 		return nil, err
 	}
 	events, err := src.ReadEvents()
+	if err != nil {
+		return nil, err
+	}
+	epics, err := src.ListEpics()
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +233,7 @@ func Build(src Source, repo string, now time.Time) (*Board, error) {
 		GeneratedAt:   now.UTC(),
 		UpdatedAt:     latest.UTC(),
 		Columns:       columns,
+		Epics:         summarizeEpics(epics, specs),
 		TokenSavings:  savings,
 		Totals:        Totals{Specs: len(specs)},
 	}, nil
@@ -228,6 +254,8 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 		SpecDoc:     spec.SpecDoc,
 		NeedsUAT:    spec.NeedsUAT,
 		QuickWin:    spec.QuickWin,
+		Focus:       spec.Focus,
+		Epic:        spec.Epic,
 		Sketches:    spec.Sketches,
 		SavedUSD:    econ.savedUSD,
 		Routes:      econ.routes,
@@ -258,15 +286,46 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 	return card
 }
 
-// sortCards orders by priority, then most-recently-updated first.
+// sortCards orders focused cards first (the developer's explicit "work on this
+// first", a separate axis from priority), then by priority, then
+// most-recently-updated first.
 func sortCards(cards []Card) {
 	sort.SliceStable(cards, func(i, j int) bool {
+		if cards[i].Focus != cards[j].Focus {
+			return cards[i].Focus
+		}
 		ri, rj := priorityRank[state.Priority(cards[i].Priority)], priorityRank[state.Priority(cards[j].Priority)]
 		if ri != rj {
 			return ri < rj
 		}
 		return cards[i].UpdatedAt.After(cards[j].UpdatedAt)
 	})
+}
+
+// summarizeEpics projects every epic with its membership counts, in id order
+// (ListEpics already sorts). Always returns a non-nil slice so the contract
+// serializes [] rather than null.
+func summarizeEpics(epics []*state.Epic, specs []*state.SpecState) []EpicSummary {
+	counts := state.CountEpicSpecs(specs)
+	summaries := make([]EpicSummary, 0, len(epics))
+	for _, epic := range epics {
+		entry := counts[epic.ID]
+		byStatus := make(map[string]int, len(entry.ByStatus))
+		for status, count := range entry.ByStatus {
+			byStatus[string(status)] = count
+		}
+		summaries = append(summaries, EpicSummary{
+			ID:          epic.ID,
+			Title:       epic.Title,
+			Description: epic.Description,
+			Color:       string(epic.Color),
+			Total:       entry.Total,
+			Done:        entry.Done,
+			ByStatus:    byStatus,
+			UpdatedAt:   epic.UpdatedAt.UTC(),
+		})
+	}
+	return summaries
 }
 
 type specEconomics struct {

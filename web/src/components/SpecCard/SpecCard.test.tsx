@@ -252,3 +252,51 @@ describe('SpecCard artifact meter', () => {
     expect(screen.getByLabelText('Artifacts: proposal · design — no tasks')).toBeTruthy()
   })
 })
+
+describe('SpecCard focus and epic', () => {
+  it('renders the epic chip with the resolved epic title', () => {
+    render(
+      <SpecCard
+        card={makeCard({ epic: 'app-mobile' })}
+        epic={{
+          id: 'app-mobile',
+          title: 'App Mobile',
+          color: 'blue',
+          total: 1,
+          done: 0,
+          byStatus: { 'in-progress': 1 },
+          updatedAt: '2026-06-27T00:00:00Z',
+        }}
+        onSelect={() => {}}
+      />,
+    )
+
+    expect(screen.getByTitle('Epic: App Mobile').textContent).toBe('App Mobile')
+  })
+
+  it('renders no epic chip for a spec without an epic', () => {
+    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    expect(screen.queryByTitle(/^Epic: /)).toBeNull()
+  })
+
+  it('shows a pressed focus pin on a focused card and an unpressed one otherwise', () => {
+    render(<SpecCard card={makeCard({ focus: true })} onSelect={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Unfocus spec' }).getAttribute('aria-pressed')).toBe('true')
+    cleanup()
+
+    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Focus spec' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('toggles focus without opening the drawer', () => {
+    const fetchMock = vi.fn(async () => new Response('{"id":"spec-id","focus":true,"changed":true}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const onSelect = vi.fn()
+    render(<SpecCard card={makeCard({})} onSelect={onSelect} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Focus spec' }))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(onSelect).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})

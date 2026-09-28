@@ -455,7 +455,8 @@ func newClosingTransitionCmd(name, short string, do func(*state.Store, string) (
 }
 
 // runSpecNext recommends the next work-item using Vector's tracked status +
-// priority signal — the plus over OpenSpec that powers /vector:apply selection.
+// focus + priority signal — the plus over OpenSpec that powers /vector:apply
+// selection (focused specs first within a status tier, see state.SelectNext).
 func newSpecNextCmd() *cobra.Command {
 	var (
 		repoRoot string
@@ -463,7 +464,7 @@ func newSpecNextCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "next",
-		Short: "recommend the next work-item by tracked status + priority",
+		Short: "recommend the next work-item by tracked status, focus and priority",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			root, err := resolveRepoRoot(repoRoot)
@@ -497,12 +498,22 @@ func newSpecNextCmd() *cobra.Command {
 				return nil
 			}
 			if jsonOut {
-				return printJSON(map[string]string{
+				result := map[string]string{
 					"id": pick.ID, "status": string(pick.Status), "priority": string(pick.Priority),
 					"title": pick.Title, "applyMode": string(mode), "applyModel": string(applyModel),
-				})
+				}
+				// Additive and present only when set, so an unfocused pick keeps the
+				// exact pre-existing shape.
+				if pick.Focus {
+					result["focus"] = "true"
+				}
+				return printJSON(result)
 			}
-			fmt.Printf("next: %s  (%s · %s)  [applyMode: %s]  [applyModel: %s]\n  %s\n", pick.ID, pick.Status, pick.Priority, mode, applyModel, pick.Title)
+			focusNote := ""
+			if pick.Focus {
+				focusNote = " · focused"
+			}
+			fmt.Printf("next: %s  (%s · %s%s)  [applyMode: %s]  [applyModel: %s]\n  %s\n", pick.ID, pick.Status, pick.Priority, focusNote, mode, applyModel, pick.Title)
 			return nil
 		},
 	}

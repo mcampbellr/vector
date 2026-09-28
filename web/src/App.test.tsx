@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Board, Card } from './types/board'
 import { App } from './App'
@@ -45,8 +45,22 @@ function makeBoard(): Board {
       {
         status: 'open',
         label: 'Open',
-        count: 1,
-        cards: [makeCard({ id: 'add-dark-mode', title: 'Dark mode' })],
+        count: 2,
+        cards: [
+          makeCard({ id: 'add-dark-mode', title: 'Dark mode', epic: 'app-mobile' }),
+          makeCard({ id: 'fix-login', title: 'Fix login' }),
+        ],
+      },
+    ],
+    epics: [
+      {
+        id: 'app-mobile',
+        title: 'App Mobile',
+        color: 'blue',
+        total: 1,
+        done: 0,
+        byStatus: { open: 1 },
+        updatedAt: '2026-06-27T00:00:00Z',
       },
     ],
     tokenSavings: {
@@ -58,7 +72,7 @@ function makeBoard(): Board {
       tokensOut: 0,
       byModel: [],
     },
-    totals: { specs: 1 },
+    totals: { specs: 2 },
   }
 }
 
@@ -66,10 +80,19 @@ vi.mock('./api/useBoard', () => ({
   useBoard: () => ({ board: makeBoard(), connection: 'live', error: null }),
 }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  window.history.replaceState(null, '', '/')
+})
 
 function openPaletteWithSlash() {
   fireEvent.keyDown(window, { key: '/' })
+}
+
+// The palette input is the combobox inside the palette dialog (the header's epic
+// filter is a combobox too).
+function paletteInput(): HTMLElement {
+  return within(screen.getByRole('dialog', { name: 'Command palette' })).getByRole('combobox')
 }
 
 // App renders ThemeControl, which requires the ThemeProvider (as in main.tsx).
@@ -88,7 +111,7 @@ describe('App command palette wiring', () => {
     fireEvent.click(screen.getByRole('button', { name: 'standup' }))
     openPaletteWithSlash()
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy()
-    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' })
+    fireEvent.keyDown(paletteInput(), { key: 'Escape' })
 
     fireEvent.click(screen.getByRole('button', { name: 'tokens' }))
     openPaletteWithSlash()
@@ -100,7 +123,7 @@ describe('App command palette wiring', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'standup' }))
     openPaletteWithSlash()
-    const input = screen.getByRole('combobox')
+    const input = paletteInput()
     fireEvent.change(input, { target: { value: 'dark' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
@@ -114,12 +137,12 @@ describe('App command palette wiring', () => {
     renderApp()
 
     openPaletteWithSlash()
-    const input = screen.getByRole('combobox')
+    const input = paletteInput()
     expect(document.activeElement).toBe(input)
 
     // Typing / inside the palette input neither reopens nor interferes.
     fireEvent.keyDown(input, { key: '/' })
-    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+    expect(within(screen.getByRole('dialog', { name: 'Command palette' })).getAllByRole('combobox')).toHaveLength(1)
     expect(screen.getAllByRole('dialog', { name: 'Command palette' })).toHaveLength(1)
   })
 
@@ -128,14 +151,14 @@ describe('App command palette wiring', () => {
 
     // Open the drawer via the palette.
     openPaletteWithSlash()
-    let input = screen.getByRole('combobox')
+    let input = paletteInput()
     fireEvent.change(input, { target: { value: 'dark' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(screen.getByRole('dialog', { name: 'Details for Dark mode' })).toBeTruthy()
 
     // Reopen the palette on top of the drawer.
     openPaletteWithSlash()
-    input = screen.getByRole('combobox')
+    input = paletteInput()
 
     // First Escape: palette closes, drawer stays (stopPropagation on the panel).
     fireEvent.keyDown(input, { key: 'Escape' })
@@ -145,5 +168,60 @@ describe('App command palette wiring', () => {
     // Second Escape (on window): the drawer's own listener closes it.
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'Details for Dark mode' })).toBeNull()
+  })
+})
+
+describe('App epic filter and epics view', () => {
+  it('narrows the kanban to one epic from the header and persists it in the URL', () => {
+    renderApp()
+    expect(screen.getByRole('button', { name: 'Open details for Fix login' })).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter the board by epic' }), {
+      target: { value: 'epic:app-mobile' },
+    })
+
+    expect(screen.getByRole('button', { name: 'Open details for Dark mode' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open details for Fix login' })).toBeNull()
+    expect(new URLSearchParams(window.location.search).get('epic')).toBe('app-mobile')
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter the board by epic' }), {
+      target: { value: '__none__' },
+    })
+    expect(screen.queryByRole('button', { name: 'Open details for Dark mode' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open details for Fix login' })).toBeTruthy()
+    expect(new URLSearchParams(window.location.search).get('epic')).toBe('none')
+  })
+
+  it('restores the filter from ?epic= and ignores an epic that no longer exists', () => {
+    window.history.replaceState(null, '', '/?epic=app-mobile')
+    renderApp()
+    expect(screen.queryByRole('button', { name: 'Open details for Fix login' })).toBeNull()
+    cleanup()
+
+    window.history.replaceState(null, '', '/?epic=deleted-epic')
+    renderApp()
+    expect(screen.getByRole('button', { name: 'Open details for Fix login' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open details for Dark mode' })).toBeTruthy()
+  })
+
+  it('reaches the epics tab from the header and applies its filter back on the board', () => {
+    renderApp()
+
+    fireEvent.click(screen.getByRole('button', { name: 'epics' }))
+    expect(screen.getByRole('region', { name: 'Epic App Mobile' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /show on board/ }))
+    // Back on the kanban, narrowed to the epic.
+    expect(screen.getByRole('button', { name: 'Open details for Dark mode' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open details for Fix login' })).toBeNull()
+    const select = screen.getByRole('combobox', { name: 'Filter the board by epic' }) as HTMLSelectElement
+    expect(select.value).toBe('epic:app-mobile')
+  })
+
+  it('opens the details drawer from a spec listed in the epics tab', () => {
+    renderApp()
+    fireEvent.click(screen.getByRole('button', { name: 'epics' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open details for Dark mode' }))
+    expect(screen.getByRole('dialog', { name: 'Details for Dark mode' })).toBeTruthy()
   })
 })

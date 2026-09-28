@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Tag, X } from 'lucide-react'
-import type { Card } from '../../types/board'
+import type { Card, EpicSummary } from '../../types/board'
 import { useSpecSummary } from '../../api/useSpecSummary'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
@@ -12,6 +12,8 @@ import { CopyableCommand } from './CopyableCommand'
 import { UsefulCommands } from './UsefulCommands'
 import { SpecArtifactBrowser } from './SpecArtifactBrowser'
 import { CopyableSlug } from '../CopyableSlug/CopyableSlug'
+import { FocusToggle } from '../FocusToggle/FocusToggle'
+import { EpicAssignSelect } from './EpicAssignSelect'
 import { relativeTime } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
 import styles from './SpecDetailsDrawer.module.css'
@@ -22,16 +24,19 @@ const MarkdownView = lazy(() => import('./MarkdownView'))
 
 interface SpecDetailsDrawerProps {
   card: Card
+  /** Board epics, for the epic assignment select. */
+  epics: EpicSummary[]
   onClose: () => void
 }
 
 // SpecDetailsDrawer is the right-side panel that opens when a board card is
 // clicked. It surfaces the AI "what was done" summary, the activity timeline,
-// the next command, and context-aware copyable useful commands. It mutates
-// nothing — the board stays read-only (architecture/state-model.md). The summary
+// the next command, and context-aware copyable useful commands. Its only writes
+// are the focus toggle and the epic select, which send intents to the API (the
+// state JSON is never patched client-side — architecture/state-model.md). The summary
 // is fetched lazily: the drawer only mounts when a card is selected, so the fetch
 // fires on open and is torn down on close.
-export function SpecDetailsDrawer({ card, onClose }: SpecDetailsDrawerProps) {
+export function SpecDetailsDrawer({ card, epics, onClose }: SpecDetailsDrawerProps) {
   const { data: summary, loading, error } = useSpecSummary(card.id)
   const now = useNow(30_000)
 
@@ -69,6 +74,12 @@ export function SpecDetailsDrawer({ card, onClose }: SpecDetailsDrawerProps) {
         <div className={styles.metaRow}>
           <StatusPill status={card.status} />
           <PriorityFlag priority={card.priority} />
+          <FocusToggle
+            specId={card.id}
+            focused={card.focus === true}
+            canFocus={card.status !== 'closed'}
+            variant="drawer"
+          />
           {card.ticket && (
             <a
               className={styles.ticket}
@@ -100,6 +111,11 @@ export function SpecDetailsDrawer({ card, onClose }: SpecDetailsDrawerProps) {
             )}
           </section>
         )}
+
+        <section className={styles.section}>
+          <h3 className={styles.sectionTitle}>Epic</h3>
+          <EpicAssignSelect specId={card.id} epicId={card.epic} epics={epics} />
+        </section>
 
         {card.relatedTo && card.relatedTo.length > 0 && (
           <section className={styles.section}>

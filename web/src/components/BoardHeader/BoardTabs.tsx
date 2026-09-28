@@ -8,7 +8,7 @@ interface BoardTabsProps {
 }
 
 // BoardTabs is the view switch, living inside the 56px header rather than on a
-// row of its own: three mono labels, the active one on a raised surface. The
+// row of its own: one mono label per view, the active one on a raised surface. The
 // labels are the view ids verbatim — the board speaks lowercase English.
 export function BoardTabs({ view, onChange }: BoardTabsProps) {
   return (

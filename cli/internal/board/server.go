@@ -12,12 +12,18 @@ import (
 	"github.com/mariocampbell/vector/internal/standup"
 )
 
-// Server exposes the board as a read-only HTTP API with a live SSE stream. It is
-// the cli/ → web/ contract: web/ consumes these endpoints and owns no canonical
-// state (architecture/state-model.md).
+// Server exposes the board as an HTTP API with a live SSE stream. It is the
+// cli/ → web/ contract: web/ consumes these endpoints and owns no canonical state
+// (architecture/state-model.md). Reads project the Source; the few write
+// endpoints (focus, epic assignment, epic create/update — see writes.go) are off
+// until EnableWrites and always go through the Store mutators.
 type Server struct {
 	src  Source
 	repo string
+
+	writer     Writer
+	actor      string
+	writeHosts map[string]bool
 
 	mu      sync.Mutex
 	clients map[chan []byte]struct{}
@@ -37,6 +43,10 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/activity", s.handleActivity)
 	mux.HandleFunc("/api/summary", s.handleSummary)
 	mux.HandleFunc("/api/file", s.handleFile)
+	mux.HandleFunc("/api/specs/{id}/focus", s.handleSpecFocus)
+	mux.HandleFunc("/api/specs/{id}/epic", s.handleSpecEpic)
+	mux.HandleFunc("/api/epics", s.handleEpicCreate)
+	mux.HandleFunc("/api/epics/{id}", s.handleEpicUpdate)
 	if static != nil {
 		mux.Handle("/", static)
 	}
@@ -234,7 +244,7 @@ func validArtifact(artifact string) bool {
 }
 
 // writeJSONError writes a {"error": msg} body with the given status, matching the
-// shape the web hooks parse (GET-only local API: 400/404/500).
+// shape the web hooks parse (400/403/404/405/409/415/500).
 func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
