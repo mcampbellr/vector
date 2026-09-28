@@ -37,27 +37,50 @@ The `vector` binary is the sole writer of `.vector` state. Never edit state file
    Generate missing proposal/design/tasks with the repo's OpenSpec authoring tooling when
    available; otherwise use `vector-proposal-generator` (Sonnet). Preserve existing artifacts.
    If formalization fails, stop without registering a non-actionable card.
-9. Register the card and spec atomically through the binary:
+9. **Epic (optional grouping).** Right before `vector spec create`, list the epics once:
 
    ```bash
-   vector spec create \
-     --title "<title>" \
-     --id "<fix-id>" \
-     --status open \
-     --change "<fix-id>" \
-     --artifacts "<created-or-existing,list>" \
-     [--ticket "$TICKET_JSON"] \
-     [--related "$RELATED_JSON"] \
-     --body-file ".vector/tmp/<fix-id>/spec.md" \
-     --json
+   EPICS_JSON=$(vector epic list --json 2>/dev/null)
    ```
 
-10. Record routed-agent usage with `vector spec route` for the refiner, composer, validator,
+   Resolve `EPIC_ID` from the user's request and clarifications (one list call, no extra agent):
+   - **Named or one clear match**: the request names an existing epic, or clearly matches
+     exactly one by `id`/`title`/`description` → set `EPIC_ID` to its `id`; don't ask.
+   - **Ambiguous**: more than one plausible epic, or only a weak match → ask once with
+     `AskUserQuestion`: one option per plausible epic (`<title> (<id>)`) plus **No epic**.
+   - **Fits an epic that doesn't exist** (e.g. "for the App Mobile epic" and there is none) →
+     propose it with `AskUserQuestion`, showing the title, a suggested kebab-case id, and one
+     color from `slate|blue|teal|green|amber|orange|red|pink|violet`: **Create and assign** /
+     **No epic**. Only on **Create and assign** run
+     `vector epic create --title "<title>" --id "<id>" --color <color> --json` and set
+     `EPIC_ID` to the returned `id`; if it fails, show the error and continue without an epic.
+   - **No epics, a failed list, or nothing plausibly fits** → leave `EPIC_ID` unset; don't ask
+     and don't mention epics.
+
+   Pass `--epic "$EPIC_ID"` only when set. The epic never blocks creation: if the binary
+   rejects `--epic`, re-run `vector spec create` without it and report the error.
+10. Register the card and spec atomically through the binary:
+
+    ```bash
+    vector spec create \
+      --title "<title>" \
+      --id "<fix-id>" \
+      --status open \
+      --change "<fix-id>" \
+      --artifacts "<created-or-existing,list>" \
+      [--ticket "$TICKET_JSON"] \
+      [--related "$RELATED_JSON"] \
+      [--epic "$EPIC_ID"] \
+      --body-file ".vector/tmp/<fix-id>/spec.md" \
+      --json
+    ```
+
+11. Record routed-agent usage with `vector spec route` for the refiner, composer, validator,
     and native artifact generator when each actually ran.
-11. For a strong UI signal, offer the optional Excalidraw wireframe using a bounded
+12. For a strong UI signal, offer the optional Excalidraw wireframe using a bounded
     `AskUserQuestion`; skipping it leaves the open card unchanged.
-12. Report the id, `status: open`, spec path, relation evidence, validation result, change
-    directory, and artifacts. Copy or present only `/vector:apply <id>` as the next command.
+13. Report the id, `status: open`, spec path, relation evidence, epic (when assigned), validation
+    result, change directory, and artifacts. Copy or present only `/vector:apply <id>` as the next command.
 
 ## Hard rules
 
