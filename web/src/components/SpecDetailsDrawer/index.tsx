@@ -51,7 +51,7 @@ export function SpecDetailsDrawer({ card, epics, onClose }: SpecDetailsDrawerPro
   }, [onClose])
 
   const hasSummary = !!summary?.summary
-  const nextCommand = nextCommandFor(card.status, card.id)
+  const nextCommand = nextCommandFor(card)
 
   return (
     <div className={styles.overlay} onClick={onClose}>

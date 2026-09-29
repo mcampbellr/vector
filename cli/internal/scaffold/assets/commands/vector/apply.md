@@ -306,7 +306,8 @@ Report: the id and the transition made (e.g. `open → in-progress → review`),
 (delegate/native), tasks completed vs total, the gate result, whether the working tree has
 uncommitted changes, and the next step.
 
-- **Routed to `review`** → next step is `/vector:close <id>` (ready for review).
+- **Routed to `review`** → next step is `/vector:ship <id>` (ready for review); once the card
+  has a recorded PR, `/vector:close <id>` after the merge.
 - **Routed to `needs-attention`** (external blocker, §6) → surface the blocker and its `reason`
   (what's pending + unblock path + PR ref) **instead of** "ready for review"; the next step is to
   provide the missing dependency, then `/vector:apply <id>` to resume. Form:

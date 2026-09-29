@@ -317,6 +317,40 @@ func TestBuildProjectsSketches(t *testing.T) {
 	}
 }
 
+// TestBuildProjectsPR verifies the Card projection carries the recorded PR (the
+// web's ship-vs-close signal) and omits the field (omitempty) when there is none.
+func TestBuildProjectsPR(t *testing.T) {
+	now := time.Date(2026, 6, 25, 12, 0, 0, 0, time.UTC)
+	src := fakeSource{specs: []*state.SpecState{{
+		ID: "shipped", Title: "Shipped", Status: state.StatusReview, Priority: state.PriorityNormal,
+		PR:        &state.PullRequest{URL: "https://github.com/o/r/pull/7", Number: 7, Draft: true, OpenedAt: now},
+		UpdatedAt: now,
+	}}}
+	b, err := Build(src, "demo", now)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	card := columnByStatus(t, b, "review").Cards[0]
+	if card.PR == nil || card.PR.URL != "https://github.com/o/r/pull/7" || card.PR.Number != 7 || !card.PR.Draft {
+		t.Fatalf("card.PR = %+v, want the recorded draft PR #7", card.PR)
+	}
+
+	// A card without a PR must carry a nil PR and omit the field from the JSON contract.
+	plain := fakeSource{specs: []*state.SpecState{{ID: "p", Title: "P", Status: state.StatusReview, Priority: state.PriorityNormal, UpdatedAt: now}}}
+	pb, _ := Build(plain, "demo", now)
+	plainCard := columnByStatus(t, pb, "review").Cards[0]
+	if plainCard.PR != nil {
+		t.Fatalf("card.PR = %+v, want nil", plainCard.PR)
+	}
+	raw, err := json.Marshal(plainCard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsField(raw, "pr") {
+		t.Errorf("pr present for a card with none: %s", raw)
+	}
+}
+
 func containsField(b []byte, field string) bool {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err != nil {
