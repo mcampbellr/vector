@@ -512,10 +512,14 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 			results = append(results, syncResult{c.Name, string(existing.Status), "skipped (not sync-owned)"})
 		case reconcile:
 			// Terminal cards (closed/archived) are never reconciled back to a
-			// tasks-derived status; mirror ReconcileStatus's guard in the preview.
+			// tasks-derived status, and a review card never regresses to
+			// in-progress; mirror ReconcileStatus's guards in the preview.
 			effective := status
 			if existing.Status.IsTerminal() {
 				effective = existing.Status
+			}
+			if existing.Status == state.StatusReview && effective == state.StatusInProgress {
+				effective = state.StatusReview
 			}
 			if dryRun {
 				action := "unchanged"

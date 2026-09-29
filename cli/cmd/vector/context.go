@@ -130,7 +130,7 @@ const (
 // docs/knowledge-architecture.md §6). Unknown commands are rejected by --for.
 var commandTiers = map[string]validationTier{
 	"status": tierTrust, "link": tierTrust, "close": tierTrust,
-	"archive": tierTrust, "standup": tierTrust, "propose": tierTrust, "sync": tierTrust,
+	"archive": tierTrust, "standup": tierTrust, "propose": tierTrust, "sync": tierTrust, "check": tierTrust,
 	"raw": tierLazy, "bug": tierLazy,
 	"apply": tierFull, "comment": tierFull,
 }

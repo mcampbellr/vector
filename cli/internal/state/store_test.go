@@ -208,6 +208,34 @@ func TestReconcileStatusKeepsTerminalStates(t *testing.T) {
 	}
 }
 
+// A review card whose tasks.md regains pending implementation work must stay in
+// review: sync --reconcile used to silently regress it to in-progress. `vector
+// check` reports it as review-with-pending-tasks instead.
+func TestReconcileStatusNeverRegressesReview(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	os := &OpenSpec{Change: "add-auth", Artifacts: ArtifactSet{Tasks: true}}
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-auth", Title: "Add auth", Status: StatusReview, OpenSpec: os, SpecDocRel: "x", Now: fixedNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := store.ReconcileStatus("add-auth", StatusInProgress, os, false, "t", fixedNow())
+	if err != nil {
+		t.Fatalf("ReconcileStatus: %v", err)
+	}
+	if changed {
+		t.Error("expected changed=false: review must not regress to in-progress")
+	}
+	onDisk, _ := store.ReadSpec("add-auth")
+	if onDisk.Status != StatusReview {
+		t.Errorf("Status = %q, want review", onDisk.Status)
+	}
+
+	// The explicit transition stays legal: only the automatic sync path is guarded.
+	if _, err := store.SetStatus("add-auth", StatusInProgress, "", "t", fixedNow()); err != nil {
+		t.Errorf("SetStatus review → in-progress must stay legal: %v", err)
+	}
+}
+
 func TestProposeSpec(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	makeLegacyDraft(t, store, "add-foo")

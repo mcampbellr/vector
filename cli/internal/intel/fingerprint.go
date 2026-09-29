@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/mariocampbell/vector/internal/gitexec"
 )
 
 // Domain is one fingerprint domain: a slice of repo knowledge with its own
@@ -235,7 +236,7 @@ func digestContent(repoRoot string, domain Domain, files []string) string {
 // digest so the domain never crashes (spec §11).
 func digestStructure(repoRoot string) (string, error) {
 	h := sha256.New()
-	tracked, err := gitOutput(repoRoot, "ls-files")
+	tracked, err := gitexec.Output(repoRoot, "ls-files")
 	if err != nil {
 		// Fallback: no git → digest the bounded filesystem walk instead.
 		files, _ := collectFiles(repoRoot)
@@ -248,25 +249,14 @@ func digestStructure(repoRoot string) (string, error) {
 	}
 	h.Write([]byte("tracked\n"))
 	h.Write(tracked)
-	if others, err := gitOutput(repoRoot, "ls-files", "--others", "--exclude-standard"); err == nil {
+	if others, err := gitexec.Output(repoRoot, "ls-files", "--others", "--exclude-standard"); err == nil {
 		fmt.Fprintf(h, "untracked:%d\n", countNonEmptyLines(others))
 	}
-	if sub, err := gitOutput(repoRoot, "submodule", "status"); err == nil {
+	if sub, err := gitexec.Output(repoRoot, "submodule", "status"); err == nil {
 		h.Write([]byte("submodules\n"))
 		h.Write(sub)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// gitOutput runs `git -C repoRoot <args...>` and returns stdout. An error
-// (git absent, not a repo) is returned so callers can fall back.
-func gitOutput(repoRoot string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", append([]string{"-C", repoRoot}, args...)...)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-	}
-	return out, nil
 }
 
 // countNonEmptyLines counts the non-empty newline-separated lines in b.
