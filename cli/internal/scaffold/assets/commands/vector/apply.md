@@ -86,7 +86,8 @@ Read `.vector/specs/<id>/state.json`. Then:
 - **`needs-attention`** → surface `needsAttention.reason` first and resolve the blocker. Once
   unblocked, `vector spec status <id> in-progress` and continue.
 - **`review`** → implementation is already done; nothing to apply. Point the user at
-  `/vector:close <id>`. Stop.
+  `/vector:ship <id>` when the card has no recorded `pr`; otherwise `/vector:close <id>` after the
+  merge. Stop.
 
 ## 3. Detect the mode (delegate vs native)
 
