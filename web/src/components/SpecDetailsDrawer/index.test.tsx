@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Card } from '../../types/board'
+import type { Card, PullRequest } from '../../types/board'
 import { SpecDetailsDrawer } from './index'
 import { jsonResponse, stubFetch } from '../../test/fetchStub'
 
@@ -130,5 +130,36 @@ describe('SpecDetailsDrawer resolution', () => {
   it('has no resolution section when the spec has none', () => {
     render(<SpecDetailsDrawer card={makeCard({ status: 'open' })} epics={[]} onClose={() => {}} />)
     expect(screen.queryByRole('region', { name: 'Resolution' })).toBeNull()
+  })
+})
+
+describe('SpecDetailsDrawer next command by PR presence', () => {
+  const pr: PullRequest = { url: 'https://github.com/o/r/pull/7', number: 7, draft: false, openedAt: '2026-06-27T00:00:00Z' }
+
+  it('suggests ship for a review spec with no recorded PR', () => {
+    render(<SpecDetailsDrawer card={makeCard({ status: 'review', id: 'fix-raw-tags' })} epics={[]} onClose={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Copy command: /vector:ship fix-raw-tags' })).toBeTruthy()
+  })
+
+  it('suggests close once the review spec has a recorded PR', () => {
+    render(<SpecDetailsDrawer card={makeCard({ status: 'review', id: 'fix-raw-tags', pr })} epics={[]} onClose={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Copy command: /vector:close fix-raw-tags' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Copy command: /vector:ship fix-raw-tags' })).toBeNull()
+  })
+})
+
+describe('SpecDetailsDrawer close without PR', () => {
+  const pr: PullRequest = { url: 'https://github.com/o/r/pull/7', number: 7, draft: false, openedAt: '2026-06-27T00:00:00Z' }
+
+  it('keeps close copyable as an alternative for a review spec with no PR', () => {
+    render(<SpecDetailsDrawer card={makeCard({ status: 'review', id: 'fix-raw-tags' })} epics={[]} onClose={() => {}} />)
+    expect(screen.getByText('Close without PR')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Copy command: /vector:close fix-raw-tags' })).toBeTruthy()
+  })
+
+  it('drops the alternative once a PR is recorded — close is already the next command', () => {
+    render(<SpecDetailsDrawer card={makeCard({ status: 'review', id: 'fix-raw-tags', pr })} epics={[]} onClose={() => {}} />)
+    expect(screen.queryByText('Close without PR')).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Copy command: /vector:close fix-raw-tags' })).toHaveLength(1)
   })
 })

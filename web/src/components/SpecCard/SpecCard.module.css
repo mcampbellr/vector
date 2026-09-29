@@ -255,7 +255,8 @@
 }
 
 /* The verb is the only element on the card with a background. Its tooltip holds
-   the whole line (`/vector:close <slug>`); the click copies it. */
+   the whole line (`/vector:ship <slug>`, or `close` once a PR is recorded); the
+   click copies it. */
 .verb {
   margin-left: auto;
   flex: none;

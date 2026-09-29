@@ -46,6 +46,15 @@ export interface SketchRef {
   createdAt: string
 }
 
+/** The pull request a spec was shipped as (recorded by /vector:ship); mirrors Go
+ *  state.PullRequest. */
+export interface PullRequest {
+  url: string
+  number?: number
+  draft: boolean
+  openedAt: string
+}
+
 export interface Card {
   id: string
   title: string
@@ -84,6 +93,8 @@ export interface Card {
   epic?: string
   /** Attached Excalidraw wireframes; each is a download-only artifact entry. */
   sketches?: SketchRef[]
+  /** The recorded PR; its presence turns a review card's next step from ship to close. */
+  pr?: PullRequest
   savedUsd: number
   routes: number
   tokensIn: number

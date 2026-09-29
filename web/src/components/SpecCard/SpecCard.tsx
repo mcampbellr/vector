@@ -135,7 +135,7 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
               {formatCompact(card.tokensIn + card.tokensOut)} tok
             </span>
           )}
-          <CardVerbButton status={card.status} id={card.id} />
+          <CardVerbButton card={card} />
         </div>
 
         <CardAttentionRow card={card} />
