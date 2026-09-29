@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -114,5 +115,63 @@ func TestRunSyncLinksTicketFromWorktreeName(t *testing.T) {
 	}
 	if spec.Ticket == nil || spec.Ticket.Key != "MH-1592" || spec.Ticket.Provider != state.TicketJira || !spec.Ticket.Auto {
 		t.Fatalf("expected auto ticket MH-1592 from worktree name, got %+v", spec.Ticket)
+	}
+}
+
+// The --dry-run preview of sync --reconcile must agree with ReconcileStatus: a
+// review card whose tasks.md derives in-progress is announced as unchanged, never
+// as a regression the real write would not apply.
+func TestRunSyncReconcileDryRunKeepsReview(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{
+		SchemaVersion: config.SchemaVersion,
+		SpecPath:      config.VectorFallbackSpecPath,
+		SpecFilename:  "spec.md",
+		SpecStore:     config.StoreVector,
+		Source:        config.SourceDefault,
+	}
+	if err := config.Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	changeDir := filepath.Join(root, "openspec", "changes", "payments")
+	if err := os.MkdirAll(changeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tasks := "# Tasks\n\n- [x] 1.1 implement\n- [ ] 1.2 wire the endpoint\n"
+	if err := os.WriteFile(filepath.Join(changeDir, "tasks.md"), []byte(tasks), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := state.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openSpec := &state.OpenSpec{Change: "payments", Artifacts: state.ArtifactSet{Tasks: true}}
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "payments", Title: "Payments", Status: state.StatusReview, OpenSpec: openSpec, SpecDocRel: "x"}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() error {
+		return runSync([]string{"--repo-root", root, "--reconcile", "--dry-run", "--json"})
+	})
+	var parsed struct {
+		Specs []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+			Action string `json:"action"`
+		} `json:"specs"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("parse sync --json: %v\n%s", err, out)
+	}
+	results := parsed.Specs
+	if len(results) != 1 || results[0].Status != "review" || results[0].Action != "unchanged" {
+		t.Fatalf("dry-run preview = %+v, want payments review/unchanged", results)
+	}
+	spec, err := store.ReadSpec("payments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Status != state.StatusReview {
+		t.Errorf("dry-run wrote status %q", spec.Status)
 	}
 }
