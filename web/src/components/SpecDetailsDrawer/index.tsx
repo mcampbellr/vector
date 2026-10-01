@@ -4,11 +4,10 @@ import type { Card, EpicSummary } from '../../types/board'
 import { useSpecSummary } from '../../api/useSpecSummary'
 import { StatusPill } from '../StatusPill/StatusPill'
 import { PriorityFlag } from '../PriorityFlag/PriorityFlag'
-import { nextCommandFor } from '../SpecCard/nextCommandFor'
 import { RelatedChips } from '../SpecCard/RelatedChips'
 import { AttentionCategoryChip } from '../SpecCard/AttentionCategoryChip'
 import { SpecTimeline } from '../SpecTimeline'
-import { CopyableCommand } from './CopyableCommand'
+import { NextStep } from './NextStep'
 import { UsefulCommands } from './UsefulCommands'
 import { SpecArtifactBrowser } from './SpecArtifactBrowser'
 import { CopyableSlug } from '../CopyableSlug/CopyableSlug'
@@ -51,7 +50,6 @@ export function SpecDetailsDrawer({ card, epics, onClose }: SpecDetailsDrawerPro
   }, [onClose])
 
   const hasSummary = !!summary?.summary
-  const nextCommand = nextCommandFor(card.status, card.id)
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -161,14 +159,7 @@ export function SpecDetailsDrawer({ card, epics, onClose }: SpecDetailsDrawerPro
           )}
         </section>
 
-        {nextCommand && (
-          <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>Next command</h3>
-            <div className={styles.cmdList}>
-              <CopyableCommand label="Run next" command={nextCommand} />
-            </div>
-          </section>
-        )}
+        <NextStep status={card.status} id={card.id} />
 
         <UsefulCommands card={card} />
 

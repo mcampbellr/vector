@@ -156,6 +156,46 @@ Completion scripts are generated at runtime (nothing embedded), so they always m
 you have installed. Machine-readable `--json` output is unaffected by the styled human surface —
 scripts that consume `vector <command> --json` see byte-identical output.
 
+#### `vector open` — jump into a spec from tmux
+
+`vector open <id>` opens (or focuses) a tmux window named `◆ <slug>` with its cwd in the spec's
+worktree and starts Claude Code with the command the spec's status calls for:
+`/vector:apply <id>` for open, in-progress and needs-attention, `/vector:close <id>` for review.
+Closed and archived specs open a plain shell with a "no next command" notice.
+
+```bash
+vector open add-dark-mode            # open or focus the spec's window
+vector open add-dark-mode --print    # show the tmux/git commands without running them
+vector open                          # pick among in-progress and focused specs (fzf)
+```
+
+| Flag | Effect |
+|---|---|
+| `--cmd <slash-command>` | Start Claude with this command instead of the computed one (must start with `/`). |
+| `--no-claude` | Open the window with your shell only. |
+| `--split` | Split the current window (`split-window -h`) instead of opening a new one. Inside tmux only. |
+| `--print` | Dry run: print the commands (including any `git worktree add`). Only read-only tmux/git queries run; nothing is created, tagged, attached or written. |
+| `--yes` | Create the spec's missing worktree without asking. |
+
+- **Idempotent**: the window is tagged with the tmux user option `@vector-spec <id>`, so a second
+  `vector open` focuses it even after you rename it. Outside tmux it creates (or reuses) a session
+  named after the repo and attaches to it. `--split` panes are not tagged, so each `--split` adds a
+  new pane.
+- **Worktrees**: on a bare+worktree layout (`[branch]` in the spec path) the cwd is
+  `<worktree-root>/<id>` (or wherever the `<prefix><id>` branch is already checked out). When that
+  worktree is missing, `vector open` offers to create it — checking out the existing local branch,
+  tracking `origin/<prefix><id>`, or forking a new branch from the base — asking first on a TTY or
+  proceeding with `--yes`; without a TTY or `--yes` it stops without creating anything. A
+  registration whose directory is gone asks you to run `git worktree prune` first. Other layouts
+  use the repo root.
+- **Active spec**: when it launches Claude, it records the spec in `~/.vector/<repo-id>/active.json`
+  (personal, outside the repo). It never writes Vector's board state.
+- Without an id, it uses `fzf` when installed and attached to a terminal; otherwise it lists the
+  candidates and exits non-zero asking for the id.
+- **From the board**: a card's details drawer offers the line under **Next step**, as `From a
+  terminal` next to the `Inside Claude Code` slash command. They are alternatives, not steps —
+  `vector open` already starts Claude with that same command, so running both applies the spec twice.
+
 ## Quickstart
 
 Vector is built to drop into an existing repo. Four steps take you from nothing to a board:
