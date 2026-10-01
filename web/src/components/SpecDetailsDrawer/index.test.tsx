@@ -13,6 +13,17 @@ vi.mock('../../api/useSpecSummary', () => ({
 
 afterEach(cleanup)
 
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+
+function setClipboard(value: unknown) {
+  Object.defineProperty(navigator, 'clipboard', { value, configurable: true, writable: true })
+}
+
+afterEach(() => {
+  if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+  else setClipboard(undefined)
+})
+
 function makeCard(overrides: Partial<Card>): Card {
   return {
     id: 'spec-id',
@@ -130,5 +141,33 @@ describe('SpecDetailsDrawer resolution', () => {
   it('has no resolution section when the spec has none', () => {
     render(<SpecDetailsDrawer card={makeCard({ status: 'open' })} epics={[]} onClose={() => {}} />)
     expect(screen.queryByRole('region', { name: 'Resolution' })).toBeNull()
+  })
+})
+
+describe('SpecDetailsDrawer next step', () => {
+  it('offers the shell line and the slash command as peers, with the $ out of the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    setClipboard({ writeText })
+    render(<SpecDetailsDrawer card={makeCard({ id: 'add-dark-mode', status: 'in-progress' })} epics={[]} onClose={() => {}} />)
+
+    const section = screen.getByRole('region', { name: 'Next step' })
+    expect(section.textContent).toContain('From a terminal')
+    expect(section.textContent).toContain('Inside Claude Code')
+
+    const shellCopy = screen.getByRole('button', { name: 'Copy shell command: vector open add-dark-mode' })
+    fireEvent.click(shellCopy)
+    expect(writeText).toHaveBeenCalledWith('vector open add-dark-mode')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy command: /vector:apply add-dark-mode' }))
+    expect(writeText).toHaveBeenLastCalledWith('/vector:apply add-dark-mode')
+  })
+
+  it('keeps the terminal line for a closed spec and says why Claude has nothing left', () => {
+    render(<SpecDetailsDrawer card={makeCard({ id: 'add-dark-mode', status: 'closed' })} epics={[]} onClose={() => {}} />)
+
+    const section = screen.getByRole('region', { name: 'Next step' })
+    expect(screen.getByRole('button', { name: 'Copy shell command: vector open add-dark-mode' })).toBeTruthy()
+    expect(screen.queryByText('Inside Claude Code')).toBeNull()
+    expect(section.textContent).toContain('opens a plain shell in its worktree')
   })
 })

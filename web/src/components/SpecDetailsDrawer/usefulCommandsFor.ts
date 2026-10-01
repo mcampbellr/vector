@@ -7,7 +7,7 @@ export interface UsefulCommand {
 
 /**
  * Returns the context-aware slash commands worth surfacing for a card, beyond
- * its primary "next command" (which the drawer shows separately via NextCommand).
+ * its primary next step (which the drawer shows separately via NextStep).
  * The set is gated by the spec's state-machine legality and its current
  * metadata: `/vector:link` appears only when the spec has no ticket; the status
  * moves shown are the legal ones for the current status. The board stays

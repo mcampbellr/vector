@@ -192,6 +192,9 @@ vector open                          # pick among in-progress and focused specs 
   (personal, outside the repo). It never writes Vector's board state.
 - Without an id, it uses `fzf` when installed and attached to a terminal; otherwise it lists the
   candidates and exits non-zero asking for the id.
+- **From the board**: a card's details drawer offers the line under **Next step**, as `From a
+  terminal` next to the `Inside Claude Code` slash command. They are alternatives, not steps —
+  `vector open` already starts Claude with that same command, so running both applies the spec twice.
 
 ## Quickstart
 
