@@ -470,6 +470,13 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ne
 	if spec.Status.IsTerminal() {
 		status = spec.Status
 	}
+	// A tasks.md-derived status must never pull a card backward out of review to
+	// in-progress: that silent regression hides real signal (e.g. an explicitly
+	// deferred task) behind an automatic move. `vector check` surfaces this as
+	// review-with-pending-tasks (Medium) for a human decision instead.
+	if spec.Status == StatusReview && status == StatusInProgress {
+		status = StatusReview
+	}
 	// NeedsUAT is a refinement of review; it never persists outside it.
 	wantUAT := needsUAT && status == StatusReview
 	if spec.Status == status && openSpecEqual(spec.OpenSpec, openSpec) && spec.NeedsUAT == wantUAT {

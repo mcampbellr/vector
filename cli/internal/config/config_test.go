@@ -885,3 +885,261 @@ func TestLoadRejectsInvalidShipMode(t *testing.T) {
 		t.Errorf("expected invalid ship.mode error, got %v", err)
 	}
 }
+
+// writeStore materializes a .vector directory under dir, with a valid config.json
+// when body is non-empty and a stray (config-less) store when it is empty.
+func writeStore(t *testing.T, dir, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".vector"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if body == "" {
+		return
+	}
+	if err := os.WriteFile(Path(dir), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const validConfigBody = `{"schemaVersion":1,"specPath":".vector/specs/<slug>/","specStore":"vector","source":"default"}`
+
+func TestFindAncestorConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		// stores maps a path relative to the temp root to its config body ("" = stray).
+		stores map[string]string
+		// start is the walk's starting point, relative to the temp root.
+		start      string
+		wantRoot   string // relative to the temp root; "" means not found
+		wantStrays []string
+		wantFound  bool
+	}{
+		{
+			name:      "ancestor found from a nested subdirectory",
+			stores:    map[string]string{".": validConfigBody},
+			start:     "website/src",
+			wantRoot:  ".",
+			wantFound: true,
+		},
+		{
+			name:      "start dir itself is the canonical root",
+			stores:    map[string]string{".": validConfigBody},
+			start:     ".",
+			wantRoot:  ".",
+			wantFound: true,
+		},
+		{
+			name:       "stray is skipped and the walk keeps going up",
+			stores:     map[string]string{".": validConfigBody, "website": ""},
+			start:      "website/src",
+			wantRoot:   ".",
+			wantStrays: []string{"website"},
+			wantFound:  true,
+		},
+		{
+			name:       "several strays on the way up are all reported",
+			stores:     map[string]string{".": validConfigBody, "a": "", "a/b": ""},
+			start:      "a/b/c",
+			wantRoot:   ".",
+			wantStrays: []string{"a/b", "a"},
+			wantFound:  true,
+		},
+		{
+			name:      "no ancestor store stops at the filesystem root",
+			stores:    map[string]string{},
+			start:     "website/src",
+			wantFound: false,
+		},
+		{
+			name:       "unparseable config is a stray, not an anchor",
+			stores:     map[string]string{".": validConfigBody, "website": "{not json"},
+			start:      "website/src",
+			wantRoot:   ".",
+			wantStrays: []string{"website"},
+			wantFound:  true,
+		},
+		{
+			name:      "nearest store wins over the one above it",
+			stores:    map[string]string{".": validConfigBody, "code/main": validConfigBody},
+			start:     "code/main/cli",
+			wantRoot:  "code/main",
+			wantFound: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// The temp dir is resolved through symlinks: on macOS t.TempDir() lives
+			// under /var, a symlink to /private/var, and filepath.Abs does not resolve
+			// it — the walked paths would never compare equal.
+			base, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for rel, body := range tc.stores {
+				writeStore(t, filepath.Join(base, rel), body)
+			}
+			start := filepath.Join(base, tc.start)
+			if err := os.MkdirAll(start, 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			root, strays, found := FindAncestorConfig(start)
+			if found != tc.wantFound {
+				t.Fatalf("found = %v, want %v (root %q)", found, tc.wantFound, root)
+			}
+			if tc.wantFound {
+				if want := filepath.Join(base, tc.wantRoot); root != want {
+					t.Errorf("root = %q, want %q", root, want)
+				}
+			}
+			var wantStrays []string
+			for _, rel := range tc.wantStrays {
+				wantStrays = append(wantStrays, filepath.Join(base, rel))
+			}
+			if !reflect.DeepEqual(strays, wantStrays) {
+				t.Errorf("strays = %v, want %v", strays, wantStrays)
+			}
+		})
+	}
+}
+
+func TestFindAncestorConfigsReturnsEveryValidStore(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(base, "code", "main")
+	writeStore(t, base, validConfigBody)
+	writeStore(t, worktree, validConfigBody)
+	nested := filepath.Join(worktree, "cli")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	roots, strays := FindAncestorConfigs(nested)
+	if !reflect.DeepEqual(roots, []string{worktree, base}) {
+		t.Errorf("roots = %v, want [%s %s]", roots, worktree, base)
+	}
+	if len(strays) != 0 {
+		t.Errorf("strays = %v, want none", strays)
+	}
+}
+
+func TestResolveStateRootPinAbsoluteTarget(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(base, "canonical")
+	writeStore(t, target, validConfigBody)
+	configDir := filepath.Join(base, "worktree")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &Config{StateRoot: target}
+	root, ok := cfg.ResolveStateRootPin(configDir)
+	if !ok {
+		t.Fatal("ResolveStateRootPin: ok = false, want true for a valid absolute target")
+	}
+	if root != target {
+		t.Errorf("root = %q, want %q", root, target)
+	}
+}
+
+func TestResolveStateRootPinRelativeTarget(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStore(t, base, validConfigBody)
+	configDir := filepath.Join(base, "code", "main")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A relative stateRoot resolves against configDir, not the process cwd.
+	cfg := &Config{StateRoot: "../.."}
+	root, ok := cfg.ResolveStateRootPin(configDir)
+	if !ok {
+		t.Fatal("ResolveStateRootPin: ok = false, want true for a valid relative target")
+	}
+	if root != base {
+		t.Errorf("root = %q, want %q", root, base)
+	}
+}
+
+func TestResolveStateRootPinEmpty(t *testing.T) {
+	cfg := &Config{}
+	if _, ok := cfg.ResolveStateRootPin(t.TempDir()); ok {
+		t.Error("ResolveStateRootPin: ok = true for an empty StateRoot, want false")
+	}
+}
+
+func TestResolveStateRootPinSelfReferenceIgnored(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStore(t, base, validConfigBody)
+
+	cfg := &Config{StateRoot: base}
+	if _, ok := cfg.ResolveStateRootPin(base); ok {
+		t.Error("ResolveStateRootPin: ok = true for a self-referencing StateRoot, want false")
+	}
+}
+
+func TestResolveStateRootPinInvalidTargetIgnored(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	configDir := filepath.Join(base, "worktree")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// "elsewhere" holds no .vector/config.json at all — an invalid pin.
+	if err := os.MkdirAll(filepath.Join(base, "elsewhere"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &Config{StateRoot: filepath.Join(base, "elsewhere")}
+	if _, ok := cfg.ResolveStateRootPin(configDir); ok {
+		t.Error("ResolveStateRootPin: ok = true for a target with no loadable config, want false")
+	}
+}
+
+func TestResolveStateRootOmitEmptyRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	if err := Write(root, &Config{SchemaVersion: SchemaVersion, SpecPath: VectorFallbackSpecPath, SpecFilename: "spec.md", SpecStore: StoreVector, Source: SourceDefault}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(Path(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "stateRoot") {
+		t.Errorf("empty StateRoot should be omitted from JSON, got: %s", b)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StateRoot != "" {
+		t.Errorf("StateRoot = %q, want empty for a legacy config", cfg.StateRoot)
+	}
+
+	cfg.StateRoot = "/some/pinned/root"
+	if err := Write(root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.StateRoot != "/some/pinned/root" {
+		t.Errorf("StateRoot round-trip = %q, want %q", reloaded.StateRoot, "/some/pinned/root")
+	}
+}
