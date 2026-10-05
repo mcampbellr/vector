@@ -91,13 +91,19 @@ Download the archive for your platform from
 
 ### From source
 
-Requires **Go 1.26+** (the version declared in `cli/go.mod`).
+Requires **Go 1.26+** (the version declared in `cli/go.mod`) and **Node/npm** (to build the web
+board that gets embedded into the binary).
 
 ```bash
 git clone https://github.com/mcampbellr/vector.git
-cd vector/cli
-go build -o ~/.local/bin/vector ./cmd/vector
+cd vector
+make install          # or, without make: scripts/dev-install.sh
 ```
+
+`make install` is the only supported from-source path: it rebuilds the web board, re-embeds it,
+runs the embed-integrity guard, and only then compiles and installs the binary to
+`~/.local/bin/vector` (override with `VECTOR_INSTALL_DIR`). A bare `go build` skips the web build
+and produces a binary that serves a "board not built" page instead of the panel.
 
 ### Upgrading
 

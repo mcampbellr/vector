@@ -1,33 +1,31 @@
 package webui
 
 import (
+	"bytes"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
-// embeddedIndexHTML returns the bytes of the embedded dist/index.html so tests
-// can construct exact-match and differ scenarios without hardcoding content.
-func embeddedIndexHTML(t *testing.T) []byte {
-	t.Helper()
-	b, err := embedded.ReadFile("dist/index.html")
-	if err != nil {
-		t.Fatalf("read embedded dist/index.html: %v", err)
-	}
-	return b
-}
-
 func TestResolve(t *testing.T) {
-	embeddedBytes := embeddedIndexHTML(t)
+	// Resolve's dev-dir staleness comparison diffs a disk web/dist against the
+	// embedded dist/index.html. After the placeholder migration the embed carries a
+	// real index.html only when a web build was re-embedded (make install / a
+	// committed build); a clean checkout embeds just the placeholder. So the
+	// staleness assertions below are gated on the actual embed state to stay green
+	// in BOTH: hasRealEmbed=true (real build embedded) and false (placeholder only).
+	embeddedIndex, embErr := embedded.ReadFile("dist/index.html")
+	hasRealEmbed := embErr == nil
 
-	// A small content that is guaranteed different from the embedded placeholder.
+	// A self-contained frontend guaranteed to differ from whatever the embed carries.
 	differentContent := []byte(`<!doctype html><html><head><title>Fresh build</title><script src="/assets/main-abc123.js"></script></head><body></body></html>`)
-	// Sanity-check: the different content must actually differ from embedded.
-	if string(differentContent) == string(embeddedBytes) {
-		t.Fatal("test setup error: differentContent equals embedded bytes")
+	if hasRealEmbed && bytes.Equal(differentContent, embeddedIndex) {
+		t.Fatal("test setup error: differentContent equals the embedded index.html")
 	}
 
 	// writeDist creates a temp repoRoot with web/dist/index.html containing content.
@@ -80,7 +78,7 @@ func TestResolve(t *testing.T) {
 		}
 	})
 
-	t.Run("allowDevDir=true, fresh web/dist with different bytes → stale notice", func(t *testing.T) {
+	t.Run("allowDevDir=true, fresh web/dist differs from embed", func(t *testing.T) {
 		repoRoot := writeDist(t, differentContent)
 
 		handler, source, err := Resolve("", repoRoot, true)
@@ -90,17 +88,30 @@ func TestResolve(t *testing.T) {
 		if handler == nil {
 			t.Fatal("handler is nil")
 		}
-		candidateDir := filepath.Join(repoRoot, "web", "dist")
-		if !strings.HasPrefix(source, candidateDir) {
-			t.Errorf("source = %q, want prefix %q", source, candidateDir)
-		}
-		if !strings.Contains(source, "stale") {
-			t.Errorf("source = %q, want to contain %q", source, "stale")
+		if hasRealEmbed {
+			// A real index.html is embedded and differs from disk → serve web/dist
+			// with the stale notice (the dev-dir feature working as before).
+			candidateDir := filepath.Join(repoRoot, "web", "dist")
+			if !strings.HasPrefix(source, candidateDir) {
+				t.Errorf("source = %q, want prefix %q", source, candidateDir)
+			}
+			if !strings.Contains(source, "stale") {
+				t.Errorf("source = %q, want to contain %q", source, "stale")
+			}
+		} else {
+			// Placeholder-only embed (clean checkout): no embedded index.html to
+			// compare against, so staleness cannot trigger → embedded.
+			if source != "embedded" {
+				t.Errorf("source = %q, want %q (staleness needs a real embedded index.html)", source, "embedded")
+			}
 		}
 	})
 
 	t.Run("allowDevDir=true, web/dist identical to embedded → embedded", func(t *testing.T) {
-		repoRoot := writeDist(t, embeddedBytes)
+		if !hasRealEmbed {
+			t.Skip("no real embedded index.html to match against (clean checkout / placeholder-only embed)")
+		}
+		repoRoot := writeDist(t, embeddedIndex)
 
 		handler, source, err := Resolve("", repoRoot, true)
 		if err != nil {
@@ -126,6 +137,60 @@ func TestResolve(t *testing.T) {
 		}
 		if source != "embedded" {
 			t.Errorf("source = %q, want %q", source, "embedded")
+		}
+	})
+}
+
+// TestEmbeddedBoardIntegrity is the build-time guard `make install` runs before
+// overwriting the installed binary: every /assets/* the embedded index.html
+// references must exist in the embed. It reuses ValidateAssets over the package's
+// real embed.FS, so a partial/stale re-embed FAILS the build; a clean checkout
+// (no real index.html, placeholder only) PASSES because ValidateAssets
+// short-circuits on the absent index.html.
+func TestEmbeddedBoardIntegrity(t *testing.T) {
+	sub, err := fs.Sub(embedded, "dist")
+	if err != nil {
+		t.Fatalf("sub embed dist: %v", err)
+	}
+
+	t.Run("embedded board is internally consistent", func(t *testing.T) {
+		if missing := ValidateAssets(sub); len(missing) > 0 {
+			t.Fatalf("embedded board references assets absent from the embed: %v", missing)
+		}
+	})
+
+	t.Run("not-built state embeds the honest placeholder without hashed refs", func(t *testing.T) {
+		if _, err := fs.Stat(sub, "index.html"); err == nil {
+			t.Skip("a real web build is embedded (index.html present); the not-built assertion does not apply")
+		}
+		// Clean checkout: the embed must carry the tracked placeholder, and the
+		// placeholder must reference no /assets/* — otherwise the "not built"
+		// state would itself be an integrity-breaking embed.
+		data, err := fs.ReadFile(sub, "index.placeholder.html")
+		if err != nil {
+			t.Fatalf("clean checkout must embed index.placeholder.html: %v", err)
+		}
+		if refs := assetRefRe.FindAllString(string(data), -1); len(refs) > 0 {
+			t.Fatalf("placeholder must reference no /assets/*, found %v", refs)
+		}
+	})
+
+	t.Run("dangling asset ref is reported", func(t *testing.T) {
+		// A simulated broken embed: index.html references an asset that is not in
+		// the FS. This exercises the failure path without needing a real broken
+		// re-embed (which cannot be produced deterministically in CI).
+		broken := fstest.MapFS{
+			"index.html": &fstest.MapFile{Data: []byte(
+				`<script type="module" src="/assets/index-DANGLING.js"></script>` +
+					`<link rel="stylesheet" href="/assets/index-DANGLING.css">`)},
+		}
+		missing := ValidateAssets(broken)
+		if len(missing) != 2 {
+			t.Fatalf("expected both dangling refs reported, got %v", missing)
+		}
+		joined := strings.Join(missing, " ")
+		if !strings.Contains(joined, "index-DANGLING.js") || !strings.Contains(joined, "index-DANGLING.css") {
+			t.Fatalf("expected the dangling js+css to be reported, got %v", missing)
 		}
 	})
 }
@@ -181,5 +246,45 @@ func TestAssetPathNeverFallsBackToIndex(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "app") {
 		t.Fatalf("app route should serve index.html; status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+// TestServesPlaceholderWhenIndexAbsent verifies the serve fallback: when the embed
+// has no real index.html (a binary built without a web build), a request to "/"
+// serves the tracked placeholder (200, text/html) instead of a blank board or a
+// 404, while /assets/* still 404s.
+func TestServesPlaceholderWhenIndexAbsent(t *testing.T) {
+	dir := t.TempDir()
+	// Only the placeholder is present — the clean-checkout embed shape.
+	if err := os.WriteFile(filepath.Join(dir, "index.placeholder.html"),
+		[]byte("<html><body>Vector board not built</body></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := Handler(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/", "/some/app/route"} {
+		req := httptest.NewRequest("GET", path, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want 200 (placeholder fallback)", path, rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+			t.Errorf("%s: Content-Type = %q, want text/html", path, ct)
+		}
+		if !strings.Contains(rec.Body.String(), "not built") {
+			t.Errorf("%s: body = %q, want the placeholder page", path, rec.Body.String())
+		}
+	}
+
+	// /assets/* still fails loud even in the placeholder-only state.
+	req := httptest.NewRequest("GET", "/assets/index-MISSING.js", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing asset status = %d, want 404 (no placeholder fallback for /assets/*)", rec.Code)
 	}
 }

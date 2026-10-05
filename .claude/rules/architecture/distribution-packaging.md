@@ -76,34 +76,55 @@ y `assets/` antes del merge. Ver comentario de paquete en `cli/internal/scaffold
 > bien, pero el board no mostraba la entrada de descarga porque el dist embebido era anterior al
 > cambio de web.
 
-Flujo canónico cada vez que se toca `web/` (antes de reinstalar el binario global):
+Flujo canónico cada vez que se toca `web/`: **usar `make install`** (o `scripts/dev-install.sh`),
+el único path sancionado de reinstalación desde fuente. Encadena, con abort-on-fail:
 
-1. `npm --prefix web run build` → regenera `web/dist`.
-2. Re-embeber en el snapshot que compila el binario:
+1. `web-build` → `npm --prefix web run build` regenera `web/dist`.
+2. `embed` → re-embebe en el snapshot que compila el binario (lo que el target corre por dentro):
    ```bash
    rm -rf cli/internal/webui/dist/assets cli/internal/webui/dist/index.html
    cp -R web/dist/. cli/internal/webui/dist/
    ```
-3. `go -C cli build -o ~/.local/bin/vector ./cmd/vector` (o el reinstall de la Memory).
-4. **Reiniciar cualquier `vector serve` en marcha** — un server ya corriendo tiene el binario
-   viejo en memoria y sigue sirviendo el frontend anterior hasta reiniciarse.
+3. `guard` → `go -C cli test ./internal/webui/... -run TestEmbeddedBoardIntegrity`; **aborta** si el
+   `index.html` recién embebido referencia `/assets/*` ausentes, **antes** de tocar el binario instalado.
+4. `build` → `go -C cli build -o "$VECTOR_INSTALL_DIR" ./cmd/vector` (default `~/.local/bin/vector`).
+5. **Reiniciar cualquier `vector serve` en marcha** — un server ya corriendo tiene el binario viejo
+   en memoria y sigue sirviendo el frontend anterior hasta reiniciarse.
 
-`cli/internal/webui/dist/assets/` está **gitignored** (se regenera en cada build); solo
-`index.html` se rastrea. Verificar que no haya drift: `ls cli/internal/webui/dist/assets` debe
-igualar `ls web/dist/assets`. Ver también la Memory `reinstall-vector-binary-after-changes`.
+`cli/internal/webui/dist/assets/` **y** el `index.html` real (hasheado, producto de `web build`)
+están **gitignored** (se regeneran en cada build); lo único trackeado en `dist/` es
+`index.placeholder.html` (sin refs a `/assets/*`). Verificar que no haya drift: `ls
+cli/internal/webui/dist/assets` debe igualar `ls web/dist/assets`. Ver también la Memory
+`reinstall-vector-binary-after-changes`.
 
-**Guard de runtime contra el board en blanco** (`internal/webui`): construir el binario desde un
-worktree sin `web build` embebe un `index.html` que referencia `/assets/*` inexistentes → board en
-blanco **silencioso** (200 con HTML servido donde el browser pide JS). Para que nunca vuelva a pasar
-en silencio:
+**Guard de integridad del board embebido** (`internal/webui`): construir el binario desde un worktree
+sin `web build` embebía un `index.html` que referenciaba `/assets/*` inexistentes → board en blanco
+**silencioso** (200 con HTML servido donde el browser pide JS). La defensa es en **dos capas**:
+
+*Build-time (previene)* — el estado "no buildeado" trackeado es ahora `index.placeholder.html` (sin
+refs a `/assets/*`); el `index.html` real, hasheado, está gitignored. Esto hace **decidible** la
+distinción "no buildeado" vs "embed roto": en checkout limpio no hay `index.html` en el embed, así que
+`ValidateAssets` corta-circuita retornando `nil` (nada que validar) y el guard PASA — el job `go` de CI
+sigue verde **sin** `web build`; sólo tras un `web build`+re-embed real aparecen refs hasheadas que
+deben existir o el guard falla. El test `TestEmbeddedBoardIntegrity` corre ese `ValidateAssets` sobre
+el `embed.FS` real y es el guard que `make install`/`scripts/dev-install.sh` ejecutan **antes** de
+compilar: un embed parcial/roto **aborta la instalación** sin sobrescribir el binario. `make install` es
+el **único** path sancionado de reinstalación desde fuente (un `go build` suelto deja de ser flujo
+recomendado; si igual se hace desde un worktree sin `web build`, el binario embebe el placeholder honesto
+y `spaHandler` sirve una página "board not built" en `/`, no un blanco).
+
+*Runtime (red secundaria, sin cambios)* — al arrancar `vector serve`:
 - `webui.ValidateAssets(fsys)` / `webui.EmbeddedAssetsMissing()` reportan los `/assets/*` que el
   `index.html` referencia pero no están en el embed.
-- `vector serve` imprime un **WARNING ruidoso** a stderr al arrancar cuando el board embebido está
-  roto, con el comando exacto para rebuildear+re-embeber (en vez de servir el board en blanco).
+- `vector serve` imprime un **WARNING ruidoso** a stderr cuando el board embebido está roto, con el
+  comando exacto para rebuildear+re-embeber (en vez de servir el board en blanco).
 - `spaHandler` devuelve un **404 real** para `/assets/*` faltantes (sin fallback a `index.html`), de
   modo que la ruptura aparece en la consola del browser, no como HTML disfrazado de JS con 200.
-El guard es de **runtime** a propósito: un test de build no puede distinguir "web aún no buildeado"
-(checkout limpio / job `go` de CI) de "embed roto", así que el CI job `go` sigue verde sin `web build`.
+
+> Nota histórica: la doctrina previa declaraba el guard "de runtime a propósito" porque, con el
+> `index.html` hasheado trackeado, un checkout limpio era byte-indistinguible de un embed roto. El
+> placeholder trackeado elimina esa ambigüedad y habilita el guard de build-time; esa imposibilidad ya
+> no aplica.
 
 > Estado: el mecanismo de embed (`//go:generate` + `embed.FS` + `SeedCommands`) ya está activo.
 > Pendiente: layout del pipeline de release y script de instalación de un paso. Ver nota de
