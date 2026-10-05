@@ -1,4 +1,4 @@
-import type { Status } from '../../types/board'
+import type { Card } from '../../types/board'
 import { nextCommandFor } from '../SpecCard/nextCommandFor'
 
 export interface NextStepRow {
@@ -26,11 +26,12 @@ export function openCommandFor(id: string): string {
  * (cli/cmd/vector/open_tmux.go), so the two rows are alternative doors to the
  * same step: running both would apply the spec twice. The terminal row comes
  * first and always applies (a closed spec still has a worktree to open); the
- * Claude row only exists while the spec has a next command.
+ * Claude row only exists while the spec has a next command, and follows
+ * `nextCommandFor` — including `ship` vs `close` for a card in review.
  */
-export function nextStepRows(status: Status, id: string): NextStepRow[] {
-  const rows: NextStepRow[] = [{ label: 'From a terminal', command: openCommandFor(id), shell: true }]
-  const nextCommand = nextCommandFor(status, id)
+export function nextStepRows(card: Pick<Card, 'status' | 'id' | 'pr'>): NextStepRow[] {
+  const rows: NextStepRow[] = [{ label: 'From a terminal', command: openCommandFor(card.id), shell: true }]
+  const nextCommand = nextCommandFor(card)
   if (nextCommand !== null) {
     rows.push({ label: 'Inside Claude Code', command: nextCommand, shell: false })
   }

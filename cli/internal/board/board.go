@@ -70,12 +70,15 @@ type Card struct {
 	Resolution     string            `json:"resolution,omitempty"`     // why the spec was closed (done|obsolete|duplicate|superseded)
 	ResolutionNote string            `json:"resolutionNote,omitempty"` // optional free-text note for the resolution
 	Sketches       []state.SketchRef `json:"sketches,omitempty"`       // attached Excalidraw wireframes (download-only)
-	SavedUSD       float64           `json:"savedUsd"`
-	Routes         int               `json:"routes"`
-	TokensIn       int               `json:"tokensIn"`
-	TokensOut      int               `json:"tokensOut"`
-	ByModel        []ModelRollup     `json:"byModel,omitempty"` // this spec's per-model token breakdown
-	UpdatedAt      time.Time         `json:"updatedAt"`
+	// PR projects state.SpecState.PR (recorded by /vector:ship); the web uses its
+	// presence to suggest `ship` vs `close` for a card in review.
+	PR        *state.PullRequest `json:"pr,omitempty"`
+	SavedUSD  float64            `json:"savedUsd"`
+	Routes    int                `json:"routes"`
+	TokensIn  int                `json:"tokensIn"`
+	TokensOut int                `json:"tokensOut"`
+	ByModel   []ModelRollup      `json:"byModel,omitempty"` // this spec's per-model token breakdown
+	UpdatedAt time.Time          `json:"updatedAt"`
 }
 
 // Ticket mirrors the linked tracker (subset of state.Ticket for display).
@@ -271,6 +274,7 @@ func toCard(spec *state.SpecState, econ specEconomics) Card {
 		Epic:        spec.Epic,
 		Resolution:  string(spec.Resolution),
 		Sketches:    spec.Sketches,
+		PR:          spec.PR,
 		SavedUSD:    econ.savedUSD,
 		Routes:      econ.routes,
 		TokensIn:    econ.tokensIn,

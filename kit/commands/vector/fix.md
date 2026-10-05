@@ -180,7 +180,8 @@ Report: the id, the classification, the entry/exit transitions made (e.g.
 `review → in-progress → review`), the artefacts/files touched, the gate result, and that the
 working tree has uncommitted changes for review.
 
-- **Validated** → next step is `/vector:close <id>`.
+- **Validated** → next step is `/vector:ship <id>` when the card has no recorded PR yet;
+  otherwise `/vector:close <id>` after the merge.
 - **Blocked / validation failed** → surface the `needs-attention` reason instead of "ready for
   review"; next step is to resolve the blocker, then `/vector:fix <id>` again.
 

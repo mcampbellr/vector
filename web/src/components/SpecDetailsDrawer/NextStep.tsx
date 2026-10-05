@@ -1,11 +1,10 @@
-import type { Status } from '../../types/board'
+import type { Card } from '../../types/board'
 import { CopyableCommand } from './CopyableCommand'
 import { NO_CLAUDE_STEP_NOTE, nextStepRows } from './nextStepRows'
 import styles from './SpecDetailsDrawer.module.css'
 
 interface NextStepProps {
-  status: Status
-  id: string
+  card: Pick<Card, 'status' | 'id' | 'pr'>
 }
 
 // NextStep is the drawer's primary section: the spec's next step, one row per
@@ -13,8 +12,10 @@ interface NextStepProps {
 // Code. They are peers, not steps 1 and 2 (`vector open` starts Claude with that
 // same command), so neither outranks the other. The section always renders: a
 // closed spec keeps the terminal row and explains why the Claude row is gone.
-export function NextStep({ status, id }: NextStepProps) {
-  const rows = nextStepRows(status, id)
+// The Claude row follows nextCommandFor, so a review card with no recorded PR
+// points at /vector:ship rather than /vector:close.
+export function NextStep({ card }: NextStepProps) {
+  const rows = nextStepRows(card)
   const hasClaudeRow = rows.some((row) => !row.shell)
 
   return (

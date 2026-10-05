@@ -167,8 +167,7 @@ func loadOpenConfig(root string) (*config.Config, error) {
 }
 
 func (run *openRun) execute() error {
-	id := run.spec.ID
-	next, hasNext := nextCommandFor(run.spec.Status, id)
+	next, hasNext := nextCommandFor(run.spec)
 	if run.opts.cmdOverride != "" {
 		next, hasNext = run.opts.cmdOverride, true
 	}

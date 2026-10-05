@@ -180,22 +180,28 @@ func worktreeConfig() *config.Config {
 }
 
 func TestNextCommandFor(t *testing.T) {
+	pr := &state.PullRequest{URL: "https://github.com/o/r/pull/7", Number: 7}
 	tests := []struct {
+		name    string
 		status  state.Status
+		pr      *state.PullRequest
 		want    string
 		wantHas bool
 	}{
-		{state.StatusOpen, "/vector:apply demo", true},
-		{state.StatusInProgress, "/vector:apply demo", true},
-		{state.StatusNeedsAttention, "/vector:apply demo", true},
-		{state.StatusReview, "/vector:close demo", true},
-		{state.StatusClosed, "", false},
-		{state.StatusArchived, "", false},
-		{state.StatusLegacyDraft, "", false},
+		{"open", state.StatusOpen, nil, "/vector:apply demo", true},
+		{"in-progress", state.StatusInProgress, nil, "/vector:apply demo", true},
+		{"needs-attention", state.StatusNeedsAttention, nil, "/vector:apply demo", true},
+		// A spec in review needs shipping until /vector:ship records its PR.
+		{"review without a PR", state.StatusReview, nil, "/vector:ship demo", true},
+		{"review with a PR", state.StatusReview, pr, "/vector:close demo", true},
+		{"closed", state.StatusClosed, nil, "", false},
+		{"closed with a PR", state.StatusClosed, pr, "", false},
+		{"archived", state.StatusArchived, nil, "", false},
+		{"legacy draft", state.StatusLegacyDraft, nil, "", false},
 	}
 	for _, tc := range tests {
-		t.Run(string(tc.status), func(t *testing.T) {
-			got, has := nextCommandFor(tc.status, "demo")
+		t.Run(tc.name, func(t *testing.T) {
+			got, has := nextCommandFor(&state.SpecState{ID: "demo", Status: tc.status, PR: tc.pr})
 			if got != tc.want || has != tc.wantHas {
 				t.Fatalf("nextCommandFor(%s) = (%q, %v), want (%q, %v)", tc.status, got, has, tc.want, tc.wantHas)
 			}
@@ -584,6 +590,8 @@ func TestOpenClosedSpecOpensShellWithNotice(t *testing.T) {
 	}
 }
 
+// The fixture spec is in review with no recorded PR, so its next command is
+// /vector:ship (see nextCommandFor); this test only pins the report's language.
 func TestOpenReportFollowsLanguage(t *testing.T) {
 	cfg := &config.Config{SchemaVersion: config.SchemaVersion, SpecPath: config.VectorFallbackSpecPath, SpecStore: config.StoreVector, Language: "es"}
 	env := newOpenTestEnv(t, cfg, map[string]state.Status{"add-vector-open-command": state.StatusReview})
@@ -593,7 +601,7 @@ func TestOpenReportFollowsLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := env.stdout.String()
-	for _, want := range []string{"sin worktree, uso raíz del repo", "estado review · próximo /vector:close add-vector-open-command", "tmux ventana ◆ add-vector-open-… en sesión vector"} {
+	for _, want := range []string{"sin worktree, uso raíz del repo", "estado review · próximo /vector:ship add-vector-open-command", "tmux ventana ◆ add-vector-open-… en sesión vector"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("report missing %q:\n%s", want, out)
 		}

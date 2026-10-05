@@ -231,7 +231,8 @@ malformed response, skip and note it in the report.
 
 Report: the id, `quickWin: true`, the transition (`in-progress → review`), the ticket/related
 link (or none), the epic (only when assigned), the commit SHA **or** "uncommitted changes left in the working tree", the gate
-result, and the next step: `/vector:close <id>`.
+result, and the next step: `/vector:ship <id>` (or `/vector:close <id>` after the merge once the
+card has a recorded PR).
 
 ## Notes — state discipline & token routing
 

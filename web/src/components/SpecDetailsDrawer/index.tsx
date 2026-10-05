@@ -159,7 +159,7 @@ export function SpecDetailsDrawer({ card, epics, onClose }: SpecDetailsDrawerPro
           )}
         </section>
 
-        <NextStep status={card.status} id={card.id} />
+        <NextStep card={card} />
 
         <UsefulCommands card={card} />
 

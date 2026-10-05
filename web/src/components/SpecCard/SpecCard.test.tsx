@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Card } from '../../types/board'
+import type { Card, PullRequest } from '../../types/board'
 import { SpecCard } from './SpecCard'
 
 afterEach(cleanup)
@@ -146,6 +146,14 @@ describe('SpecCard status row', () => {
 
   it('collapses the next command to its verb, keeping the full line in the tooltip', () => {
     render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags' })} onSelect={() => {}} />)
+
+    const verb = screen.getByTitle('/vector:ship fix-raw-tags')
+    expect(verb.textContent).toBe('ship')
+  })
+
+  it('switches the review verb to close once a PR is recorded', () => {
+    const pr: PullRequest = { url: 'https://github.com/o/r/pull/7', number: 7, draft: false, openedAt: '2026-06-27T00:00:00Z' }
+    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags', pr })} onSelect={() => {}} />)
 
     const verb = screen.getByTitle('/vector:close fix-raw-tags')
     expect(verb.textContent).toBe('close')
