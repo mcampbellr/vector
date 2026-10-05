@@ -94,8 +94,8 @@ type openRun struct {
 	opts       openOptions
 	deps       openDeps
 	msg        openMessages
-	root       string
-	gitRoot    string // directory git runs in (see resolveGitRoot)
+	root       string // Vector board root: state store, display paths, tmux session name
+	gitRoot    string // only ever passed to `git -C`; never join paths onto it
 	cfg        *config.Config
 	spec       *state.SpecState
 	insideTmux bool
@@ -127,8 +127,7 @@ func runOpen(opts openOptions, deps openDeps) error {
 	if err != nil {
 		return err
 	}
-	run := &openRun{opts: opts, deps: deps, msg: openMessagesFor(cfg.ResolvedLanguage()), root: root,
-		gitRoot: resolveGitRoot(root, cfg.WorktreeRoot()), cfg: cfg, insideTmux: insideTmux}
+	run := &openRun{opts: opts, deps: deps, msg: openMessagesFor(cfg.ResolvedLanguage()), root: root, gitRoot: root, cfg: cfg, insideTmux: insideTmux}
 
 	id := opts.id
 	if id == "" {
@@ -231,36 +230,55 @@ func validateWorktreeLayout(worktreeRoot, branchPrefix, base string) error {
 	return nil
 }
 
-// resolveGitRoot returns the directory git subcommands run in. The Vector board
-// can live at the root of a bare+worktree workspace that is not itself a repo —
-// the repo is the worktree root, a `code/` holding `.bare` plus one worktree per
-// spec — so a root without a git directory falls back to the worktree root, and
-// to the root itself when neither carries one (a plain repo, or a subdirectory
-// of one, keeps today's behaviour).
+// bareRepoDir is the bare repository a bare+worktree workspace keeps beside its
+// worktrees (`code/.bare`), as the kit's workspace scaffolding creates it.
+const bareRepoDir = ".bare"
+
+// resolveGitRoot returns the directory git subcommands run in on a worktree
+// layout. The Vector board can live at the root of a bare+worktree workspace
+// that is not itself a repo — the repo is the worktree root, a `code/` holding
+// `.bare` plus one worktree per spec — so the board root is kept only when it
+// carries git metadata of its own, then the worktree root when it does, then
+// that worktree root's bare repo: a `.bare` beside the worktrees is a git
+// directory, not a repo top, so git reaches it from inside and never from its
+// parent.
+//
+// Only a directory carrying git metadata itself is accepted, never one git
+// would reach by walking up — that is what stops a workspace nested inside an
+// unrelated repo from having its spec worktrees created in that repo. With no
+// candidate, the board root is returned unchanged, so a board in a subdirectory
+// of a plain repo keeps working through git's own upward discovery.
+//
+// worktreeRoot must have passed validateWorktreeLayout.
 func resolveGitRoot(root, worktreeRoot string) string {
-	if hasGitDir(root) {
+	container := root
+	if worktreeRoot != "" {
+		container = filepath.Join(root, filepath.FromSlash(worktreeRoot))
+		// A symlinked worktree root must not move git onto another repository.
+		if !isNestedPath(canonicalPath(container), canonicalPath(root)) {
+			return root
+		}
+	}
+	if hasGitEntry(root) {
 		return root
 	}
-	// Unvalidated config value: only a relative, non-escaping prefix is probed;
-	// validateWorktreeLayout still rejects the rest before any git call.
-	slashed := filepath.ToSlash(worktreeRoot)
-	if worktreeRoot != "" && !filepath.IsAbs(worktreeRoot) && !strings.Contains(slashed, "..") {
-		if candidate := filepath.Join(root, filepath.FromSlash(worktreeRoot)); hasGitDir(candidate) {
-			return candidate
-		}
+	if hasGitEntry(container) {
+		return container
+	}
+	if bare := filepath.Join(container, bareRepoDir); isExistingDir(bare) {
+		return bare
 	}
 	return root
 }
 
-// hasGitDir reports whether dir is the top of a git checkout (a ".git" file or
-// directory) or of a bare+worktree layout (a ".bare" repo beside the worktrees).
-func hasGitDir(dir string) bool {
-	for _, entry := range []string{".git", ".bare"} {
-		if _, err := os.Stat(filepath.Join(dir, entry)); err == nil {
-			return true
-		}
-	}
-	return false
+// hasGitEntry reports whether dir carries git metadata of its own: a ".git"
+// directory (a checkout) or ".git" file (a worktree, or the gitfile a
+// bare+worktree workspace puts beside its ".bare"). Lstat, so a dangling
+// symlink counts as present and git reports the real cause instead of this
+// resolver silently falling back.
+func hasGitEntry(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
 }
 
 // gitWorktree is one entry of `git worktree list --porcelain`.
@@ -300,6 +318,10 @@ func (run *openRun) resolveCwd() (string, error) {
 	if err := validateWorktreeLayout(worktreeRoot, run.cfg.BranchPrefixOrDefault(), base); err != nil {
 		return "", err
 	}
+	run.gitRoot = resolveGitRoot(run.root, worktreeRoot)
+	// git runs in gitRoot, which may differ from the board root, so every path
+	// handed to git is the absolute `abs`; `rel` exists only for the report,
+	// the prompts and the error text the user reads from the board root.
 	rel := filepath.ToSlash(filepath.Join(worktreeRoot, id))
 	abs := filepath.Join(run.root, filepath.FromSlash(rel))
 

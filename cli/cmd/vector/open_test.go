@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -29,6 +28,7 @@ type fakeOpenRunner struct {
 	addErr      error
 	tagErr      error
 	refs        map[string]bool // git refs that exist (show-ref)
+	repos       map[string]bool // directories git resolves to a repo; nil → every one
 
 	listWorktreesErr error
 	pickOut          string
@@ -56,6 +56,11 @@ func (f *fakeOpenRunner) LookPath(file string) (string, error) {
 func (f *fakeOpenRunner) Output(name string, args ...string) (string, error) {
 	f.calls = append(f.calls, append([]string{name}, args...))
 	joined := strings.Join(args, " ")
+	if name == "git" && !f.gitRunsIn(args) {
+		// Reproduces the failure that motivated gitRoot: git aborts whenever it
+		// is pointed at a directory it cannot resolve to a repository.
+		return "", &commandError{Name: "git", Stderr: "fatal: not a git repository (or any parent up to mount point /home)", Err: errors.New("exit status 128")}
+	}
 	switch {
 	case name == "tmux" && args[0] == "list-windows":
 		if f.listWindows != "" {
@@ -82,6 +87,21 @@ func (f *fakeOpenRunner) Output(name string, args ...string) (string, error) {
 		return "", &commandError{Name: "git", Err: errors.New("exit status 1")}
 	}
 	return "", nil
+}
+
+// gitRunsIn reports whether this git invocation's `-C` directory is one of the
+// scripted repos. With no scripted repos every directory answers, so tests that
+// do not care about git discovery stay unaffected.
+func (f *fakeOpenRunner) gitRunsIn(args []string) bool {
+	if f.repos == nil {
+		return true
+	}
+	for index, arg := range args {
+		if arg == "-C" && index+1 < len(args) {
+			return f.repos[args[index+1]]
+		}
+	}
+	return true
 }
 
 func (f *fakeOpenRunner) Interactive(name string, args ...string) error {
@@ -721,13 +741,13 @@ func TestOpenErrors(t *testing.T) {
 
 func TestOpenWorktreeSources(t *testing.T) {
 	tests := []struct {
-		name    string
-		refs    map[string]bool
-		wantAdd string
+		name     string
+		refs     map[string]bool
+		wantTail string
 	}{
-		{name: "new spec forks from base", wantAdd: "worktree add %s -b feat/demo main"},
-		{name: "existing local branch is checked out without -b", refs: map[string]bool{"refs/heads/feat/demo": true}, wantAdd: "worktree add %s feat/demo"},
-		{name: "remote-only branch is tracked", refs: map[string]bool{"refs/remotes/origin/feat/demo": true}, wantAdd: "worktree add %s -b feat/demo --track origin/feat/demo"},
+		{name: "new spec forks from base", wantTail: "-b feat/demo main"},
+		{name: "existing local branch is checked out without -b", refs: map[string]bool{"refs/heads/feat/demo": true}, wantTail: "feat/demo"},
+		{name: "remote-only branch is tracked", refs: map[string]bool{"refs/remotes/origin/feat/demo": true}, wantTail: "-b feat/demo --track origin/feat/demo"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -742,7 +762,7 @@ func TestOpenWorktreeSources(t *testing.T) {
 					add = call
 				}
 			}
-			want := fmt.Sprintf(tc.wantAdd, filepath.Join(env.root, "code", "demo"))
+			want := "worktree add " + filepath.Join(env.root, "code", "demo") + " " + tc.wantTail
 			if got := strings.Join(add, " "); !strings.HasSuffix(got, want) {
 				t.Fatalf("worktree add = %q, want suffix %q", got, want)
 			}
@@ -751,81 +771,161 @@ func TestOpenWorktreeSources(t *testing.T) {
 }
 
 func TestResolveGitRoot(t *testing.T) {
+	// seed builds a workspace: "dir/" entries are directories, "dir/.git" with a
+	// trailing "!" is a gitfile (what a bare+worktree workspace puts beside .bare).
 	seed := func(t *testing.T, entries ...string) string {
 		t.Helper()
 		root := t.TempDir()
 		for _, entry := range entries {
+			if gitfile, isFile := strings.CutSuffix(entry, "!"); isFile {
+				if err := os.MkdirAll(filepath.Join(root, filepath.Dir(gitfile)), 0o755); err != nil {
+					t.Fatalf("seed %s: %v", entry, err)
+				}
+				if err := os.WriteFile(filepath.Join(root, gitfile), []byte("gitdir: ./.bare\n"), 0o644); err != nil {
+					t.Fatalf("seed %s: %v", entry, err)
+				}
+				continue
+			}
 			if err := os.MkdirAll(filepath.Join(root, entry), 0o755); err != nil {
 				t.Fatalf("seed %s: %v", entry, err)
 			}
 		}
 		return root
 	}
-	t.Run("a repo root keeps running git in itself", func(t *testing.T) {
-		root := seed(t, ".git", "code/.bare")
-		if got := resolveGitRoot(root, "code"); got != root {
-			t.Fatalf("resolveGitRoot = %q, want %q", got, root)
-		}
-	})
-	t.Run("a non-repo workspace root falls back to the worktree root", func(t *testing.T) {
-		root := seed(t, "code/.bare")
-		want := filepath.Join(root, "code")
-		if got := resolveGitRoot(root, "code"); got != want {
-			t.Fatalf("resolveGitRoot = %q, want %q", got, want)
-		}
-	})
-	t.Run("a worktree root pointing at the bare repo by gitfile is accepted", func(t *testing.T) {
-		root := seed(t, "code")
-		if err := os.WriteFile(filepath.Join(root, "code", ".git"), []byte("gitdir: ./.bare\n"), 0o644); err != nil {
+	// A trailing slash never reaches resolveGitRoot: config.WorktreeRoot() trims it.
+	tests := []struct {
+		name         string
+		entries      []string
+		worktreeRoot string
+		want         string // relative to the seeded root; "" → the root itself
+	}{
+		{name: "a board root that is a checkout keeps git in itself", entries: []string{".git", "code/.bare"}, worktreeRoot: "code"},
+		{name: "a non-repo workspace root uses the worktree root's gitfile", entries: []string{"code/.git!", "code/.bare"}, worktreeRoot: "code", want: "code"},
+		{name: "a worktree root with only a bare repo runs git inside it", entries: []string{"code/.bare"}, worktreeRoot: "code", want: "code/.bare"},
+		{name: "a nested worktree root resolves too", entries: []string{"code/worktrees/.bare"}, worktreeRoot: "code/worktrees", want: "code/worktrees/.bare"},
+		{name: "a board root beside its own bare repo needs no worktree root", entries: []string{".bare"}, worktreeRoot: "", want: ".bare"},
+		{name: "no git anywhere keeps the root, for git's upward discovery", entries: []string{"code"}, worktreeRoot: "code"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := seed(t, tc.entries...)
+			want := root
+			if tc.want != "" {
+				want = filepath.Join(root, filepath.FromSlash(tc.want))
+			}
+			if got := resolveGitRoot(root, tc.worktreeRoot); got != want {
+				t.Fatalf("resolveGitRoot = %q, want %q", got, want)
+			}
+		})
+	}
+	t.Run("a worktree root symlinked out of the workspace is never used", func(t *testing.T) {
+		root := seed(t)
+		elsewhere := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(elsewhere, ".git"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(root, "code")
-		if got := resolveGitRoot(root, "code"); got != want {
-			t.Fatalf("resolveGitRoot = %q, want %q", got, want)
+		if err := os.Symlink(elsewhere, filepath.Join(root, "code")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
 		}
-	})
-	t.Run("no git anywhere keeps the root", func(t *testing.T) {
-		root := seed(t, "code")
 		if got := resolveGitRoot(root, "code"); got != root {
-			t.Fatalf("resolveGitRoot = %q, want %q", got, root)
-		}
-	})
-	t.Run("an escaping or absolute worktree root is never probed", func(t *testing.T) {
-		root := seed(t, "code/.bare")
-		for _, worktreeRoot := range []string{"", "../code", "/etc"} {
-			if got := resolveGitRoot(root, worktreeRoot); got != root {
-				t.Fatalf("resolveGitRoot(%q) = %q, want %q", worktreeRoot, got, root)
-			}
+			t.Fatalf("resolveGitRoot = %q, want the root %q: a symlinked worktree root must not move git to another repo", got, root)
 		}
 	})
 }
 
 // TestOpenWorktreeWorkspaceRootIsNotARepo covers the bare+worktree workspace
-// where the Vector board sits at a non-git root and the repo is `code/.bare`:
-// git must be run in `code/`, not in the root (which `git -C` rejects).
+// where the Vector board sits at a non-git root and the repo lives under the
+// worktree root. The fake answers git only for the directories scripted as
+// repos, so picking the wrong one fails the way real git does.
 func TestOpenWorktreeWorkspaceRootIsNotARepo(t *testing.T) {
-	env := newOpenTestEnv(t, worktreeConfig(), map[string]state.Status{"demo": state.StatusOpen})
-	code := filepath.Join(env.root, "code")
-	if err := os.MkdirAll(filepath.Join(code, ".bare"), 0o755); err != nil {
-		t.Fatal(err)
+	// workspace seeds the layout and returns the worktree root and the spec's
+	// worktree path; bare adds `code/.bare` instead of the `code/.git` gitfile.
+	workspace := func(t *testing.T, env *openTestEnv, bare bool) (string, string) {
+		t.Helper()
+		code := filepath.Join(env.root, "code")
+		if err := os.MkdirAll(code, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		gitRoot := code
+		if bare {
+			gitRoot = filepath.Join(code, bareRepoDir)
+			if err := os.MkdirAll(gitRoot, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.WriteFile(filepath.Join(code, ".git"), []byte("gitdir: ./.bare\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		env.runner.repos = map[string]bool{gitRoot: true}
+		return gitRoot, filepath.Join(code, "demo")
 	}
-	worktree := filepath.Join(code, "demo")
-	if err := os.MkdirAll(worktree, 0o755); err != nil {
-		t.Fatal(err)
+	registered := func(gitRoot, worktree string) string {
+		return "worktree " + filepath.Join(gitRoot, bareRepoDir) + "\nbare\n\nworktree " + worktree + "\nbranch refs/heads/feat/demo\n"
 	}
-	env.runner.worktrees = "worktree " + filepath.Join(code, ".bare") + "\nbare\n\nworktree " + worktree + "\nbranch refs/heads/feat/demo\n"
-	if err := env.run(openOptions{id: "demo"}); err != nil {
-		t.Fatal(err)
-	}
-	if !env.runner.calledWith("git", "-C "+code+" worktree list") {
-		t.Fatalf("git was not run in the worktree root: %v", env.runner.calls)
-	}
-	if env.runner.calledWith("git", "worktree add") {
-		t.Fatal("an existing worktree must not be recreated")
-	}
-	if !env.runner.calledWith("tmux", "-c "+worktree) {
-		t.Fatalf("window cwd is not the worktree: %v", env.runner.calls)
-	}
+
+	t.Run("the worktree root's gitfile is where git runs", func(t *testing.T) {
+		env := newOpenTestEnv(t, worktreeConfig(), map[string]state.Status{"demo": state.StatusOpen})
+		gitRoot, worktree := workspace(t, env, false)
+		if err := os.MkdirAll(worktree, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		env.runner.worktrees = registered(gitRoot, worktree)
+		if err := env.run(openOptions{id: "demo"}); err != nil {
+			t.Fatal(err)
+		}
+		if !env.runner.calledWith("git", "-C "+gitRoot+" worktree list") {
+			t.Fatalf("git did not run in the worktree root: %v", env.runner.calls)
+		}
+		if env.runner.calledWith("git", "worktree add") {
+			t.Fatal("an existing worktree must not be recreated")
+		}
+		if !env.runner.calledWith("tmux", "-c "+worktree) {
+			t.Fatalf("window cwd is not the worktree: %v", env.runner.calls)
+		}
+	})
+
+	t.Run("a worktree root with only a bare repo runs git inside it", func(t *testing.T) {
+		env := newOpenTestEnv(t, worktreeConfig(), map[string]state.Status{"demo": state.StatusOpen})
+		gitRoot, worktree := workspace(t, env, true)
+		if err := os.MkdirAll(worktree, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		env.runner.worktrees = "worktree " + gitRoot + "\nbare\n\nworktree " + worktree + "\nbranch refs/heads/feat/demo\n"
+		if err := env.run(openOptions{id: "demo"}); err != nil {
+			t.Fatal(err)
+		}
+		if !env.runner.calledWith("git", "-C "+gitRoot+" worktree list") {
+			t.Fatalf("git did not run inside the bare repo: %v", env.runner.calls)
+		}
+	})
+
+	t.Run("creation also runs in the worktree root", func(t *testing.T) {
+		env := newOpenTestEnv(t, worktreeConfig(), map[string]state.Status{"demo": state.StatusOpen})
+		gitRoot, worktree := workspace(t, env, false)
+		if err := env.run(openOptions{id: "demo", yes: true}); err != nil {
+			t.Fatal(err)
+		}
+		if !env.runner.calledWith("git", "-C "+gitRoot+" show-ref") {
+			t.Fatalf("ref lookup did not run in the worktree root: %v", env.runner.calls)
+		}
+		if !env.runner.calledWith("git", "-C "+gitRoot+" worktree add "+worktree+" -b feat/demo main") {
+			t.Fatalf("worktree add did not run in the worktree root with an absolute target: %v", env.runner.calls)
+		}
+	})
+
+	t.Run("no repository anywhere reports git's own failure against the board root", func(t *testing.T) {
+		env := newOpenTestEnv(t, worktreeConfig(), map[string]state.Status{"demo": state.StatusOpen})
+		env.runner.repos = map[string]bool{}
+		err := env.run(openOptions{id: "demo", yes: true})
+		if err == nil || !strings.Contains(err.Error(), "not a git repository") {
+			t.Fatalf("err = %v, want git's own failure", err)
+		}
+		if !strings.Contains(err.Error(), env.root) {
+			t.Fatalf("err = %v, want it to name the board root %q it fell back to", err, env.root)
+		}
+		if env.runner.calledWith("git", "worktree add") {
+			t.Fatal("a failed listing must not be followed by a worktree add")
+		}
+	})
 }
 
 func TestOpenWorktreeGuards(t *testing.T) {
