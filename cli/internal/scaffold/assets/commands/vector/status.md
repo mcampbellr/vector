@@ -18,8 +18,8 @@ resuming `needs-attention → in-progress`. **You never write Vector's state you
 
 Read `.vector/specs/<id>/state.json` for the current status. The binary enforces the LOCKED
 state machine; legal moves include: `in-progress ↔ review`, `* → needs-attention`,
-`needs-attention → in-progress|review`, and the closing moves. `draft → open` is **not** here —
-that's `/vector:propose`. Entering `needs-attention` **requires a `--summary`** (structured path)
+`needs-attention → in-progress|review`, and the closing moves. Entering `needs-attention`
+**requires a `--summary`** (structured path)
 or a `--reason` (legacy path).
 
 ## 2. Apply the transition
@@ -66,8 +66,8 @@ status transition the template is always committed.
 ## 4. Report
 
 Report the id and the transition (e.g. `in-progress → needs-attention`, with the reason). If the
-target is a dedicated step, point at it instead: `closed` → prefer `/vector:close`; `open` from a
-draft → `/vector:propose`; `archived` → `/vector:archive`.
+target is a dedicated step, point at it instead: `closed` → prefer `/vector:close`;
+`archived` → `/vector:archive`.
 
 ## Notes
 

@@ -6,8 +6,6 @@ import type { Status } from '../../types/board'
  */
 export function nextCommandFor(status: Status, id: string): string | null {
   switch (status) {
-    case 'draft':
-      return `/vector:propose ${id}`
     case 'open':
     case 'in-progress':
     case 'needs-attention':

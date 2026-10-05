@@ -6,13 +6,14 @@
 
 ## 1. Estados del spec (vocabulario canónico)
 
-`draft` · `open` · `in-progress` · `needs-attention` · `review` · `closed` · `archived`
+`open` · `in-progress` · `needs-attention` · `review` · `closed` · `archived`
 
 - kebab-case en datos; el frontend mapea a display ("Needs attention", uppercase en pills).
-- `draft` es el estado de **entrada** (output de `/vector:idea`): el **spec está escrito pero
-  todavía no existe el change de OpenSpec**. El change se crea en `/vector:propose`, que mueve
-  el spec a `open`. Un spec puede quedarse en `draft` (idea que no se formaliza) o cerrarse desde ahí.
-  Distinción spec≠change: la card de Vector existe sin change; el `specDoc` apunta al doc autorado.
+- `open` es el estado de entrada. Los flujos de autoría validan el spec y generan los artefactos
+  OpenSpec antes de registrar la card; el siguiente paso de usuario es `/vector:apply`.
+- El valor persistido por versiones anteriores se acepta solo durante migración: `vector update`
+  lo convierte de forma idempotente a `open`, preservando documento y metadata, y apply también
+  puede consumirlo durante la transición de versiones.
 - **Reemplaza** el set antiguo `todo/progress/review/done`. Ese set queda obsoleto.
 - `needs-attention` es de primera clase (feature central): se entra desde `in-progress` o
   `review` cuando surgen preguntas; lo dispara un **hook**, no el modelo.
@@ -29,14 +30,39 @@
   badge "Quick Win". El cierre sigue siendo explícito (`/vector:close`). Link opcional a ticket o
   a otra spec (`relatedTo`) reusando la maquinaria existente; nunca bloquea la creación de la card
   (ver change `add-vector-quick-command`).
+- Una card puede llevar un **marcador `focus`** (bool, + `focusedAt`): el developer marca los specs
+  que quiere trabajar **primero** (`vector spec focus|unfocus <id>` o el pin del board). Es un
+  **eje aparte de `priority`** (urgent/high/normal/low no cambia). **No es un estado** ni cambia la
+  máquina de estados; se limpia solo al entrar a `closed`/`archived` y no se puede poner sobre un
+  spec cerrado. Ordena primero dentro de la columna y dentro del tier de status de `spec next`.
+  **Focus efectivo** = `spec.focus` **o** (su épica tiene `focus` **y** el spec no está
+  `closed`/`archived`). El focus de la épica **nunca se copia** a los specs: se deriva al leer, así
+  que un spec asignado después lo hereda solo, y desenfocar la épica deja con focus a los specs
+  enfocados individualmente. Todo lo que ordena/filtra por focus usa el efectivo (orden de
+  columna, `spec next`, `spec list --focus`); la card expone `focus` (el propio) y
+  `focusInherited` (solo heredado).
+- Un spec puede pertenecer a **una épica** (`epic`: id). La **épica es entidad propia**
+  (`.vector/epics/<id>.json`: `id`, `title`, `description?`, `color?` de una paleta fija,
+  `order?` (1 = primera; sin order = después de las ordenadas, por título), `focus?` +
+  `focusedAt?`, timestamps) que agrupa specs de una iniciativa (p. ej. "App Mobile"). La membresía
+  vive solo en el spec; la épica no lista miembros. Asignar exige que la épica exista (en bulk se
+  validan **todos** los ids antes de escribir); borrar una épica se **rechaza** mientras algún spec
+  la referencie.
+- Todo cierre registra una **`resolution`** (+ `resolutionNote?`): `done` (default),
+  `obsolete`, `duplicate`, `superseded`. Se conserva al archivar (`archive --resolution` puede
+  corregirla). **Progreso de épica**: `done` = specs `closed`/`archived` con resolución efectiva
+  `done`; los `obsolete`/`duplicate`/`superseded` son **`dropped`**: se excluyen de `done` **y** de
+  `total` y se reportan aparte. Regla legacy (specs cerrados antes de existir `resolution`):
+  `closed` sin resolución cuenta como `done`; `archived` sin resolución **no** cuenta como done
+  (sigue en `total`).
 
 ### Máquina de estados (transiciones permitidas)
 
 ```
-  /vector:idea      /vector:propose     /vector:apply       /vector:status
-      │                  │                   │                   │
-      ▼                  ▼                   ▼                   ▼
-    draft ───────────▶ open ──────────▶ in-progress ─────────▶ review
+  /vector:idea             /vector:apply       /vector:status
+      │                         │                   │
+      ▼                         ▼                   ▼
+    open ─────────────────▶ in-progress ─────────▶ review
                                             │  ▲                 │
                                    hook ────┘  └─ /vector:status ┘
                                             ▼
@@ -46,21 +72,32 @@
     in-progress | review ──/vector:close──▶ closed ──/vector:archive──▶ archived
 ```
 
-- `draft` no tiene change de OpenSpec; `/vector:propose` lo crea y pasa a `open`.
-  Un `draft` también puede ir directo a `closed` (idea descartada) sin formalizarse.
-
 - `needs-attention` es un overlay sobre el trabajo activo: al resolverse vuelve a
-  `in-progress` o `review`. Se prioriza/resalta en board y en `/vector:daily`.
+  `in-progress` o `review`. Se prioriza/resalta en board y en `/vector:daily`. **No** se puede
+  cerrar directo (`needs-attention → closed` es ilegal): primero `in-progress`/`review`.
+- Toda transición ilegal falla con la lista de **estados destino legales** desde el estado
+  actual y el comando de cada uno (derivada de la tabla de transiciones, no hardcodeada), p. ej.
+  `illegal transition "needs-attention" → "closed" …; legal next statuses from "needs-attention":
+  in-progress (`vector spec status X in-progress`), review (…)`. Nada entra a `open` (no es destino
+  de ninguna transición); `vector spec status X open` responde "already open" solo si el spec está
+  realmente `open`.
 
 ## 2. Board: columnas = ESTADO (single-axis, V1)
 
 - Columnas del kanban = los estados del lifecycle, en orden:
-  `draft | open | in-progress | needs-attention | review | closed`.
+  `open | in-progress | needs-attention | review | closed`.
 - `archived` → vista separada (no columna del board activo).
 - **`stage`** (etapa de workflow, ej. Concept/Design) queda como **campo opcional** del spec,
   **no** como columna en V1. La referencia visual ([[kanban-ui-reference]]) usaba etapas como
   columnas, pero no generalizan entre repos; se reevalúa post-V1.
-- Orden dentro de columna = computado (`priority` desc, luego `updatedAt`), no manual.
+- Orden dentro de columna = computado (focus **efectivo** primero, luego `priority` desc, luego
+  `updatedAt`), no manual; el orden de épicas **no** reordena columnas. `vector spec next` usa,
+  **dentro** de cada tier de status (in-progress > needs-attention > review > open): focus
+  efectivo → orden de épica (specs de épicas con `order` menor primero; sin épica o épica sin
+  order van después de todas las ordenadas, empatadas entre sí) → `priority` → `updatedAt`. Ni
+  focus ni orden de épica saltan de tier.
+- Filtro por épica (board): "all epics" / "no epic" / una épica; persistido en `?epic=`. Las
+  épicas (filtro, vista Épicas, `epics[]`) se listan en orden de épica (order, luego título).
 
 ## 3. Estimación vs token meter (son cosas distintas)
 
@@ -113,6 +150,22 @@
     (eventos `status.changed` + `work.logged`); `400` `since` inválido, `404` spec inexistente,
     `500` lectura del log; body de error `{ "error": "<msg>" }`
   - `GET /api/specs/:id` → detalle de un spec (pendiente)
+  - `GET /api/board` incluye `epics[]` (`id,title,description?,color?,order?,focus?,total,done,
+    dropped?,byStatus,updatedAt`, en orden de épica) y en cada card `focus?` (propio),
+    `focusInherited?`, `epic?`, `resolution?`, `resolutionNote?`.
+  - **Escrituras** (pasan por los mismos mutators del `Store` que el CLI; nunca escriben archivos
+    directo). Guardas: método exacto (405), **same-origin** (403: `Host` debe ser el bind de
+    `vector serve` o un loopback con ese puerto — anti DNS-rebinding —, `Origin` si viene debe ser
+    `http://<Host>`, `Sec-Fetch-Site` cross-site se rechaza), `Content-Type: application/json`
+    (415), body JSON estricto ≤64 KiB sin campos desconocidos (400). Errores `{ "error": "<msg>" }`:
+    400 input inválido, 404 spec/épica inexistente, 409 conflicto. Tras cada escritura el server
+    empuja el board por SSE (además del watcher).
+    - `POST /api/specs/{id}/focus` `{ "focus": true|false }` → `{ id, focus, changed }`
+    - `POST /api/specs/{id}/epic` `{ "epic": "<id>" | null }` → `{ id, epic, changed }`
+    - `POST /api/epics` `{ title, id?, description?, color?, order? }` → `201` + épica
+    - `PATCH /api/epics/{id}` `{ title?, description?, color?, order? }` (`""` limpia;
+      `order: 0` quita el orden; negativo → 400) → épica
+    - `POST /api/epics/{id}/focus` `{ "focus": true|false }` → `{ id, focus, changed }`
   - El digest NL lo genera el command (`/vector:standup`) vía agente Haiku; el binario
     **nunca** llama a un LLM (solo proyecta y sirve el digest ya persistido).
 
@@ -122,19 +175,23 @@ El CLI Go es el único escritor. Cada comando escribe `updatedAt`.
 
 | Comando | Escribe en `state.json` | Evento en `activity.jsonl` | Efecto OpenSpec |
 |---------|--------------------------|-----------------------------|------------------|
-| `/vector:idea [text]` | crea `<id>/state.json` (`status:draft`, `createdAt`, `specDoc` puntero) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | — (change se crea en propose) |
-| `/vector:bug [report] {scope}` | crea `fix-<id>/state.json` (`status:draft`, prefijo `fix-`) + spec doc bug-framed; siembra `relatedTo[{kind,ref,source}]` (causa deducida por git, idempotente; `--related` inválido **degrada** a card sin relaciones) | `spec.created` + un `spec.related` por relación | — (change se crea en propose) |
+| `/vector:idea [text]` | crea `<id>/state.json` (`status:open`, `createdAt`, `specDoc`, `openspec`) + escribe el spec doc (20 secciones) en `specPath` | `spec.created` | crea proposal/design/tasks durante la autoría |
+| `/vector:bug [report] {scope}` | crea `fix-<id>/state.json` (`status:open`, prefijo `fix-`) + spec doc bug-framed; siembra `relatedTo[{kind,ref,source}]` (causa deducida por git, idempotente; `--related` inválido **degrada** a card sin relaciones) | `spec.created` + un `spec.related` por relación | crea proposal/design/tasks durante la autoría |
 | `/vector:quick "<text>" {ticket\|spec-id}` | crea `<id>/state.json` directamente en `status:in-progress` con `quickWin:true` (`createdAt`, `startedAt`, `specDoc` puntero al brief) + opcional `ticket`/`relatedTo`; luego `work.logged` (tras implementar) y `status:review` (`reviewAt`) | `spec.created` [+ `spec.linked`/`spec.related`] + `status.changed` + `work.logged` + `status.changed`(→review) | — (no crea change; apply-in-run nativo) |
-| `/vector:propose [id]` | `status:open`, `openspec{change,artifacts}` | `spec.proposed` + `status.changed` | crea el change `openspec/changes/<id>/` (proposal/design/tasks) |
 | `/vector:link [id] [ticket]` | `ticket{provider,key,url,auto}` | `spec.linked` | — |
+| `vector spec focus\|unfocus <id>` / board pin (`POST /api/specs/{id}/focus`) | `focus`, `focusedAt` (no toca `status`/`priority`) | `spec.focused` / `spec.unfocused` | — |
+| `vector spec epic <id> <epic-id>\|--clear` / `spec epic --epic <epic-id> <id>…` / `spec epic --clear <id>…` (`--stdin`) / `spec create --epic` / board (`POST /api/specs/{id}/epic`) | `epic` (valida que exista; en bulk valida **todos** los ids antes de escribir: un id desconocido falla sin escribir nada) | un `spec.epic-assigned{epic,previous}` por spec cambiado | — |
+| `/vector:epic "<pedido>"` | lo mismo que `vector epic create\|update\|focus\|unfocus\|delete` y `vector spec epic --epic` (una llamada bulk por épica destino); los commands de creación (`idea`/`bug`/`quick`/`research`) usan `spec create --epic` | los mismos eventos de las filas de épicas | — |
+| `vector epic create\|update\|delete` (`--order N`, `0` quita) / board (`POST /api/epics`, `PATCH /api/epics/{id}`) | `.vector/epics/<id>.json` (delete rechazado si algún spec la referencia) | `epic.created` / `epic.updated` / `epic.deleted` (sin `specId`) | — |
+| `vector epic focus\|unfocus <id>` / board pin de épica (`POST /api/epics/{id}/focus`) | `focus`, `focusedAt` de la épica (**no** reescribe los specs: el focus heredado se deriva) | `epic.focused` / `epic.unfocused` (sin `specId`) | — |
 | `vector spec relate <id>` (lo invoca `/vector:bug`) | añade un `relatedTo{kind,ref,source}` (idempotente en `{kind,ref}`; **no** cambia `status`) | `spec.related` | — |
 | `/vector:status [id] [status]` | `status` + timestamp del estado (`reviewAt`/etc) | `status.changed` (`trigger:command`) | — |
 | `/vector:apply [id]` | `status:in-progress`, `startedAt` | `spec.applied` + `status.changed` (`trigger:apply`) + `work.logged` (tras implementar, aditivo) | `openspec apply <change>` (implementa) |
 | `vector spec worklog <id>` (lo invoca `/vector:apply`) | — (aditivo, **no** toca `state.json`) | `work.logged{change,filesTouched,tasksCompleted,note}` | — |
 | `/vector:standup [24h\|today\|7d]` | — (escribe `.vector/local/standup.json`, no `state.json`); avanza el marcador al persistir | lee `activity.jsonl` (proyección read-only); digest NL por agente Haiku | — |
-| `/vector:close [id]` | `status:closed`, `closedAt` | `spec.closed` + `status.changed` | — |
-| `/vector:archive [id]` | `status:archived`, `archivedAt` | `spec.archived` | mover change a `archive/` |
-| `/vector:sync` | crea cards desde `openspec/changes/*` (por tasks) + specs sueltos del `spec-path` → `draft`; en bare+worktrees colapsa copias por slug (identidad = slug; `branch` = preferencia de copia canónica, no filtro); specs con frontmatter `supersededBy`/`status:superseded` se suprimen; auto-detecta ticket por change (`detectTicket`, `auto:true`); `--reconcile` actualiza status y reconcilia el ticket (idempotente, sin pisar manual) | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) / `spec.linked` (`auto:true`) | lee (read-only); no modifica OpenSpec |
+| `/vector:close [id]` (`vector spec close <id> [--resolution done\|obsolete\|duplicate\|superseded] [--note ...]`) | `status:closed`, `closedAt`, `resolution` (default `done`), `resolutionNote?` | `spec.closed{resolution,note?}` + `status.changed` | — |
+| `/vector:archive [id]` (`vector spec archive <id> [--resolution ... --note ...]`) | `status:archived`, `archivedAt`; conserva `resolution` (o la reemplaza con `--resolution`) | `spec.archived` (`{resolution,note?}` solo si se corrigió) | mover change a `archive/` |
+| `/vector:sync` | crea cards desde `openspec/changes/*` (por tasks) + specs sueltos del `spec-path` → `open`; en bare+worktrees colapsa copias por slug; specs con frontmatter `supersededBy`/`status:superseded` se suprimen; `--reconcile` actualiza status y ticket idempotentemente | `spec.created` (`source:sync`) / `status.changed` (`trigger:sync`) / `spec.linked` (`auto:true`) | lee (read-only); no modifica OpenSpec |
 | `/vector:daily` | — (read-only) | — (lee hoy + git log) | — |
 | **hook** (surgen preguntas) | `status:needs-attention`, `needsAttention{reason,since,source:hook}` | `status.changed` (`trigger:hook`) | — |
 

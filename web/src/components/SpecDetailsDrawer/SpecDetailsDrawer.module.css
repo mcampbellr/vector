@@ -24,6 +24,8 @@
   width: min(440px, 92vw);
   height: 100%;
   overflow-y: auto;
+  /* Reaching the end of the drawer must not scroll the board behind it. */
+  overscroll-behavior: contain;
   padding: var(--space-5);
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
@@ -137,6 +139,39 @@
   color: var(--status-attention-fg);
 }
 
+.epicAssign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.epicSelect {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.epicSelect:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.epicSelect:disabled {
+  opacity: 0.6;
+}
+
+.epicAssign .error,
+.epicAssign .muted {
+  flex-basis: 100%;
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -207,7 +242,9 @@
 .cmdCode {
   font-family: ui-monospace, 'SFMono-Regular', 'Fira Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
-  color: var(--color-text-secondary);
+  /* Not --color-text-secondary: #6b7280 on --color-surface-muted is 4.39:1 in
+     light, under AA for this 11px text. --ledger-column-key is 9.37:1. */
+  color: var(--ledger-column-key);
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
@@ -215,6 +252,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* `$` prompt marker on a shell line: decorative, never copied or selected. */
+.cmdShellPrefix {
+  margin-right: calc(var(--space-1) + 2px);
+  color: var(--ledger-text-dim);
+  user-select: none;
 }
 
 .cmdCopy {
@@ -228,15 +272,32 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   cursor: pointer;
-  color: var(--color-text-tertiary);
+  /* Not --color-text-tertiary: #9ca3af on --color-surface is 2.54:1 in light,
+     under the 3:1 AA floor for a non-text glyph. --ledger-text-dim is 4.83:1. */
+  color: var(--ledger-text-dim);
   transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
   padding: 0;
+}
+
+/* Keyboard focus is an outline, not the hover skin: the background stays put. */
+.cmdCopy:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 .cmdCopy:hover {
   color: var(--color-accent);
   border-color: var(--color-accent);
   background: var(--color-accent-bg);
+}
+
+/* Explains a Next step with no Claude row. Not .muted: --color-text-tertiary is
+   2.54:1 on --color-surface in light. */
+.cmdEmpty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ledger-text-dim);
 }
 
 .cmdCopy.copied {
@@ -389,6 +450,7 @@
 .modalBody {
   padding: var(--space-4) var(--space-5);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modalError {
@@ -506,4 +568,24 @@
   border: 1px solid var(--color-border);
   padding: var(--space-1) var(--space-2);
   text-align: left;
+}
+
+/* Resolution section — why a closed spec was closed, plus the optional note. */
+.resolutionText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.resolutionText .muted {
+  font-size: 12px;
+}
+
+.resolutionNote {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text-secondary, var(--color-text));
+  overflow-wrap: anywhere;
 }

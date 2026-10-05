@@ -38,6 +38,7 @@ describe('KanbanBoard', () => {
     render(
       <KanbanBoard
         columns={[makeColumn({ cards: [card], count: 1 })]}
+        epics={[]}
         onSelectCard={onSelectCard}
       />,
     )
@@ -51,6 +52,7 @@ describe('KanbanBoard', () => {
     render(
       <KanbanBoard
         columns={[makeColumn({ cards: [card], count: 1 })]}
+        epics={[]}
         onSelectCard={() => {}}
       />,
     )

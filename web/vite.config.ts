@@ -12,7 +12,15 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: API_TARGET, changeOrigin: true },
+      // changeOrigin rewrites Host to the API target; the Origin header is
+      // rewritten to match it too, because the board's write endpoints (focus,
+      // epics) reject any request whose Origin is not the API's own origin
+      // (CSRF / DNS-rebinding guard in cli/internal/board/writes.go).
+      '/api': {
+        target: API_TARGET,
+        changeOrigin: true,
+        headers: { origin: new URL(API_TARGET).origin },
+      },
     },
   },
   build: {

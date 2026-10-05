@@ -8,8 +8,8 @@ tags: [vector, quick-win, refactor, lifecycle]
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git *), Bash(vector *), Bash(go *), Bash(npm *), Bash(npx *), Bash(cargo *), Bash(ruff *), Bash(mypy *), Bash(pnpm *), Bash(yarn *), Agent, AskUserQuestion
 ---
 
-Apply a **small, low-risk change in the same run**. Unlike `/vector:idea` → `/vector:propose` →
-`/vector:apply` (full ceremony + an OpenSpec change), `/vector:quick` is for mechanical work — a
+Apply a **small, low-risk change in the same run**. Unlike `/vector:idea` → `/vector:apply`
+(full specification + an OpenSpec change), `/vector:quick` is for mechanical work — a
 refactor, a symbol rename, an extracted helper, a copy tweak, a missing index, a promoted file.
 It registers a board card **born `in-progress` and marked quick-win**, implements the change,
 validates with the repo's lint/typecheck gate, logs the work, optionally commits (asking), and
@@ -18,7 +18,7 @@ equivalent of the global `/quick-win` skill — **distributable** and **agnostic
 repo**, leaving the board + `activity.jsonl` as the single record (no parallel `quick-wins.md`).
 
 **You never write Vector's state yourself**: the card, the `quickWin` marker, the ticket/related
-link, the worklog, and the status transition all go through the binary (CLI-owns-writes).
+link, the epic, the worklog, and the status transition all go through the binary (CLI-owns-writes).
 
 **Input**: `$ARGUMENTS` — a change description (quoted) followed by an optional `{ticket|spec-id}`
 token (e.g. `/vector:quick "extract magic timeouts in attendance.service.ts" ACME-1421`).
@@ -59,6 +59,9 @@ Split `$ARGUMENTS` into the change description (`RAW_QW`) and the optional trail
 
 Read `.vector/config.json` for `specPath`. If it's missing, tell the user to run `vector init`
 in the repo root and stop — without it there is no place to register the card.
+
+If a `.vector/` already exists at an ancestor directory, that store is the base: anchor there
+and never `vector init` a nested one. See `.claude/agents/_shared/root-anchoring-guardrail.md`.
 
 ## 3. Sanity-check: is this really a quick-win?
 
@@ -109,6 +112,31 @@ From the trailing arg (step 1) or by running `detectTicket` semantics over `RAW_
 Only when it resolves with confidence. Ambiguous → ask once or omit. **Never guess; never block
 card creation on the link** — if the binary rejects the link, re-run create without it.
 
+## 6b. Epic (optional grouping)
+
+Right before `vector spec create`, list the epics once:
+
+```bash
+EPICS_JSON=$(vector epic list --json 2>/dev/null)
+```
+
+Resolve `EPIC_ID` from the user's request and clarifications (one list call, no extra agent):
+- **Named or one clear match**: the request names an existing epic, or clearly matches exactly
+  one by `id`/`title`/`description` → set `EPIC_ID` to its `id`; don't ask.
+- **Ambiguous**: more than one plausible epic, or only a weak match → ask once with
+  `AskUserQuestion`: one option per plausible epic (`<title> (<id>)`) plus **No epic**.
+- **Fits an epic that doesn't exist** (e.g. "for the App Mobile epic" and there is none) →
+  propose it with `AskUserQuestion`, showing the title, a suggested kebab-case id, and one color
+  from `slate|blue|teal|green|amber|orange|red|pink|violet`: **Create and assign** / **No epic**.
+  Only on **Create and assign** run
+  `vector epic create --title "<title>" --id "<id>" --color <color> --json` and set `EPIC_ID` to
+  the returned `id`; if it fails, show the error and continue without an epic.
+- **No epics, a failed list, or nothing plausibly fits** → leave `EPIC_ID` unset; don't ask and
+  don't mention epics.
+
+Pass `--epic "$EPIC_ID"` only when set. The epic never blocks creation: if the binary rejects
+`--epic`, re-run `vector spec create` without it and report the error.
+
 ## 7. Register the card (`in-progress` + quick-win) via the binary
 
 Write the brief as the card's doc and create it directly in `in-progress`, marked quick-win:
@@ -121,11 +149,12 @@ printf '%s' "$BRIEF" | vector spec create \
   --quick-win \
   [--ticket "$TICKET_JSON"] \
   [--related "$RELATED_JSON"] \
+  [--epic "$EPIC_ID"] \
   --body-file - --json
 ```
 
 Parse the JSON for `id`, `status`, and `specDoc`. Include `--ticket`/`--related` only when step 6
-resolved them.
+resolved them, and `--epic` only when step 6b set `EPIC_ID`.
 
 ## 8. Implement the change (main loop)
 
@@ -201,7 +230,7 @@ malformed response, skip and note it in the report.
 ## 15. Report
 
 Report: the id, `quickWin: true`, the transition (`in-progress → review`), the ticket/related
-link (or none), the commit SHA **or** "uncommitted changes left in the working tree", the gate
+link (or none), the epic (only when assigned), the commit SHA **or** "uncommitted changes left in the working tree", the gate
 result, and the next step: `/vector:close <id>`.
 
 ## Notes — state discipline & token routing

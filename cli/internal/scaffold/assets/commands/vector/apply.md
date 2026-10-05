@@ -47,22 +47,38 @@ from the repo's manifests in step 4 as before.
 ## 1. Select the work-item (skip if an id was given)
 
 Run `vector spec next --json`. It returns the recommended `id`, its `status`/`priority`, and
-the repo's `applyMode`. Selection ranks **in-progress > needs-attention > review > open**, then
-by priority — continue what's started before opening new work.
+the repo's `applyMode` (plus `"focus": "true"` when the pick carries its own focus marker, or
+`"focusInherited": "true"` when it is focused through its epic). Selection ranks
+**in-progress > needs-attention > review > open**; within each status tier:
+
+1. **focused specs first** — a spec's own focus (`vector spec focus <id>` or the card's pin) or
+   **inherited** from a focused epic (`vector epic focus <epic-id>` or the epic's pin in the
+   Epics view; every non-closed spec of that epic inherits it, including specs assigned later);
+2. then **epic order** — specs of lower-order epics first (`vector epic update <id> --order N`,
+   1 = first); specs with no epic or an unordered epic come after every ordered epic;
+3. then priority, then most recently updated.
+
+Continue what's started before opening new work: neither focus nor epic order lifts a spec across
+status tiers.
 
 Behave per `applyMode`:
 
 - **`auto`** → take the recommended pick and proceed without asking.
 - **`ask`** (default) → propose the pick **with its reason** ("`<id>` is in-progress, highest
-  priority") and confirm with `AskUserQuestion` before proceeding.
+  priority", "`<id>` is open and focused", or "`<id>` is open, focused via epic `<epic>`") and
+  confirm with `AskUserQuestion` before proceeding.
 - **`always-ask`** → show the candidate list (`vector spec list`) and let the user choose.
 
-If `next` reports nothing actionable (only draft/closed/archived remain), say so and stop —
+If `next` reports nothing actionable (only closed/archived remain), say so and stop —
 there's nothing to apply.
 
 ## 2. Start the spec (transition by current status)
 
 Read `.vector/specs/<id>/state.json`. Then:
+
+- **Legacy pre-v0.8 value** → generate any missing proposal/design/tasks using step 3's
+  delegate/native rules, then call `vector spec apply <id> --json`. The binary migrates and
+  starts the card in one user action. Never tell the user to run another command first.
 
 - **`open`** → `vector spec apply <id> --json`. Transitions `open → in-progress`, stamps
   `startedAt`, logs `spec.applied` + `status.changed (trigger:apply)`. Now implement (step 3+).

@@ -155,6 +155,14 @@
   text-decoration: none;
 }
 
+/* The epic chip shares the identity row with the slug; it shrinks (ellipsis)
+   before the slug does and never pushes the artifact meter out of the card. */
+.epicSlot {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
 /* The artifact meter is always present: three segments, unlit in --color-border.
    Hiding it made absence invisible; leaving it lets a whole column be read at a
    glance. */
@@ -186,6 +194,18 @@
   align-items: center;
   gap: 7px;
   min-width: 0;
+}
+
+/* The unfocused pin is revealed while the pointer or keyboard is on the card;
+   a focused pin is always visible (FocusToggle styles both states). */
+.focusSlot {
+  display: inline-flex;
+  flex: none;
+}
+
+.card:hover .focusSlot button,
+.card:focus-within .focusSlot button {
+  opacity: 1;
 }
 
 /* Only urgent and high print. The flag is an alarm; repeated across 200 cards it
@@ -327,4 +347,12 @@
    unstructured. */
 .attentionSummaryLegacy {
   color: var(--status-attention-fg);
+}
+
+/* A dropped resolution (obsolete/duplicate/superseded): muted and struck through
+   so a closed-but-not-delivered card never reads as shipped work. */
+.resolution {
+  color: var(--ledger-text-dim);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }

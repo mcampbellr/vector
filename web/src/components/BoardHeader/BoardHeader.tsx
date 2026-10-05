@@ -1,8 +1,11 @@
 import type { ConnectionState } from '../../api/useBoard'
+import type { EpicSummary } from '../../types/board'
+import type { EpicFilter } from '../../lib/epicFilter'
 import { compactRelativeTime } from '../../lib/format'
 import { useNow } from '../../lib/useNow'
 import { BoardTabs } from './BoardTabs'
 import type { BoardView } from './BoardView'
+import { EpicFilterSelect } from './EpicFilterSelect'
 import { PaletteTrigger } from './PaletteTrigger'
 import { ThemeControl } from './ThemeControl'
 import styles from './BoardHeader.module.css'
@@ -15,6 +18,9 @@ interface BoardHeaderProps {
   view: BoardView
   onChangeView: (view: BoardView) => void
   onOpenPalette: () => void
+  epics: EpicSummary[]
+  epicFilter: EpicFilter
+  onChangeEpicFilter: (filter: EpicFilter) => void
 }
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
@@ -37,8 +43,14 @@ export function BoardHeader({
   view,
   onChangeView,
   onOpenPalette,
+  epics,
+  epicFilter,
+  onChangeEpicFilter,
 }: BoardHeaderProps) {
   const now = useNow()
+  // The filter narrows the kanban only; it is offered there once an epic exists
+  // (or while a filter is still active, so it can always be cleared).
+  const showEpicFilter = view === 'board' && (epics.length > 0 || epicFilter.kind !== 'all')
   const freshness = updatedAt ? compactRelativeTime(updatedAt, now) : ''
 
   return (
@@ -54,6 +66,9 @@ export function BoardHeader({
       </div>
       <BoardTabs view={view} onChange={onChangeView} />
       <div className={styles.actions}>
+        {showEpicFilter && (
+          <EpicFilterSelect epics={epics} filter={epicFilter} onChange={onChangeEpicFilter} />
+        )}
         {/* The dot always carries the colour; the label is tinted only when the
             user has to act or distrust what they see. */}
         <span className={`${styles.connection} ${styles[connection]}`}>

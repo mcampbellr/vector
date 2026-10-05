@@ -84,7 +84,6 @@
   background: var(--accent, var(--color-border-strong));
 }
 
-.specRow[data-status='draft'] { --accent: var(--status-draft-fg); }
 .specRow[data-status='open'] { --accent: var(--status-open-fg); }
 .specRow[data-status='in-progress'] { --accent: var(--status-progress-fg); }
 .specRow[data-status='review'] { --accent: var(--status-review-fg); }

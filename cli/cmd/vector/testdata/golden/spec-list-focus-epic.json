@@ -1,0 +1,16 @@
+[
+  {
+    "epic": "app-mobile",
+    "focus": true,
+    "id": "alpha",
+    "priority": "low",
+    "status": "open",
+    "title": "Alpha feature"
+  },
+  {
+    "id": "beta",
+    "priority": "normal",
+    "status": "open",
+    "title": "Beta"
+  }
+]

@@ -8,7 +8,7 @@
 
 | Superficie | Qué es | Ejemplos |
 |------------|--------|----------|
-| **Binario Go** (`cli/`) | Comando de terminal (árbol **cobra**); **único escritor** del state. Global (uno en el `PATH`). Expone `--help` estilizado auto-generado y `vector completion <bash\|zsh\|fish\|powershell>` (scripts on-the-fly). | `vector serve`, `vector init`, `vector spec create …`, `vector completion zsh` |
+| **Binario Go** (`cli/`) | Comando de terminal (árbol **cobra**); **único escritor** del state. Global (uno en el `PATH`). Expone `--help` estilizado auto-generado y `vector completion <bash\|zsh\|fish\|powershell>` (scripts on-the-fly). | `vector serve`, `vector init`, `vector spec create …`, `vector open <id>` (abre/enfoca la ventana de tmux del spec con Claude y su próximo comando), `vector completion zsh` |
 | **Commands de Claude** (`kit/`) | Markdown invocado dentro de Claude que **llama al binario**. Per-proyecto, en `.claude/commands/vector/`. | `/vector:idea`, `/vector:status`, … |
 
 Los commands **nunca** editan el JSON directamente: invocan al binario (disciplina
@@ -51,7 +51,7 @@ tags: [vector, spec, capture]
 
 ## Decisión: los slash commands bajo el namespace `vector`
 
-`/vector:idea` · `/vector:research` · `/vector:bug` · `/vector:quick` · `/vector:link` ·
+`/vector:idea` · `/vector:research` · `/vector:bug` · `/vector:quick` · `/vector:epic` · `/vector:link` ·
 `/vector:status` · `/vector:daily` · `/vector:apply` · `/vector:close` · `/vector:archive` ·
 `/vector:comment`
 
@@ -60,13 +60,14 @@ viabilidad** de la idea por lentes (`technical` siempre; `security`/`marketing`/
 señales del texto), delega cada lente a un revisor Sonnet (`vector-feasibility-reviewer`, read-only)
 que reúne su propia evidencia y emite un veredicto `go`/`go-with-risks`/`no-go`, consolida un
 veredicto global, **gatea go/no-go con el usuario** y —solo con go— autora el spec de 20 secciones
-con el **reporte de viabilidad embebido** y registra la card `draft` (reusando el pipeline de `raw`:
-refiner Haiku + validator Sonnet). No corre las cuatro lentes "por si acaso"; pregunta si la
+con el **reporte de viabilidad embebido**, crea sus artefactos OpenSpec y registra la card `open`
+(refiner Haiku + validator Sonnet). No corre las cuatro lentes "por si acaso"; pregunta si la
 detección es ambigua.
 
 `/vector:bug` es la contraparte bug-framed de `/vector:idea`: refina un reporte (Haiku), deduce
 la **causa raíz** vía `git blame`/`git log` (mapeando commits sospechosos a una spec de Vector
-o a un ticket) y registra el bug como card `draft` con relaciones `relatedTo[]` persistidas.
+o a un ticket), crea sus artefactos OpenSpec y registra el bug como card `open` con relaciones
+`relatedTo[]` persistidas.
 
 `/vector:quick` es el equivalente Vector-native de `/quick-win`: aplica un cambio pequeño y de
 bajo riesgo (refactor, rename, helper extraído, ajuste de copy, índice faltante) **en la misma
@@ -75,6 +76,16 @@ card directamente `in-progress` **marcada quick-win** (`quickWin:true`), impleme
 gate de lint/typecheck del repo, loguea el trabajo (`work.logged`), commitea opcionalmente
 (preguntando) y la deja en `review`. No crea un change de OpenSpec; si el cambio crece, escala a
 `/vector:idea`.
+
+`/vector:epic` administra **épicas** en lenguaje natural: crea/lista/muestra/edita/borra épicas y
+asigna o quita specs existentes ("meteme estos 5 specs en la épica App Mobile"). Resuelve las
+referencias con `vector epic list --json` + `vector spec list --json`, confirma con
+`AskUserQuestion` las operaciones en lote, ambiguas, que mueven un spec de épica o que borran, y
+escribe solo vía `vector epic …` / `vector spec epic …` (el binario rechaza borrar una épica
+mientras haya specs asignados). Los commands que crean specs (`idea`/`bug`/`quick`/`research`)
+eligen la épica antes de `vector spec create`: la pasan con `--epic` si el pedido la nombra o calza
+con una sola, preguntan si hay más de una plausible y proponen crearla si el pedido nombra una que
+no existe.
 
 `init` queda **fuera** de los slash commands: es el subcomando de terminal `vector init` que
 bootstrapea el repo y siembra los de arriba (ver §Distribución).
@@ -92,6 +103,7 @@ kit/                              # fuente versionada en el repo Vector
         ├── research.md           # → /vector:research (raw + feasibility lenses + go/no-go gate)
         ├── bug.md                # → /vector:bug  (raw bug-framed + traza de causa)
         ├── quick.md              # → /vector:quick (apply-in-run ≈ /quick-win)
+        ├── epic.md               # → /vector:epic (épicas en lenguaje natural)
         ├── link.md
         ├── status.md
         ├── daily.md

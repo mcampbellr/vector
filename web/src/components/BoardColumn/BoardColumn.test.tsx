@@ -44,6 +44,7 @@ describe('BoardColumn', () => {
     const { container } = render(
       <BoardColumn
         column={makeColumn({ status: 'in-progress', label: 'In progress', cards, count: cards.length })}
+        epicsById={new Map()}
         onSelectCard={() => {}}
       />,
     )
@@ -61,6 +62,7 @@ describe('BoardColumn', () => {
     render(
       <BoardColumn
         column={makeColumn({ status: 'review', label: 'Review', cards: [], count: 0 })}
+        epicsById={new Map()}
         onSelectCard={() => {}}
       />,
     )

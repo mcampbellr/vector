@@ -75,6 +75,31 @@ func TestApplyAndCloseAndArchiveHappyPath(t *testing.T) {
 	}
 }
 
+func TestApplyConsumesLegacyDraftInOneAction(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	makeLegacyDraft(t, store, "legacy")
+
+	applied, err := store.ApplySpec("legacy", "legacy", "tester", time.Now())
+	if err != nil {
+		t.Fatalf("ApplySpec legacy: %v", err)
+	}
+	if applied.Status != StatusInProgress || applied.OpenSpec == nil || applied.OpenSpec.Change != "legacy" {
+		t.Fatalf("legacy apply did not formalize and start: %+v", applied)
+	}
+	events, err := store.ReadEvents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var proposed, appliedEvent bool
+	for _, event := range events {
+		proposed = proposed || event.Type == EvtSpecProposed
+		appliedEvent = appliedEvent || event.Type == EvtSpecApplied
+	}
+	if !proposed || !appliedEvent {
+		t.Fatalf("legacy apply events: proposed=%t applied=%t", proposed, appliedEvent)
+	}
+}
+
 func TestIllegalTransitionRejected(t *testing.T) {
 	store, err := Open(t.TempDir())
 	if err != nil {
@@ -136,18 +161,78 @@ func TestSelectNextRanksByStatusThenPriority(t *testing.T) {
 	now := time.Now()
 	specs := []*SpecState{
 		{ID: "open-high", Status: StatusOpen, Priority: PriorityHigh, UpdatedAt: now},
-		{ID: "draft", Status: StatusDraft, Priority: PriorityUrgent, UpdatedAt: now},
 		{ID: "review", Status: StatusReview, Priority: PriorityLow, UpdatedAt: now},
 		{ID: "wip", Status: StatusInProgress, Priority: PriorityLow, UpdatedAt: now},
 		{ID: "closed", Status: StatusClosed, Priority: PriorityUrgent, UpdatedAt: now},
 	}
-	got := SelectNext(specs)
+	got := SelectNext(specs, nil)
 	if got == nil || got.ID != "wip" {
 		t.Fatalf("SelectNext = %v, want in-progress 'wip' first", got)
 	}
 
-	// With only draft/closed left, nothing is actionable.
-	if SelectNext([]*SpecState{{ID: "d", Status: StatusDraft}, {ID: "c", Status: StatusClosed}}) != nil {
+	// With only terminal cards left, nothing is actionable.
+	if SelectNext([]*SpecState{{ID: "c", Status: StatusClosed}}, nil) != nil {
 		t.Error("SelectNext should return nil when nothing is actionable")
+	}
+}
+
+// TestSelectNextFocusWithinStatusTier pins the ordering rule: within a status tier
+// a focused spec beats any priority, but focus never lifts a spec across tiers
+// (continuing started work still wins over a focused open spec).
+func TestSelectNextFocusWithinStatusTier(t *testing.T) {
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name  string
+		specs []*SpecState
+		want  string
+	}{
+		{
+			name: "focused low beats unfocused urgent in the same tier",
+			specs: []*SpecState{
+				{ID: "urgent-open", Status: StatusOpen, Priority: PriorityUrgent, UpdatedAt: base.Add(2)},
+				{ID: "focused-low", Status: StatusOpen, Priority: PriorityLow, Focus: true, UpdatedAt: base},
+			},
+			want: "focused-low",
+		},
+		{
+			name: "status tier still wins over focus",
+			specs: []*SpecState{
+				{ID: "focused-open", Status: StatusOpen, Priority: PriorityUrgent, Focus: true, UpdatedAt: base.Add(5)},
+				{ID: "started", Status: StatusInProgress, Priority: PriorityLow, UpdatedAt: base},
+			},
+			want: "started",
+		},
+		{
+			name: "among focused specs priority decides",
+			specs: []*SpecState{
+				{ID: "focused-normal", Status: StatusOpen, Priority: PriorityNormal, Focus: true, UpdatedAt: base.Add(5)},
+				{ID: "focused-high", Status: StatusOpen, Priority: PriorityHigh, Focus: true, UpdatedAt: base},
+			},
+			want: "focused-high",
+		},
+		{
+			name: "same focus and priority falls back to recency",
+			specs: []*SpecState{
+				{ID: "older", Status: StatusOpen, Priority: PriorityHigh, Focus: true, UpdatedAt: base},
+				{ID: "newer", Status: StatusOpen, Priority: PriorityHigh, Focus: true, UpdatedAt: base.Add(1)},
+			},
+			want: "newer",
+		},
+		{
+			name: "a focused closed spec is not actionable",
+			specs: []*SpecState{
+				{ID: "closed", Status: StatusClosed, Priority: PriorityUrgent, Focus: true, UpdatedAt: base},
+				{ID: "open", Status: StatusOpen, Priority: PriorityLow, UpdatedAt: base},
+			},
+			want: "open",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pick := SelectNext(tc.specs, nil)
+			if pick == nil || pick.ID != tc.want {
+				t.Fatalf("SelectNext = %v, want %s", pick, tc.want)
+			}
+		})
 	}
 }

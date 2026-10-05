@@ -1,0 +1,113 @@
+.wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-width: 0;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.toggle:disabled {
+  cursor: default;
+}
+
+.toggle[aria-busy='true'] {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* Focused: the accent colour — it is the one marker the developer set by hand. */
+.on {
+  color: var(--color-accent);
+}
+
+.off {
+  color: var(--ledger-text-dim);
+}
+
+/* Inherited from a focused epic: same accent hue as an own focus but an
+   outlined pin (no fill) and a dashed underline, so the two never read alike.
+   It stays visible on the card (it affects the column order). */
+.inherited {
+  color: var(--color-accent);
+}
+
+.inherited span {
+  text-decoration: underline dashed;
+  text-underline-offset: 2px;
+}
+
+.off:not(:disabled):hover {
+  color: var(--color-text);
+}
+
+/* On the card an unfocused pin stays out of the way until the card is hovered
+   or focused (SpecCard reveals it); it keeps its hit area the whole time. */
+.card .off {
+  opacity: 0;
+}
+
+.card .off:focus-visible {
+  opacity: 1;
+}
+
+/* Touch screens have no hover to reveal it. */
+@media (hover: none) {
+  .card .off {
+    opacity: 0.6;
+  }
+}
+
+/* In the drawer it is a labelled control on the meta row. */
+.drawer .toggle {
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+}
+
+.drawer .on {
+  border-color: var(--color-accent);
+  background: var(--color-accent-bg);
+}
+
+.drawer .inherited {
+  border-style: dashed;
+  border-color: var(--color-accent);
+}
+
+.drawer .toggle:disabled:not([aria-busy='true']) {
+  opacity: 0.5;
+}
+
+.error {
+  min-width: 0;
+  font-size: 11px;
+  color: var(--status-attention-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer .error {
+  white-space: normal;
+}
