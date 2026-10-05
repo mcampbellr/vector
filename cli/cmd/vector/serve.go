@@ -11,11 +11,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/mariocampbell/vector/internal/board"
+	"github.com/mariocampbell/vector/internal/config"
 	"github.com/mariocampbell/vector/internal/state"
 	"github.com/mariocampbell/vector/internal/ui"
 	"github.com/mariocampbell/vector/internal/webui"
@@ -55,6 +57,7 @@ func newServeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			store.SetArtifactFallbacks(artifactFallbacks(root))
 
 			static, uiSource, err := webui.Resolve(webDir, root, strings.HasSuffix(version, "-dev"))
 			if err != nil {
@@ -107,6 +110,60 @@ func newServeCmd() *cobra.Command {
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.IntVar(&pollMs, "poll", 1000, "state poll interval in ms for live updates")
 	return cmd
+}
+
+// artifactFallbacks lists the OpenSpec changes roots the file preview searches
+// when a spec's recorded artifact path is gone (typically a removed per-spec
+// worktree): the configured branch's worktree first, then every other worktree,
+// then the root-level changes tree that holds the archive. The roots are globbed
+// per lookup so worktrees added while the board runs are found. A missing or
+// invalid config only disables the fallbacks — the board still serves recorded paths.
+func artifactFallbacks(root string) state.ArtifactFallbacks {
+	cfg, err := config.Load(root)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "warning: file preview fallbacks disabled: %v\n", err)
+		}
+		return state.ArtifactFallbacks{}
+	}
+	return state.ArtifactFallbacks{ChangesDirs: func() []string { return orderedChangesDirs(cfg, root) }}
+}
+
+// orderedChangesDirs returns cfg's changes roots ranked for fallback lookups:
+// configured branch, other worktrees, then the root-level tree. A glob error
+// yields no roots (the lookup degrades to 404, never 500).
+func orderedChangesDirs(cfg *config.Config, root string) []string {
+	dirs, err := cfg.ChangesDirs(root)
+	if err != nil {
+		return nil
+	}
+	rootChangesDir := filepath.Join(root, filepath.FromSlash(config.DefaultChangesPath))
+	// Compare resolved directories rather than ChangesDir.Branch: the branch capture
+	// is empty for templates with a trailing slash (e.g. "code/[branch]/…/changes/").
+	branchChangesDir := ""
+	if cfg.Branch != "" {
+		template := cfg.ChangesPath
+		if template == "" {
+			template = config.DefaultChangesPath
+		}
+		branchChangesDir = filepath.Join(root, filepath.FromSlash(strings.ReplaceAll(template, "[branch]", cfg.Branch)))
+	}
+	rank := func(dir config.ChangesDir) int {
+		switch {
+		case branchChangesDir != "" && dir.Dir == branchChangesDir:
+			return 0
+		case dir.Dir == rootChangesDir:
+			return 2
+		default:
+			return 1
+		}
+	}
+	sort.SliceStable(dirs, func(i, j int) bool { return rank(dirs[i]) < rank(dirs[j]) })
+	changesDirs := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		changesDirs = append(changesDirs, dir.Dir)
+	}
+	return changesDirs
 }
 
 // serveShutdownGracePeriod bounds the graceful Shutdown after Ctrl-C. Request
