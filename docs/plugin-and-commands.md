@@ -8,7 +8,7 @@
 
 | Superficie | Qué es | Ejemplos |
 |------------|--------|----------|
-| **Binario Go** (`cli/`) | Comando de terminal (árbol **cobra**); **único escritor** del state. Global (uno en el `PATH`). Expone `--help` estilizado auto-generado y `vector completion <bash\|zsh\|fish\|powershell>` (scripts on-the-fly). | `vector serve`, `vector init`, `vector spec create …`, `vector completion zsh` |
+| **Binario Go** (`cli/`) | Comando de terminal (árbol **cobra**); **único escritor** del state. Global (uno en el `PATH`). Expone `--help` estilizado auto-generado y `vector completion <bash\|zsh\|fish\|powershell>` (scripts on-the-fly). | `vector serve`, `vector init`, `vector spec create …`, `vector open <id>` (abre/enfoca la ventana de tmux del spec con Claude y su próximo comando), `vector completion zsh` |
 | **Commands de Claude** (`kit/`) | Markdown invocado dentro de Claude que **llama al binario**. Per-proyecto, en `.claude/commands/vector/`. | `/vector:idea`, `/vector:status`, … |
 
 Los commands **nunca** editan el JSON directamente: invocan al binario (disciplina
