@@ -94,8 +94,8 @@ el único path sancionado de reinstalación desde fuente. Encadena, con abort-on
 `cli/internal/webui/dist/assets/` **y** el `index.html` real (hasheado, producto de `web build`)
 están **gitignored** (se regeneran en cada build); lo único trackeado en `dist/` es
 `index.placeholder.html` (sin refs a `/assets/*`). Verificar que no haya drift: `ls
-cli/internal/webui/dist/assets` debe igualar `ls web/dist/assets`. Ver también la Memory
-`reinstall-vector-binary-after-changes`.
+cli/internal/webui/dist/assets` debe igualar `ls web/dist/assets` — aunque con `make install` el
+drift ya no es posible, porque el re-embed y el guard corren siempre antes de compilar.
 
 **Guard de integridad del board embebido** (`internal/webui`): construir el binario desde un worktree
 sin `web build` embebía un `index.html` que referenciaba `/assets/*` inexistentes → board en blanco
