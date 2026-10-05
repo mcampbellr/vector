@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -484,7 +485,8 @@ func TestOpenCreatesMissingWorktree(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			if got := env.runner.calledWith("git", "worktree add code/demo -b feat/demo main"); got != tc.wantAdd {
+			wantArgs := "worktree add " + filepath.Join(env.root, "code", "demo") + " -b feat/demo main"
+			if got := env.runner.calledWith("git", wantArgs); got != tc.wantAdd {
 				t.Fatalf("worktree add called = %v, want %v (calls %v)", got, tc.wantAdd, env.runner.calls)
 			}
 			if got := env.runner.calledWith("tmux", "new-"); got != tc.wantWindow {
@@ -514,7 +516,7 @@ func TestOpenPrintNeverExecutes(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(env.stdout.String()), "\n")
 	wantPrefixes := []string{
-		"git -C " + env.root + " worktree add code/demo -b feat/demo main",
+		"git -C " + env.root + " worktree add " + filepath.Join(env.root, "code", "demo") + " -b feat/demo main",
 		"WIN=$(tmux new-session -d -P -F '" + tmuxTargetFormat + "' -s ",
 		`tmux set-option -w -t "$WIN" @vector-spec demo`,
 		`tmux attach-session -t "$WIN"`,
@@ -723,9 +725,9 @@ func TestOpenWorktreeSources(t *testing.T) {
 		refs    map[string]bool
 		wantAdd string
 	}{
-		{name: "new spec forks from base", wantAdd: "worktree add code/demo -b feat/demo main"},
-		{name: "existing local branch is checked out without -b", refs: map[string]bool{"refs/heads/feat/demo": true}, wantAdd: "worktree add code/demo feat/demo"},
-		{name: "remote-only branch is tracked", refs: map[string]bool{"refs/remotes/origin/feat/demo": true}, wantAdd: "worktree add code/demo -b feat/demo --track origin/feat/demo"},
+		{name: "new spec forks from base", wantAdd: "worktree add %s -b feat/demo main"},
+		{name: "existing local branch is checked out without -b", refs: map[string]bool{"refs/heads/feat/demo": true}, wantAdd: "worktree add %s feat/demo"},
+		{name: "remote-only branch is tracked", refs: map[string]bool{"refs/remotes/origin/feat/demo": true}, wantAdd: "worktree add %s -b feat/demo --track origin/feat/demo"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -740,10 +742,89 @@ func TestOpenWorktreeSources(t *testing.T) {
 					add = call
 				}
 			}
-			if got := strings.Join(add, " "); !strings.HasSuffix(got, tc.wantAdd) {
-				t.Fatalf("worktree add = %q, want suffix %q", got, tc.wantAdd)
+			want := fmt.Sprintf(tc.wantAdd, filepath.Join(env.root, "code", "demo"))
+			if got := strings.Join(add, " "); !strings.HasSuffix(got, want) {
+				t.Fatalf("worktree add = %q, want suffix %q", got, want)
 			}
 		})
+	}
+}
+
+func TestResolveGitRoot(t *testing.T) {
+	seed := func(t *testing.T, entries ...string) string {
+		t.Helper()
+		root := t.TempDir()
+		for _, entry := range entries {
+			if err := os.MkdirAll(filepath.Join(root, entry), 0o755); err != nil {
+				t.Fatalf("seed %s: %v", entry, err)
+			}
+		}
+		return root
+	}
+	t.Run("a repo root keeps running git in itself", func(t *testing.T) {
+		root := seed(t, ".git", "code/.bare")
+		if got := resolveGitRoot(root, "code"); got != root {
+			t.Fatalf("resolveGitRoot = %q, want %q", got, root)
+		}
+	})
+	t.Run("a non-repo workspace root falls back to the worktree root", func(t *testing.T) {
+		root := seed(t, "code/.bare")
+		want := filepath.Join(root, "code")
+		if got := resolveGitRoot(root, "code"); got != want {
+			t.Fatalf("resolveGitRoot = %q, want %q", got, want)
+		}
+	})
+	t.Run("a worktree root pointing at the bare repo by gitfile is accepted", func(t *testing.T) {
+		root := seed(t, "code")
+		if err := os.WriteFile(filepath.Join(root, "code", ".git"), []byte("gitdir: ./.bare\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(root, "code")
+		if got := resolveGitRoot(root, "code"); got != want {
+			t.Fatalf("resolveGitRoot = %q, want %q", got, want)
+		}
+	})
+	t.Run("no git anywhere keeps the root", func(t *testing.T) {
+		root := seed(t, "code")
+		if got := resolveGitRoot(root, "code"); got != root {
+			t.Fatalf("resolveGitRoot = %q, want %q", got, root)
+		}
+	})
+	t.Run("an escaping or absolute worktree root is never probed", func(t *testing.T) {
+		root := seed(t, "code/.bare")
+		for _, worktreeRoot := range []string{"", "../code", "/etc"} {
+			if got := resolveGitRoot(root, worktreeRoot); got != root {
+				t.Fatalf("resolveGitRoot(%q) = %q, want %q", worktreeRoot, got, root)
+			}
+		}
+	})
+}
+
+// TestOpenWorktreeWorkspaceRootIsNotARepo covers the bare+worktree workspace
+// where the Vector board sits at a non-git root and the repo is `code/.bare`:
+// git must be run in `code/`, not in the root (which `git -C` rejects).
+func TestOpenWorktreeWorkspaceRootIsNotARepo(t *testing.T) {
+	env := newOpenTestEnv(t, worktreeConfig(), map[string]state.Status{"demo": state.StatusOpen})
+	code := filepath.Join(env.root, "code")
+	if err := os.MkdirAll(filepath.Join(code, ".bare"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(code, "demo")
+	if err := os.MkdirAll(worktree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env.runner.worktrees = "worktree " + filepath.Join(code, ".bare") + "\nbare\n\nworktree " + worktree + "\nbranch refs/heads/feat/demo\n"
+	if err := env.run(openOptions{id: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if !env.runner.calledWith("git", "-C "+code+" worktree list") {
+		t.Fatalf("git was not run in the worktree root: %v", env.runner.calls)
+	}
+	if env.runner.calledWith("git", "worktree add") {
+		t.Fatal("an existing worktree must not be recreated")
+	}
+	if !env.runner.calledWith("tmux", "-c "+worktree) {
+		t.Fatalf("window cwd is not the worktree: %v", env.runner.calls)
 	}
 }
 
