@@ -1143,3 +1143,40 @@ func TestResolveStateRootOmitEmptyRoundTrip(t *testing.T) {
 		t.Errorf("StateRoot round-trip = %q, want %q", reloaded.StateRoot, "/some/pinned/root")
 	}
 }
+
+// TestFindAncestorConfigsIgnoresHomeGlobalState covers the false positive that made
+// every command warn about a "stray" ~/.vector: that directory is Vector's own
+// global state (vector open writes ~/.vector/<repo-id>/active.json), so it has no
+// config.json by design and must never be reported as a stray project store.
+func TestFindAncestorConfigsIgnoresHomeGlobalState(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = os.UserHomeDir })
+
+	// ~/.vector exists with no config.json (the global state dir), and a real
+	// project store sits below it.
+	writeStore(t, home, "")
+	project := filepath.Join(home, "Developer", "demo")
+	writeStore(t, project, validConfigBody)
+
+	roots, strays := FindAncestorConfigs(project)
+	if !reflect.DeepEqual(roots, []string{project}) {
+		t.Errorf("roots = %v, want [%s]", roots, project)
+	}
+	if len(strays) != 0 {
+		t.Errorf("strays = %v, want none (~/.vector is Vector's global state)", strays)
+	}
+
+	// A home directory that DOES hold a valid store is still adopted as a root.
+	writeStore(t, home, validConfigBody)
+	roots, strays = FindAncestorConfigs(project)
+	if !reflect.DeepEqual(roots, []string{project, home}) {
+		t.Errorf("roots = %v, want [%s %s]", roots, project, home)
+	}
+	if len(strays) != 0 {
+		t.Errorf("strays = %v, want none", strays)
+	}
+}
