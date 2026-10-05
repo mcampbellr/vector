@@ -16,11 +16,17 @@
 # VECTOR_INSTALL_DIR is the full path to the installed binary (not a directory).
 VECTOR_INSTALL_DIR ?= $(HOME)/.local/bin/vector
 
-.PHONY: install build guard embed web-build
+.PHONY: install build guard embed web-build web-deps
+
+# A fresh worktree has no web/node_modules, so the Vite build would die on a
+# missing tsc. Install from the lockfile first; skipping the web build is exactly
+# what ships a boardless binary.
+web-deps:
+	@test -d web/node_modules || npm --prefix web ci
 
 # Rebuild the web board (Vite). Fails loud if node/npm are missing — the install
 # never falls back to a stale embed.
-web-build:
+web-build: web-deps
 	npm --prefix web run build
 
 # Re-embed the freshly built web/dist into the Go embed dir. Remove the real

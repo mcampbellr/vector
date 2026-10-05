@@ -46,6 +46,14 @@ done
 
 # --- 1. build web -------------------------------------------------------------
 
+# A fresh worktree has no web/node_modules, so `npm run build` would die on a
+# missing tsc/vite. Install from the lockfile first — the build must never be
+# skipped, since skipping it is exactly what ships a boardless binary.
+if [ ! -d web/node_modules ]; then
+  info "Installing web dependencies (npm --prefix web ci)"
+  npm --prefix web ci
+fi
+
 info "Building web board (npm --prefix web run build)"
 npm --prefix web run build
 
