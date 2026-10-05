@@ -94,7 +94,8 @@ type openRun struct {
 	opts       openOptions
 	deps       openDeps
 	msg        openMessages
-	root       string
+	root       string // Vector board root: state store, display paths, tmux session name
+	gitRoot    string // only ever passed to `git -C`; never join paths onto it
 	cfg        *config.Config
 	spec       *state.SpecState
 	insideTmux bool
@@ -126,7 +127,7 @@ func runOpen(opts openOptions, deps openDeps) error {
 	if err != nil {
 		return err
 	}
-	run := &openRun{opts: opts, deps: deps, msg: openMessagesFor(cfg.ResolvedLanguage()), root: root, cfg: cfg, insideTmux: insideTmux}
+	run := &openRun{opts: opts, deps: deps, msg: openMessagesFor(cfg.ResolvedLanguage()), root: root, gitRoot: root, cfg: cfg, insideTmux: insideTmux}
 
 	id := opts.id
 	if id == "" {
@@ -229,6 +230,57 @@ func validateWorktreeLayout(worktreeRoot, branchPrefix, base string) error {
 	return nil
 }
 
+// bareRepoDir is the bare repository a bare+worktree workspace keeps beside its
+// worktrees (`code/.bare`), as the kit's workspace scaffolding creates it.
+const bareRepoDir = ".bare"
+
+// resolveGitRoot returns the directory git subcommands run in on a worktree
+// layout. The Vector board can live at the root of a bare+worktree workspace
+// that is not itself a repo — the repo is the worktree root, a `code/` holding
+// `.bare` plus one worktree per spec — so the board root is kept only when it
+// carries git metadata of its own, then the worktree root when it does, then
+// that worktree root's bare repo: a `.bare` beside the worktrees is a git
+// directory, not a repo top, so git reaches it from inside and never from its
+// parent.
+//
+// Only a directory carrying git metadata itself is accepted, never one git
+// would reach by walking up — that is what stops a workspace nested inside an
+// unrelated repo from having its spec worktrees created in that repo. With no
+// candidate, the board root is returned unchanged, so a board in a subdirectory
+// of a plain repo keeps working through git's own upward discovery.
+//
+// worktreeRoot must have passed validateWorktreeLayout.
+func resolveGitRoot(root, worktreeRoot string) string {
+	container := root
+	if worktreeRoot != "" {
+		container = filepath.Join(root, filepath.FromSlash(worktreeRoot))
+		// A symlinked worktree root must not move git onto another repository.
+		if !isNestedPath(canonicalPath(container), canonicalPath(root)) {
+			return root
+		}
+	}
+	if hasGitEntry(root) {
+		return root
+	}
+	if hasGitEntry(container) {
+		return container
+	}
+	if bare := filepath.Join(container, bareRepoDir); isExistingDir(bare) {
+		return bare
+	}
+	return root
+}
+
+// hasGitEntry reports whether dir carries git metadata of its own: a ".git"
+// directory (a checkout) or ".git" file (a worktree, or the gitfile a
+// bare+worktree workspace puts beside its ".bare"). Lstat, so a dangling
+// symlink counts as present and git reports the real cause instead of this
+// resolver silently falling back.
+func hasGitEntry(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
 // gitWorktree is one entry of `git worktree list --porcelain`.
 type gitWorktree struct {
 	path   string
@@ -266,18 +318,22 @@ func (run *openRun) resolveCwd() (string, error) {
 	if err := validateWorktreeLayout(worktreeRoot, run.cfg.BranchPrefixOrDefault(), base); err != nil {
 		return "", err
 	}
+	run.gitRoot = resolveGitRoot(run.root, worktreeRoot)
+	// git runs in gitRoot, which may differ from the board root, so every path
+	// handed to git is the absolute `abs`; `rel` exists only for the report,
+	// the prompts and the error text the user reads from the board root.
 	rel := filepath.ToSlash(filepath.Join(worktreeRoot, id))
 	abs := filepath.Join(run.root, filepath.FromSlash(rel))
 
-	listing, err := run.deps.runner.Output("git", "-C", run.root, "worktree", "list", "--porcelain")
+	listing, err := run.deps.runner.Output("git", "-C", run.gitRoot, "worktree", "list", "--porcelain")
 	if err != nil {
-		return "", fmt.Errorf("list git worktrees of %s (the config declares a worktree layout): %s", run.root, commandStderr(err))
+		return "", fmt.Errorf("list git worktrees of %s (the config declares a worktree layout): %s", run.gitRoot, commandStderr(err))
 	}
 	want := canonicalPath(abs)
 	for _, worktree := range parseWorktreeList(listing) {
 		if canonicalPath(worktree.path) == want {
 			if !isExistingDir(abs) {
-				return "", fmt.Errorf("worktree %s is registered in git but its directory is missing: run `git -C %s worktree prune`, then `vector open %s` again; nothing was created", rel, shellQuote(run.root), id)
+				return "", fmt.Errorf("worktree %s is registered in git but its directory is missing: run `git -C %s worktree prune`, then `vector open %s` again; nothing was created", rel, shellQuote(run.gitRoot), id)
 			}
 			run.report = append(run.report, ui.Success(fmt.Sprintf(run.msg.worktreeReused, rel)))
 			return abs, nil
@@ -293,7 +349,7 @@ func (run *openRun) resolveCwd() (string, error) {
 		return "", fmt.Errorf("%s exists but is not a registered git worktree: move it aside or register it by hand; nothing was created", rel)
 	}
 
-	addArgs, source := run.worktreeAddArgs(rel, branch, base)
+	addArgs, source := run.worktreeAddArgs(abs, branch, base)
 	if run.opts.printOnly {
 		run.printLines = append(run.printLines, renderCommand("git", addArgs))
 		return abs, nil
@@ -317,8 +373,8 @@ func (run *openRun) resolveCwd() (string, error) {
 // an existing local spec branch is checked out as-is, a branch that only exists
 // on origin is tracked, and only a brand-new spec forks a branch from base.
 // It also returns the localized description of that source for the prompt.
-func (run *openRun) worktreeAddArgs(rel, branch, base string) ([]string, string) {
-	prefix := []string{"-C", run.root, "worktree", "add", rel}
+func (run *openRun) worktreeAddArgs(target, branch, base string) ([]string, string) {
+	prefix := []string{"-C", run.gitRoot, "worktree", "add", target}
 	if run.refExists("refs/heads/" + branch) {
 		return append(prefix, branch), fmt.Sprintf(run.msg.sourceLocalBranch, branch)
 	}
@@ -331,7 +387,7 @@ func (run *openRun) worktreeAddArgs(rel, branch, base string) ([]string, string)
 
 // refExists reports whether a git ref exists (read-only query).
 func (run *openRun) refExists(ref string) bool {
-	_, err := run.deps.runner.Output("git", "-C", run.root, "show-ref", "--verify", "--quiet", ref)
+	_, err := run.deps.runner.Output("git", "-C", run.gitRoot, "show-ref", "--verify", "--quiet", ref)
 	return err == nil
 }
 
