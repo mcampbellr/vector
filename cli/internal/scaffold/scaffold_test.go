@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	rawCommand        = ".claude/commands/vector/raw.md"
+	ideaCommand       = ".claude/commands/vector/idea.md"
 	bugCommand        = ".claude/commands/vector/bug.md"
 	bugRefiner        = ".claude/agents/vector-bug-refiner.md"
 	specComposerAgent = ".claude/agents/vector-spec-composer.md"
@@ -20,6 +20,7 @@ const (
 	quickRefiner      = ".claude/agents/vector-quick-refiner.md"
 	researchCommand   = ".claude/commands/vector/research.md"
 	feasibilityAgent  = ".claude/agents/vector-feasibility-reviewer.md"
+	epicCommand       = ".claude/commands/vector/epic.md"
 )
 
 func TestSeedCommandsCreatesUnderClaude(t *testing.T) {
@@ -33,12 +34,12 @@ func TestSeedCommandsCreatesUnderClaude(t *testing.T) {
 		t.Fatal("expected at least one seeded file")
 	}
 
-	target := filepath.Join(root, rawCommand)
+	target := filepath.Join(root, ideaCommand)
 	if _, err := os.Stat(target); err != nil {
-		t.Fatalf("expected %s to exist: %v", rawCommand, err)
+		t.Fatalf("expected %s to exist: %v", ideaCommand, err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionCreated {
-		t.Fatalf("raw.md action = %q, want %q", got, ActionCreated)
+	if got := actionFor(results, ideaCommand); got != ActionCreated {
+		t.Fatalf("idea.md action = %q, want %q", got, ActionCreated)
 	}
 }
 
@@ -48,7 +49,7 @@ func TestSeedCommandsSkipsExistingByDefault(t *testing.T) {
 		t.Fatalf("first seed: %v", err)
 	}
 
-	target := filepath.Join(root, rawCommand)
+	target := filepath.Join(root, ideaCommand)
 	if err := os.WriteFile(target, []byte("user edits"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func TestSeedCommandsSkipsExistingByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second seed: %v", err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionSkipped {
+	if got := actionFor(results, ideaCommand); got != ActionSkipped {
 		t.Fatalf("action = %q, want %q", got, ActionSkipped)
 	}
 	got, _ := os.ReadFile(target)
@@ -68,7 +69,7 @@ func TestSeedCommandsSkipsExistingByDefault(t *testing.T) {
 
 func TestSeedCommandsForceOverwrites(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(root, rawCommand)
+	target := filepath.Join(root, ideaCommand)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -80,12 +81,91 @@ func TestSeedCommandsForceOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("force seed: %v", err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionOverwritten {
+	if got := actionFor(results, ideaCommand); got != ActionOverwritten {
 		t.Fatalf("action = %q, want %q", got, ActionOverwritten)
 	}
 	got, _ := os.ReadFile(target)
 	if string(got) == "stale" {
 		t.Fatal("force did not overwrite the file")
+	}
+}
+
+func TestSeedCommandsForceRemovesObsoleteLifecycleCommands(t *testing.T) {
+	for _, rel := range obsoleteManagedPaths {
+		t.Run(rel, func(t *testing.T) {
+			root := t.TempDir()
+			legacy := filepath.Join(root, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(legacy, []byte("legacy"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			results, err := SeedCommands(root, SeedOptions{Force: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+				t.Fatalf("obsolete command still exists: %v", err)
+			}
+			got := actionFor(results, rel)
+			if got == "" {
+				for _, result := range results {
+					if strings.EqualFold(result.Path, rel) {
+						got = result.Action
+						break
+					}
+				}
+			}
+			if got != ActionRemoved {
+				t.Fatalf("obsolete action = %q, want %q", got, ActionRemoved)
+			}
+		})
+	}
+}
+
+func TestEmbeddedKitHasNoManualProposeWorkflow(t *testing.T) {
+	err := fs.WalkDir(assets, embedRoot, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, readErr := assets.ReadFile(p)
+		if readErr != nil {
+			return readErr
+		}
+		text := string(b)
+		for _, forbidden := range []string{"/vector:propose", "vector spec propose"} {
+			if strings.Contains(text, forbidden) {
+				t.Errorf("embedded kit exposes removed workflow %q in %s", forbidden, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIdeaCreatesFormalizedOpenCard(t *testing.T) {
+	b, err := assets.ReadFile("assets/commands/vector/idea.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	for _, required := range []string{"--status open", "--change", "--artifacts", "/vector:apply <id>"} {
+		if !strings.Contains(text, required) {
+			t.Errorf("idea command missing %q", required)
+		}
+	}
+	paths, err := CommandPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		if path == ".claude/commands/vector/propose.md" || path == ".claude/commands/vector/raw.md" {
+			t.Fatalf("removed lifecycle command is still embedded: %s", path)
+		}
 	}
 }
 
@@ -96,10 +176,10 @@ func TestSeedCommandsDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run seed: %v", err)
 	}
-	if got := actionFor(results, rawCommand); got != ActionCreated {
+	if got := actionFor(results, ideaCommand); got != ActionCreated {
 		t.Fatalf("dry-run action = %q, want %q", got, ActionCreated)
 	}
-	if _, err := os.Stat(filepath.Join(root, rawCommand)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, ideaCommand)); !os.IsNotExist(err) {
 		t.Fatalf("dry-run wrote a file (stat err = %v)", err)
 	}
 }
@@ -199,6 +279,37 @@ func TestSeedCommandsSeedsResearchCommandAndReviewer(t *testing.T) {
 		}
 		if got := actionFor(results, rel); got != ActionCreated {
 			t.Fatalf("%s action = %q, want %q", rel, got, ActionCreated)
+		}
+	}
+}
+
+// TestSeedCommandsSeedsEpicCommand guards that `vector init`/`update` write the
+// /vector:epic command, and that every spec-creating command resolves an epic
+// before `vector spec create` and threads it through `--epic`.
+func TestSeedCommandsSeedsEpicCommand(t *testing.T) {
+	root := t.TempDir()
+
+	results, err := SeedCommands(root, SeedOptions{})
+	if err != nil {
+		t.Fatalf("SeedCommands: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, epicCommand)); err != nil {
+		t.Fatalf("expected %s to be seeded: %v", epicCommand, err)
+	}
+	if got := actionFor(results, epicCommand); got != ActionCreated {
+		t.Fatalf("%s action = %q, want %q", epicCommand, got, ActionCreated)
+	}
+
+	for _, name := range []string{"idea.md", "bug.md", "quick.md", "research.md"} {
+		body, err := assets.ReadFile("assets/commands/vector/" + name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		text := string(body)
+		for _, want := range []string{"vector epic list --json", `[--epic "$EPIC_ID"]`, "**No epic**"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: missing epic-selection fragment %q", name, want)
+			}
 		}
 	}
 }

@@ -1,6 +1,6 @@
 ---
 name: vector-spec-validator
-description: Validates a freshly authored feature spec against the Perfect Spec Checklist and challenges vague or hand-wavy content. Read-only auditor spawned by the `/vector:raw` command on Sonnet.
+description: Validates a freshly authored feature spec against the Perfect Spec Checklist and challenges vague or hand-wavy content. Read-only auditor spawned by the `/vector:idea` command on Sonnet.
 model: sonnet
 tools: Read, Grep, Glob
 ---

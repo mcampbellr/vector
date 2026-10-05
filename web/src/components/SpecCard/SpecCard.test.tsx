@@ -1,6 +1,6 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
-import type { Card } from '../../types/board'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Card, PullRequest } from '../../types/board'
 import { SpecCard } from './SpecCard'
 
 afterEach(cleanup)
@@ -23,7 +23,7 @@ function makeCard(overrides: Partial<Card>): Card {
 }
 
 describe('SpecCard needs-attention', () => {
-  it('renders the category chip and a truncatable summary with a full title', () => {
+  it('renders the category label and a truncatable summary with a full title', () => {
     render(
       <SpecCard
         card={makeCard({
@@ -41,7 +41,7 @@ describe('SpecCard needs-attention', () => {
     expect(summary.textContent).toContain('Zoho api_names pending')
   })
 
-  it('omits the chip for an unknown/absent category but still shows the summary', () => {
+  it('omits the label for an unknown/absent category but still shows the summary', () => {
     render(
       <SpecCard
         card={makeCard({ status: 'needs-attention', attentionSummary: 'waiting on a decision' })}
@@ -62,7 +62,7 @@ describe('SpecCard needs-attention', () => {
     )
 
     expect(screen.getByText('blocked on the DTO rename')).toBeTruthy()
-    // No category chip on a purely-legacy card.
+    // No category label on a purely-legacy card.
     for (const label of ['Dependency', 'Env', 'Decision', 'External', 'Other']) {
       expect(screen.queryByText(label)).toBeNull()
     }
@@ -74,8 +74,8 @@ describe('SpecCard needs-attention', () => {
   })
 })
 
-describe('SpecCard ticket badge', () => {
-  it('renders the full ticket key intact alongside a very long title', () => {
+describe('SpecCard ticket ref', () => {
+  it('keeps a short provider key whole alongside a very long title', () => {
     render(
       <SpecCard
         card={makeCard({
@@ -91,27 +91,246 @@ describe('SpecCard ticket badge', () => {
       />,
     )
 
-    // The key must exist as a single, complete text node — not split at the
-    // hyphen (MH-) nor clipped away. CSS-level visual truncation can't be
-    // asserted in jsdom, so we assert full DOM presence + the title fallback.
-    const badge = screen.getByTitle('https://linear.app/acme/issue/MH-1814')
-    expect(badge.textContent).toContain('MH-1814')
-    expect(screen.getByText('MH-1814')).toBeTruthy()
+    // The key exists as a single, complete text node — not split at the hyphen
+    // (MH-) nor clipped away. It sits at a fixed intrinsic width, so it can
+    // never squeeze the title the way the old badge did.
+    const ref = screen.getByTitle('https://linear.app/acme/issue/MH-1814')
+    expect(ref.textContent).toBe('MH-1814')
+  })
+
+  it('collapses an owner/repo#number key to the number, with the title clipped to two lines', () => {
+    const title = 'Published treatment mentions are not actionable, and never were'
+    render(
+      <SpecCard
+        card={makeCard({
+          title,
+          ticket: {
+            provider: 'github',
+            key: 'mcampbellr/cdr-monorepo#174',
+            url: 'https://github.com/mcampbellr/cdr-monorepo/issues/174',
+          },
+        })}
+        onSelect={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('#174')).toBeTruthy()
+    // The untruncated title stays reachable through the tooltip.
+    const heading = screen.getByRole('heading', { level: 3 })
+    expect(heading.getAttribute('title')).toBe(title)
+    expect(heading.textContent!.endsWith('…')).toBe(true)
   })
 })
 
-describe('SpecCard quick-win badge', () => {
-  it('renders the read-only Quick Win badge when quickWin is set', () => {
-    render(<SpecCard card={makeCard({ quickWin: true })} onSelect={() => {}} />)
+describe('SpecCard status row', () => {
+  it('prints the flag only for urgent and high', () => {
+    for (const priority of ['urgent', 'high'] as const) {
+      render(<SpecCard card={makeCard({ priority })} onSelect={() => {}} />)
+      expect(screen.getByTitle(`Priority: ${priority === 'urgent' ? 'Urgent' : 'High'}`)).toBeTruthy()
+      cleanup()
+    }
 
-    const badge = screen.getByLabelText('Quick win')
-    expect(badge).toBeTruthy()
-    expect(badge.textContent).toContain('Quick Win')
+    for (const priority of ['normal', 'low'] as const) {
+      render(<SpecCard card={makeCard({ priority })} onSelect={() => {}} />)
+      expect(screen.queryByTitle(/^Priority: /)).toBeNull()
+      cleanup()
+    }
   })
 
-  it('omits the badge when quickWin is absent', () => {
+  it('drops the flag and the verb on a closed card — it is no longer a call to action', () => {
+    render(<SpecCard card={makeCard({ status: 'closed', priority: 'urgent' })} onSelect={() => {}} />)
+
+    expect(screen.queryByTitle('Priority: Urgent')).toBeNull()
+    expect(screen.queryByLabelText(/^Copy next command/)).toBeNull()
+  })
+
+  it('collapses the next command to its verb, keeping the full line in the tooltip', () => {
+    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags' })} onSelect={() => {}} />)
+
+    const verb = screen.getByTitle('/vector:ship fix-raw-tags')
+    expect(verb.textContent).toBe('ship')
+  })
+
+  it('switches the review verb to close once a PR is recorded', () => {
+    const pr: PullRequest = { url: 'https://github.com/o/r/pull/7', number: 7, draft: false, openedAt: '2026-06-27T00:00:00Z' }
+    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags', pr })} onSelect={() => {}} />)
+
+    const verb = screen.getByTitle('/vector:close fix-raw-tags')
+    expect(verb.textContent).toBe('close')
+  })
+
+  it('renders the quick-win glyph with no label', () => {
+    render(<SpecCard card={makeCard({ quickWin: true })} onSelect={() => {}} />)
+
+    const glyph = screen.getByLabelText('Quick win')
+    expect(glyph).toBeTruthy()
+    expect(glyph.textContent).toBe('')
+  })
+
+  it('omits the quick-win glyph when quickWin is absent', () => {
     render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
 
     expect(screen.queryByLabelText('Quick win')).toBeNull()
+  })
+})
+
+describe('SpecCard keyboard interaction', () => {
+  // The card is article[role=button][tabindex=0] with two real buttons inside.
+  // Without a target guard its onKeyDown calls preventDefault() on keydowns that
+  // bubble up from those buttons, which cancels their native activation: Enter
+  // on the slug would copy nothing and open the drawer instead.
+  it('does not open the drawer when Enter reaches the card from a nested button', () => {
+    const onSelect = vi.fn()
+    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags' })} onSelect={onSelect} />)
+
+    for (const name of [/^Copy spec id/, /^Copy next command/]) {
+      const inner = screen.getByLabelText(name)
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      inner.dispatchEvent(event)
+
+      expect(onSelect).not.toHaveBeenCalled()
+      // The nested button's own activation must survive to run.
+      expect(event.defaultPrevented).toBe(false)
+    }
+  })
+
+  it('still opens the drawer on Enter over the card itself', () => {
+    const onSelect = vi.fn()
+    const card = makeCard({})
+    render(<SpecCard card={card} onSelect={onSelect} />)
+
+    fireEvent.keyDown(screen.getByRole('button', { name: `Open details for ${card.title}` }), {
+      key: 'Enter',
+    })
+    expect(onSelect).toHaveBeenCalledWith(card)
+  })
+})
+
+describe('SpecCard attention row colour', () => {
+  // An unknown category renders no label, so the row must fall back to the
+  // legacy red instead of ending up with neither label nor warning colour.
+  it('treats an unknown category as unstructured', () => {
+    render(
+      <SpecCard
+        card={makeCard({
+          status: 'needs-attention',
+          attentionCategory: 'brand-new-category' as never,
+          attentionSummary: 'waiting on something new',
+        })}
+        onSelect={() => {}}
+      />,
+    )
+
+    const summary = screen.getByTitle('waiting on something new')
+    expect(summary.className).toMatch(/attentionSummaryLegacy/)
+  })
+
+  it('keeps a known category out of the legacy red', () => {
+    render(
+      <SpecCard
+        card={makeCard({
+          status: 'needs-attention',
+          attentionCategory: 'env',
+          attentionSummary: 'staging snapshot is stale',
+        })}
+        onSelect={() => {}}
+      />,
+    )
+
+    const summary = screen.getByTitle('staging snapshot is stale')
+    expect(summary.className).not.toMatch(/attentionSummaryLegacy/)
+  })
+})
+
+describe('SpecCard artifact meter', () => {
+  it('is always present, unlit, when the spec carries no artifacts', () => {
+    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+
+    expect(screen.getByLabelText('Artifacts: no artifacts yet')).toBeTruthy()
+  })
+
+  it('names the missing artifact when only some are present', () => {
+    render(
+      <SpecCard
+        card={makeCard({ artifacts: { proposal: true, design: true, tasks: false } })}
+        onSelect={() => {}}
+      />,
+    )
+
+    expect(screen.getByLabelText('Artifacts: proposal · design — no tasks')).toBeTruthy()
+  })
+})
+
+describe('SpecCard focus and epic', () => {
+  it('renders the epic chip with the resolved epic title', () => {
+    render(
+      <SpecCard
+        card={makeCard({ epic: 'app-mobile' })}
+        epic={{
+          id: 'app-mobile',
+          title: 'App Mobile',
+          color: 'blue',
+          total: 1,
+          done: 0,
+          byStatus: { 'in-progress': 1 },
+          updatedAt: '2026-06-27T00:00:00Z',
+        }}
+        onSelect={() => {}}
+      />,
+    )
+
+    expect(screen.getByTitle('Epic: App Mobile').textContent).toBe('App Mobile')
+  })
+
+  it('renders no epic chip for a spec without an epic', () => {
+    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    expect(screen.queryByTitle(/^Epic: /)).toBeNull()
+  })
+
+  it('shows a pressed focus pin on a focused card and an unpressed one otherwise', () => {
+    render(<SpecCard card={makeCard({ focus: true })} onSelect={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Unfocus spec' }).getAttribute('aria-pressed')).toBe('true')
+    cleanup()
+
+    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    expect(screen.getByRole('button', { name: 'Focus spec' }).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('toggles focus without opening the drawer', () => {
+    const fetchMock = vi.fn(async () => new Response('{"id":"spec-id","focus":true,"changed":true}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const onSelect = vi.fn()
+    render(<SpecCard card={makeCard({})} onSelect={onSelect} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Focus spec' }))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(onSelect).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('badges a dropped resolution and not a done one', () => {
+    const { unmount } = render(
+      <SpecCard
+        card={makeCard({ status: 'closed', resolution: 'duplicate', resolutionNote: 'dup of login-v2' })}
+        onSelect={() => {}}
+      />,
+    )
+    const badge = screen.getByLabelText('Closed as duplicate — dup of login-v2 (not counted as done)')
+    expect(badge.textContent).toBe('duplicate')
+    unmount()
+
+    render(<SpecCard card={makeCard({ status: 'closed', resolution: 'done' })} onSelect={() => {}} />)
+    expect(screen.queryByLabelText(/Closed as/)).toBeNull()
+  })
+
+  it('shows an inherited focus pin naming the epic', () => {
+    render(
+      <SpecCard
+        card={makeCard({ epic: 'app-mobile', focusInherited: true })}
+        epic={{ id: 'app-mobile', title: 'App Mobile', total: 1, done: 0, byStatus: {}, updatedAt: '', focus: true }}
+        onSelect={() => {}}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Focus spec (focus currently inherited from epic App Mobile)' })).toBeTruthy()
   })
 })

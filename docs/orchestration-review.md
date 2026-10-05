@@ -62,7 +62,7 @@ SESIÓN PRINCIPAL (Claude Code — modelo del usuario = OPUS 4.8)
                                   → .vector/*.json → WEB BOARD (read-only, SSE)
 ```
 
-Pipeline real de `/vector:raw` (el caso más representativo):
+Pipeline real de `/vector:idea` (el caso más representativo):
 
 ```
 Opus: parse → config → glob+lang → detectTicket
@@ -112,7 +112,7 @@ SESIÓN PRINCIPAL = DISPATCHER DELGADO
    → artefactos por referencia (path), no copiados al main ctx
 ```
 
-Pipeline propuesto de `/vector:raw`:
+Pipeline propuesto de `/vector:idea`:
 
 ```
 Dispatcher: parse → vector context (1 call: example, lang, cmds, ticket)

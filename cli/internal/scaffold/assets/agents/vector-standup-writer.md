@@ -65,7 +65,7 @@ The summary **must begin with `<IDENTIFIER>`** and follow this order. Include a 
    - `in-progress` → "is in progress"
    - `needs-attention` → "is blocked"
    - `open` → "is not started yet"
-   - `draft` → "is still a draft"
+   - legacy pre-v0.8 value → "awaits compatibility migration through apply"
    Example rendered clause: `ACME-123 (add-standup-digest) is in review`.
 
 3. **FUNCTIONAL-SUMMARY** — the one composed sentence: the functional result of this period, grounded strictly in this spec's `work` (`tasksCompleted`, `note`) and `transitions`. Describe the outcome, not commits or file names. **If the spec has no `work` entries in the window, omit this sentence entirely** — state the status and stop; do not invent substance from transitions alone. Use `priorSummary` only as framing context (what was already known), never copied verbatim or reported as this period's work.

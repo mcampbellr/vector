@@ -1,0 +1,39 @@
+/* Filled category chip, used by the details drawer. The board card uses the
+   flat coloured label (AttentionCategoryLabel) instead: five filled backgrounds
+   per column turned the board into confetti, but the drawer shows one card at a
+   time, where the chip still reads as a classification. */
+.categoryChip {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.catDependency {
+  color: var(--status-cat-dependency-fg);
+  background: var(--status-cat-dependency-bg);
+}
+
+.catEnv {
+  color: var(--status-cat-env-fg);
+  background: var(--status-cat-env-bg);
+}
+
+.catDecision {
+  color: var(--status-cat-decision-fg);
+  background: var(--status-cat-decision-bg);
+}
+
+.catExternal {
+  color: var(--status-cat-external-fg);
+  background: var(--status-cat-external-bg);
+}
+
+.catOther {
+  color: var(--status-cat-other-fg);
+  background: var(--status-cat-other-bg);
+}

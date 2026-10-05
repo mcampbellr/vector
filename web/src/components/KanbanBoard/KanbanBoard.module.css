@@ -1,9 +1,15 @@
+/* Two axes, two owners: the horizontal one lives here, on the row of columns;
+   the vertical one lives inside each column. The page itself never scrolls —
+   the board is the application, not a document. */
 .board {
   display: flex;
-  gap: var(--space-5);
+  gap: 20px;
   align-items: flex-start;
-  padding: var(--space-5) var(--space-6);
+  padding: 20px 24px;
   overflow-x: auto;
+  overflow-y: hidden;
   flex: 1;
   min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }

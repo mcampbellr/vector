@@ -25,6 +25,15 @@ Fetch the setup context from the binary before refining or implementing:
 CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
 ```
 
+**Newer release available?** If `CONTEXT.update.available` is `true`, ask once via
+`AskUserQuestion` — "Vector `<CONTEXT.update.current>` → `<CONTEXT.update.latest>` is available":
+- **Upgrade now** → run `vector upgrade --yes`, then continue this command. If the upgrade fails,
+  show its error and continue with the current binary.
+- **Not now** → continue with the current binary.
+
+Never upgrade without this explicit confirmation. The field is absent on dev builds, when
+no update exists, or when GitHub was unreachable — then skip silently.
+
 Extract `BUILD_CMD` ← `CONTEXT.buildCmd`, `TEST_CMD` ← `CONTEXT.testCmd`, `LINT_CMD` ←
 `CONTEXT.lintCmd`. **Fallback when it fails**: emit a one-line warning and discover build/lint/
 test from the repo's manifests when you reach the gate.
@@ -35,8 +44,8 @@ Parse the id (first token) and the correction note (the rest). If no id is given
 and stop. Read `.vector/specs/<id>/state.json`:
 
 - Status `open` / `in-progress` / `needs-attention` / `review` → **fixable**, continue.
-- Status `draft` → not yet specified; route the user to `/vector:propose` then `/vector:apply`,
-  and stop.
+- A legacy pre-v0.8 lifecycle value routes directly to `/vector:apply`, which performs
+  compatibility formalization and starts implementation in one action.
 - Status `closed` / `archived` → out of scope for a fix; tell the user and stop.
 
 If the spec id does not exist, say so and stop. Read the spec's artefacts paths
@@ -58,7 +67,7 @@ It returns the 8-section brief, including a **Classification** (`spec-only|code-
 and a **Clarity Verdict**:
 
 - **`OutOfScope`** → this is a fresh feature / standalone bug, not a correction. Route the user
-  to the destination the refiner named (`/vector:raw`, `/idea`, or `/vector:bug`) and **stop
+  to the destination the refiner named (`/vector:idea`, `/idea`, or `/vector:bug`) and **stop
   without writing anything** (no transition, no `spec fix`).
 - **`NEEDS_CLARIFICATION`** → surface the refiner's Open Questions via `AskUserQuestion`. Fold
   the answers into the brief and re-evaluate. If still unresolved, stop with the questions
@@ -171,7 +180,8 @@ Report: the id, the classification, the entry/exit transitions made (e.g.
 `review → in-progress → review`), the artefacts/files touched, the gate result, and that the
 working tree has uncommitted changes for review.
 
-- **Validated** → next step is `/vector:close <id>`.
+- **Validated** → next step is `/vector:ship <id>` when the card has no recorded PR yet;
+  otherwise `/vector:close <id>` after the merge.
 - **Blocked / validation failed** → surface the `needs-attention` reason instead of "ready for
   review"; next step is to resolve the blocker, then `/vector:fix <id>` again.
 

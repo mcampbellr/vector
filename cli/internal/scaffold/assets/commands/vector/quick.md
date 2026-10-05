@@ -8,8 +8,8 @@ tags: [vector, quick-win, refactor, lifecycle]
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(git *), Bash(vector *), Bash(go *), Bash(npm *), Bash(npx *), Bash(cargo *), Bash(ruff *), Bash(mypy *), Bash(pnpm *), Bash(yarn *), Agent, AskUserQuestion
 ---
 
-Apply a **small, low-risk change in the same run**. Unlike `/vector:raw` → `/vector:propose` →
-`/vector:apply` (full ceremony + an OpenSpec change), `/vector:quick` is for mechanical work — a
+Apply a **small, low-risk change in the same run**. Unlike `/vector:idea` → `/vector:apply`
+(full specification + an OpenSpec change), `/vector:quick` is for mechanical work — a
 refactor, a symbol rename, an extracted helper, a copy tweak, a missing index, a promoted file.
 It registers a board card **born `in-progress` and marked quick-win**, implements the change,
 validates with the repo's lint/typecheck gate, logs the work, optionally commits (asking), and
@@ -18,7 +18,7 @@ equivalent of the global `/quick-win` skill — **distributable** and **agnostic
 repo**, leaving the board + `activity.jsonl` as the single record (no parallel `quick-wins.md`).
 
 **You never write Vector's state yourself**: the card, the `quickWin` marker, the ticket/related
-link, the worklog, and the status transition all go through the binary (CLI-owns-writes).
+link, the epic, the worklog, and the status transition all go through the binary (CLI-owns-writes).
 
 **Input**: `$ARGUMENTS` — a change description (quoted) followed by an optional `{ticket|spec-id}`
 token (e.g. `/vector:quick "extract magic timeouts in attendance.service.ts" ACME-1421`).
@@ -36,6 +36,15 @@ Fetch the setup context from the binary before refining or implementing:
 CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
 ```
 
+**Newer release available?** If `CONTEXT.update.available` is `true`, ask once via
+`AskUserQuestion` — "Vector `<CONTEXT.update.current>` → `<CONTEXT.update.latest>` is available":
+- **Upgrade now** → run `vector upgrade --yes`, then continue this command. If the upgrade fails,
+  show its error and continue with the current binary.
+- **Not now** → continue with the current binary.
+
+Never upgrade without this explicit confirmation. The field is absent on dev builds, when
+no update exists, or when GitHub was unreachable — then skip silently.
+
 Extract `BUILD_CMD` ← `CONTEXT.buildCmd`, `TEST_CMD` ← `CONTEXT.testCmd`, `LINT_CMD` ←
 `CONTEXT.lintCmd`, and the detected stack (`CONTEXT.intel.stack`). **Fallback when it fails**:
 emit a one-line warning and discover the gate from the repo's manifests when you reach step 10.
@@ -51,18 +60,21 @@ Split `$ARGUMENTS` into the change description (`RAW_QW`) and the optional trail
 Read `.vector/config.json` for `specPath`. If it's missing, tell the user to run `vector init`
 in the repo root and stop — without it there is no place to register the card.
 
+If a `.vector/` already exists at an ancestor directory, that store is the base: anchor there
+and never `vector init` a nested one. See `.claude/agents/_shared/root-anchoring-guardrail.md`.
+
 ## 3. Sanity-check: is this really a quick-win?
 
 Before spending the refiner, screen `RAW_QW` for red flags and **escalate instead of
 expanding**:
 
 - New screen / page / modal / endpoint / feature, or any net-new user-visible behavior →
-  recommend `/vector:raw` and stop.
+  recommend `/vector:idea` and stop.
 - "Broken" / "regression" / "doesn't work" / a defect needing investigation →
   recommend `/vector:bug` and stop.
 - Multiple unrelated changes bundled together → ask the user to split; suggest one `/vector:quick`
   per change, and stop.
-- Schema / migration / new endpoint → recommend `/vector:raw`, **unless** it is a literal
+- Schema / migration / new endpoint → recommend `/vector:idea`, **unless** it is a literal
   one-line change (e.g. adding a missing index).
 
 When you escalate, **do not** invoke the refiner and **do not** create a card. Name the better
@@ -79,7 +91,7 @@ RAW_QW: <the change description>
 It returns the light brief (Optimized Title / Kebab-case Slug / Change Type / What Changes / Why
 / Files to Touch / Acceptance / Risks / Blocking Clarifying Questions / Non-Blocking Notes).
 
-**Scope-guard** — if any of the following holds, escalate to `/vector:raw` and stop (do not
+**Scope-guard** — if any of the following holds, escalate to `/vector:idea` and stop (do not
 create a card):
 - More than ~6 files to touch.
 - A visible behavior change disguised as a refactor.
@@ -100,6 +112,31 @@ From the trailing arg (step 1) or by running `detectTicket` semantics over `RAW_
 Only when it resolves with confidence. Ambiguous → ask once or omit. **Never guess; never block
 card creation on the link** — if the binary rejects the link, re-run create without it.
 
+## 6b. Epic (optional grouping)
+
+Right before `vector spec create`, list the epics once:
+
+```bash
+EPICS_JSON=$(vector epic list --json 2>/dev/null)
+```
+
+Resolve `EPIC_ID` from the user's request and clarifications (one list call, no extra agent):
+- **Named or one clear match**: the request names an existing epic, or clearly matches exactly
+  one by `id`/`title`/`description` → set `EPIC_ID` to its `id`; don't ask.
+- **Ambiguous**: more than one plausible epic, or only a weak match → ask once with
+  `AskUserQuestion`: one option per plausible epic (`<title> (<id>)`) plus **No epic**.
+- **Fits an epic that doesn't exist** (e.g. "for the App Mobile epic" and there is none) →
+  propose it with `AskUserQuestion`, showing the title, a suggested kebab-case id, and one color
+  from `slate|blue|teal|green|amber|orange|red|pink|violet`: **Create and assign** / **No epic**.
+  Only on **Create and assign** run
+  `vector epic create --title "<title>" --id "<id>" --color <color> --json` and set `EPIC_ID` to
+  the returned `id`; if it fails, show the error and continue without an epic.
+- **No epics, a failed list, or nothing plausibly fits** → leave `EPIC_ID` unset; don't ask and
+  don't mention epics.
+
+Pass `--epic "$EPIC_ID"` only when set. The epic never blocks creation: if the binary rejects
+`--epic`, re-run `vector spec create` without it and report the error.
+
 ## 7. Register the card (`in-progress` + quick-win) via the binary
 
 Write the brief as the card's doc and create it directly in `in-progress`, marked quick-win:
@@ -112,11 +149,12 @@ printf '%s' "$BRIEF" | vector spec create \
   --quick-win \
   [--ticket "$TICKET_JSON"] \
   [--related "$RELATED_JSON"] \
+  [--epic "$EPIC_ID"] \
   --body-file - --json
 ```
 
 Parse the JSON for `id`, `status`, and `specDoc`. Include `--ticket`/`--related` only when step 6
-resolved them.
+resolved them, and `--epic` only when step 6b set `EPIC_ID`.
 
 ## 8. Implement the change (main loop)
 
@@ -126,7 +164,7 @@ of scope** mid-implementation:
 
 ```bash
 git restore <touched files>
-vector spec status <id> needs-attention --reason "out of scope for a quick-win: use /vector:raw"
+vector spec status <id> needs-attention --reason "out of scope for a quick-win: use /vector:idea"
 ```
 
 …and stop with the recommendation surfaced.
@@ -192,8 +230,9 @@ malformed response, skip and note it in the report.
 ## 15. Report
 
 Report: the id, `quickWin: true`, the transition (`in-progress → review`), the ticket/related
-link (or none), the commit SHA **or** "uncommitted changes left in the working tree", the gate
-result, and the next step: `/vector:close <id>`.
+link (or none), the epic (only when assigned), the commit SHA **or** "uncommitted changes left in the working tree", the gate
+result, and the next step: `/vector:ship <id>` (or `/vector:close <id>` after the merge once the
+card has a recorded PR).
 
 ## Notes — state discipline & token routing
 
@@ -204,6 +243,6 @@ result, and the next step: `/vector:close <id>`.
 - **Token routing.** Refinement = Haiku (`vector-quick-refiner`); sanity-check, link resolution,
   and implementation = main loop; **no** Sonnet validator (`product/token-routing.md`). Only the
   refiner is recorded via `vector spec route`.
-- **Escalate, don't expand.** A change that grows beyond a quick-win routes to `/vector:raw` (or
+- **Escalate, don't expand.** A change that grows beyond a quick-win routes to `/vector:idea` (or
   `/vector:bug` for a defect) — it never grows silently.
 - If `vector` is not found, it isn't installed — tell the user; never edit state manually.

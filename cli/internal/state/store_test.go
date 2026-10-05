@@ -14,6 +14,19 @@ func fixedNow() time.Time {
 	return time.Date(2026, 6, 23, 14, 0, 0, 0, time.UTC)
 }
 
+func makeLegacyDraft(t *testing.T, store *Store, id string) {
+	t.Helper()
+	spec, err := store.CreateSpec(CreateSpecParams{ID: id, Title: id, Actor: "legacy", Now: fixedNow()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.Status = StatusLegacyDraft
+	spec.OpenSpec = nil
+	if err := writeSpecFile(store.statePath(id), spec); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCreateSpecWritesStateAndEvent(t *testing.T) {
 	root := t.TempDir()
 	store, err := Open(root)
@@ -36,8 +49,8 @@ func TestCreateSpecWritesStateAndEvent(t *testing.T) {
 	if spec.ID != "new-checkout-flow" {
 		t.Errorf("ID = %q, want new-checkout-flow", spec.ID)
 	}
-	if spec.Status != StatusDraft {
-		t.Errorf("Status = %q, want draft (default)", spec.Status)
+	if spec.Status != StatusOpen {
+		t.Errorf("Status = %q, want open (default)", spec.Status)
 	}
 	if spec.SpecDoc != ".vector/specs/new-checkout-flow/spec.md" {
 		t.Errorf("SpecDoc = %q, want .vector fallback path", spec.SpecDoc)
@@ -57,7 +70,7 @@ func TestCreateSpecWritesStateAndEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadSpec: %v", err)
 	}
-	if onDisk.Title != "New checkout flow" || onDisk.Status != StatusDraft {
+	if onDisk.Title != "New checkout flow" || onDisk.Status != StatusOpen {
 		t.Errorf("on-disk spec mismatch: %+v", onDisk)
 	}
 
@@ -110,6 +123,9 @@ func TestCreateSpecValidatesInputs(t *testing.T) {
 	}
 	if _, err := store.CreateSpec(CreateSpecParams{Title: "x", Priority: "huge", Now: fixedNow()}); err == nil {
 		t.Error("expected error for invalid priority")
+	}
+	if _, err := store.CreateSpec(CreateSpecParams{Title: "x", Status: StatusLegacyDraft, Now: fixedNow()}); err == nil {
+		t.Error("expected error for removed legacy status")
 	}
 }
 
@@ -192,11 +208,37 @@ func TestReconcileStatusKeepsTerminalStates(t *testing.T) {
 	}
 }
 
-func TestProposeSpec(t *testing.T) {
+// A review card whose tasks.md regains pending implementation work must stay in
+// review: sync --reconcile used to silently regress it to in-progress. `vector
+// check` reports it as review-with-pending-tasks instead.
+func TestReconcileStatusNeverRegressesReview(t *testing.T) {
 	store, _ := Open(t.TempDir())
-	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "Add foo", Now: fixedNow()}); err != nil {
+	os := &OpenSpec{Change: "add-auth", Artifacts: ArtifactSet{Tasks: true}}
+	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-auth", Title: "Add auth", Status: StatusReview, OpenSpec: os, SpecDocRel: "x", Now: fixedNow()}); err != nil {
 		t.Fatal(err)
 	}
+
+	changed, err := store.ReconcileStatus("add-auth", StatusInProgress, os, false, "t", fixedNow())
+	if err != nil {
+		t.Fatalf("ReconcileStatus: %v", err)
+	}
+	if changed {
+		t.Error("expected changed=false: review must not regress to in-progress")
+	}
+	onDisk, _ := store.ReadSpec("add-auth")
+	if onDisk.Status != StatusReview {
+		t.Errorf("Status = %q, want review", onDisk.Status)
+	}
+
+	// The explicit transition stays legal: only the automatic sync path is guarded.
+	if _, err := store.SetStatus("add-auth", StatusInProgress, "", "t", fixedNow()); err != nil {
+		t.Errorf("SetStatus review → in-progress must stay legal: %v", err)
+	}
+}
+
+func TestProposeSpec(t *testing.T) {
+	store, _ := Open(t.TempDir())
+	makeLegacyDraft(t, store, "add-foo")
 
 	os := &OpenSpec{Change: "add-foo", Artifacts: ArtifactSet{Proposal: true, Design: true, Tasks: true}}
 	spec, err := store.ProposeSpec("add-foo", os, "tester", fixedNow())
@@ -225,7 +267,7 @@ func TestProposeSpec(t *testing.T) {
 	if err := json.Unmarshal(events[2].Data, &sc); err != nil {
 		t.Fatal(err)
 	}
-	if sc.From != StatusDraft || sc.To != StatusOpen || sc.Trigger != "command" {
+	if sc.From != StatusLegacyDraft || sc.To != StatusOpen || sc.Trigger != "migration" {
 		t.Errorf("unexpected status.changed: %+v", sc)
 	}
 }
@@ -233,9 +275,7 @@ func TestProposeSpec(t *testing.T) {
 func TestProposeSpecRejectsNonDraft(t *testing.T) {
 	store, _ := Open(t.TempDir())
 	os := &OpenSpec{Change: "add-foo"}
-	if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "x", Now: fixedNow()}); err != nil {
-		t.Fatal(err)
-	}
+	makeLegacyDraft(t, store, "add-foo")
 	if _, err := store.ProposeSpec("add-foo", os, "t", fixedNow()); err != nil {
 		t.Fatalf("first propose: %v", err)
 	}
@@ -293,7 +333,7 @@ func TestFixSpec(t *testing.T) {
 }
 
 func TestFixSpecRejectsUnfixableStatus(t *testing.T) {
-	for _, st := range []Status{StatusDraft, StatusClosed, StatusArchived} {
+	for _, st := range []Status{StatusClosed, StatusArchived} {
 		t.Run(string(st), func(t *testing.T) {
 			store, _ := Open(t.TempDir())
 			if _, err := store.CreateSpec(CreateSpecParams{ID: "add-foo", Title: "x", Status: st, Now: fixedNow()}); err != nil {
@@ -544,7 +584,7 @@ func TestRecordPR(t *testing.T) {
 	if onDisk.PR == nil || onDisk.PR.URL != "https://github.com/acme/api/pull/7" || onDisk.PR.Number != 7 || !onDisk.PR.Draft {
 		t.Fatalf("PR not persisted: %+v", onDisk.PR)
 	}
-	if onDisk.Status != StatusDraft {
+	if onDisk.Status != StatusOpen {
 		t.Errorf("RecordPR must not transition status; got %q", onDisk.Status)
 	}
 
@@ -702,7 +742,7 @@ func TestRelateSpec(t *testing.T) {
 	}
 
 	// Relating never changes lifecycle status.
-	if onDisk.Status != StatusDraft {
+	if onDisk.Status != StatusOpen {
 		t.Errorf("status changed by relate: %s", onDisk.Status)
 	}
 

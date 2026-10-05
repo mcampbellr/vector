@@ -33,7 +33,13 @@ func newStandupCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			from, err := resolveSince(store, since, time.Now())
+			// Capture the window's upper bound once, up front, and reuse it for both
+			// the projection filter and (via the JSON's `until`) the commit's marker.
+			// This is the fix for leak #2: a second time.Now() at commit would reopen
+			// the race where an event written between generation and commit is either
+			// dropped from this period or double-counted in the next.
+			to := time.Now().UTC()
+			from, err := resolveSince(store, since, to)
 			if err != nil {
 				return err
 			}
@@ -41,7 +47,7 @@ func newStandupCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			proj := standup.Project(events, from)
+			proj := standup.Project(events, from, to)
 			enrichProjection(store, &proj)
 			// Surface the repo's configured prose language to the digest agent. Resolved
 			// here (not in enrichProjection) so the standup package never imports config.
@@ -157,6 +163,7 @@ func newStandupCommitCmd() *cobra.Command {
 	var (
 		digestFile string
 		since      string
+		until      string
 		repoRoot   string
 		jsonOut    bool
 	)
@@ -165,18 +172,26 @@ func newStandupCommitCmd() *cobra.Command {
 		Short: "persist the agent-generated digest and advance the standup marker",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runStandupCommitBody(digestFile, since, repoRoot, jsonOut)
+			return runStandupCommitBody(digestFile, since, until, repoRoot, jsonOut)
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&digestFile, "digest-file", "", "path to the digest JSON, or - for stdin (required)")
 	f.StringVar(&since, "since", "", "window the digest covers: 24h|today|7d (default: since the marker)")
+	f.StringVar(&until, "until", "", "window upper bound as RFC3339, from `vector standup --json`'s `until` (default: now)")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
 }
 
-func runStandupCommitBody(digestFile, since, repoRoot string, jsonOut bool) error {
+// runStandupCommitBody reprojects the same window the generation step showed the
+// agent and advances the marker to exactly its upper bound. To close leak #2, the
+// bound `to` must match the `until` the generation captured: /vector:standup reads
+// it from `vector standup --json` and passes it back as --until. When --until is
+// absent (standalone invocation), it falls back to a fresh now — consistent within
+// this single commit, but it cannot recover the generation's boundary, so the wired
+// path (generation → --until → commit) is the one that fully closes the race.
+func runStandupCommitBody(digestFile, since, until, repoRoot string, jsonOut bool) error {
 	if digestFile == "" {
 		return errors.New("usage: vector standup commit --digest-file -|path")
 	}
@@ -195,6 +210,16 @@ func runStandupCommitBody(digestFile, since, repoRoot string, jsonOut bool) erro
 		return err
 	}
 	now := time.Now().UTC()
+	// The marker advances to `to`, the window's upper bound: the `until` captured at
+	// generation (passed back via --until), else a fresh now for a standalone commit.
+	to := now
+	if until != "" {
+		parsed, perr := time.Parse(time.RFC3339, until)
+		if perr != nil {
+			return fmt.Errorf("invalid --until: %w", perr)
+		}
+		to = parsed.UTC()
+	}
 	from, err := resolveSince(store, since, now)
 	if err != nil {
 		return err
@@ -203,7 +228,7 @@ func runStandupCommitBody(digestFile, since, repoRoot string, jsonOut bool) erro
 	if err != nil {
 		return err
 	}
-	proj := standup.Project(events, from)
+	proj := standup.Project(events, from, to)
 	enrichProjection(store, &proj)
 
 	summaries := make(map[string]string, len(ad.PerSpec))
@@ -232,19 +257,19 @@ func runStandupCommitBody(digestFile, since, repoRoot string, jsonOut bool) erro
 			ByStatus: proj.Totals.ByStatus,
 		},
 	}
-	if err := store.WriteStandup(digest, now); err != nil {
+	if err := store.WriteStandup(digest, to); err != nil {
 		return err
 	}
 
 	if jsonOut {
 		return printJSON(map[string]string{
-			"markerAt": now.Format(time.RFC3339),
+			"markerAt": to.Format(time.RFC3339),
 			"specs":    fmt.Sprintf("%d", digest.Totals.Specs),
 			"changes":  fmt.Sprintf("%d", digest.Totals.Changes),
 		})
 	}
 	fmt.Printf("standup committed — %d spec(s), %d change(s); marker advanced to %s\n",
-		digest.Totals.Specs, digest.Totals.Changes, now.Format(time.RFC3339))
+		digest.Totals.Specs, digest.Totals.Changes, to.Format(time.RFC3339))
 	return nil
 }
 

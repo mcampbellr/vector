@@ -24,6 +24,15 @@ Fetch the setup context from the binary before selecting or implementing:
 CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
 ```
 
+**Newer release available?** If `CONTEXT.update.available` is `true`, ask once via
+`AskUserQuestion` — "Vector `<CONTEXT.update.current>` → `<CONTEXT.update.latest>` is available":
+- **Upgrade now** → run `vector upgrade --yes`, then continue this command. If the upgrade fails,
+  show its error and continue with the current binary.
+- **Not now** → continue with the current binary.
+
+Never upgrade without this explicit confirmation. The field is absent on dev builds, when
+no update exists, or when GitHub was unreachable — then skip silently.
+
 > Token routing: one zero-token binary call returns buildCmd/testCmd/lintCmd cached from
 > `vector init`, so step 4 (build/test gate) need not re-discover manifests on each run.
 
@@ -38,22 +47,38 @@ from the repo's manifests in step 4 as before.
 ## 1. Select the work-item (skip if an id was given)
 
 Run `vector spec next --json`. It returns the recommended `id`, its `status`/`priority`, and
-the repo's `applyMode`. Selection ranks **in-progress > needs-attention > review > open**, then
-by priority — continue what's started before opening new work.
+the repo's `applyMode` (plus `"focus": "true"` when the pick carries its own focus marker, or
+`"focusInherited": "true"` when it is focused through its epic). Selection ranks
+**in-progress > needs-attention > review > open**; within each status tier:
+
+1. **focused specs first** — a spec's own focus (`vector spec focus <id>` or the card's pin) or
+   **inherited** from a focused epic (`vector epic focus <epic-id>` or the epic's pin in the
+   Epics view; every non-closed spec of that epic inherits it, including specs assigned later);
+2. then **epic order** — specs of lower-order epics first (`vector epic update <id> --order N`,
+   1 = first); specs with no epic or an unordered epic come after every ordered epic;
+3. then priority, then most recently updated.
+
+Continue what's started before opening new work: neither focus nor epic order lifts a spec across
+status tiers.
 
 Behave per `applyMode`:
 
 - **`auto`** → take the recommended pick and proceed without asking.
 - **`ask`** (default) → propose the pick **with its reason** ("`<id>` is in-progress, highest
-  priority") and confirm with `AskUserQuestion` before proceeding.
+  priority", "`<id>` is open and focused", or "`<id>` is open, focused via epic `<epic>`") and
+  confirm with `AskUserQuestion` before proceeding.
 - **`always-ask`** → show the candidate list (`vector spec list`) and let the user choose.
 
-If `next` reports nothing actionable (only draft/closed/archived remain), say so and stop —
+If `next` reports nothing actionable (only closed/archived remain), say so and stop —
 there's nothing to apply.
 
 ## 2. Start the spec (transition by current status)
 
 Read `.vector/specs/<id>/state.json`. Then:
+
+- **Legacy pre-v0.8 value** → generate any missing proposal/design/tasks using step 3's
+  delegate/native rules, then call `vector spec apply <id> --json`. The binary migrates and
+  starts the card in one user action. Never tell the user to run another command first.
 
 - **`open`** → `vector spec apply <id> --json`. Transitions `open → in-progress`, stamps
   `startedAt`, logs `spec.applied` + `status.changed (trigger:apply)`. Now implement (step 3+).
@@ -61,7 +86,8 @@ Read `.vector/specs/<id>/state.json`. Then:
 - **`needs-attention`** → surface `needsAttention.reason` first and resolve the blocker. Once
   unblocked, `vector spec status <id> in-progress` and continue.
 - **`review`** → implementation is already done; nothing to apply. Point the user at
-  `/vector:close <id>`. Stop.
+  `/vector:ship <id>` when the card has no recorded `pr`; otherwise `/vector:close <id>` after the
+  merge. Stop.
 
 ## 3. Detect the mode (delegate vs native)
 
@@ -281,7 +307,8 @@ Report: the id and the transition made (e.g. `open → in-progress → review`),
 (delegate/native), tasks completed vs total, the gate result, whether the working tree has
 uncommitted changes, and the next step.
 
-- **Routed to `review`** → next step is `/vector:close <id>` (ready for review).
+- **Routed to `review`** → next step is `/vector:ship <id>` (ready for review); once the card
+  has a recorded PR, `/vector:close <id>` after the merge.
 - **Routed to `needs-attention`** (external blocker, §6) → surface the blocker and its `reason`
   (what's pending + unblock path + PR ref) **instead of** "ready for review"; the next step is to
   provide the missing dependency, then `/vector:apply <id>` to resume. Form:

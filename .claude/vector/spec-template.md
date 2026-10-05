@@ -1,6 +1,6 @@
 # Spec Template — Vector
 
-Plantilla canónica que el comando `/vector:raw` debe usar al escribir cualquier spec nuevo. Las 20 secciones son obligatorias y deben aparecer en este orden. No se eliminan secciones: si una sección no aplica, se deja con la nota `No aplica — <razón>` (no se omite).
+Plantilla canónica que el comando `/vector:idea` debe usar al escribir cualquier spec nuevo. Las 20 secciones son obligatorias y deben aparecer en este orden. No se eliminan secciones: si una sección no aplica, se deja con la nota `No aplica — <razón>` (no se omite).
 
 Cuando `SPEC_LANGUAGE = english`, se traducen los encabezados al inglés (`## 1. Goal`, `## 2. Scope`, …) y todo el cuerpo se escribe en inglés, pero la estructura, profundidad y orden de las 20 secciones se mantiene idéntica. Slugs, rutas, identificadores de código y artefactos de git permanecen en kebab-case inglés.
 

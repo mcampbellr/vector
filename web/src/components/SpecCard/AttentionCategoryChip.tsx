@@ -1,4 +1,4 @@
-import styles from './SpecCard.module.css'
+import styles from './AttentionCategoryChip.module.css'
 
 const CATEGORIES = ['dependency', 'env', 'decision', 'external', 'other'] as const
 type AttentionCategory = (typeof CATEGORIES)[number]
@@ -23,9 +23,10 @@ interface AttentionCategoryChipProps {
   category?: string
 }
 
-// Small pill classifying why a spec is blocked (the needs-attention category).
-// Renders nothing for an absent or unknown category, so a legacy card that only
-// carries attentionReason shows no chip. Mirrors ArtifactDot's shape.
+// Filled pill classifying why a spec is blocked (the needs-attention category),
+// used by the details drawer. Renders nothing for an absent or unknown category,
+// so a legacy card that only carries attentionReason shows no chip. The board
+// card uses the flat AttentionCategoryLabel instead.
 export function AttentionCategoryChip({ category }: AttentionCategoryChipProps) {
   if (!category || !(CATEGORIES as readonly string[]).includes(category)) return null
   const known = category as AttentionCategory

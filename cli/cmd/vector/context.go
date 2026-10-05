@@ -30,7 +30,7 @@ type ContextOutput struct {
 	ApplyMode      string `json:"applyMode"`
 	TicketDetected bool   `json:"ticketDetected"`
 	// SketchEnabled reports whether the opt-in Excalidraw sketch step at the tail of
-	// /vector:raw and /vector:research is enabled for this repo (true unless
+	// /vector:idea and /vector:research is enabled for this repo (true unless
 	// sketchEnabled is explicitly false in config). The command skips the sketch
 	// prompt when this is false, without re-reading config.json itself.
 	SketchEnabled bool            `json:"sketchEnabled"`
@@ -40,6 +40,18 @@ type ContextOutput struct {
 	// don't ship read a byte-identical output (backward-compat).
 	Ship  *ShipContext  `json:"ship,omitempty"`
 	Intel *IntelSummary `json:"intel,omitempty"`
+	// Update is populated only in released builds when a newer release is known
+	// from the global update cache (see internal/updatecheck). Omitted otherwise —
+	// always in "dev" builds — so existing callers read a byte-identical output.
+	Update *UpdateInfo `json:"update,omitempty"`
+}
+
+// UpdateInfo tells /vector:* commands that a newer vector release exists, so
+// they can offer `vector upgrade`. Versions carry a leading "v".
+type UpdateInfo struct {
+	Available bool   `json:"available"`
+	Current   string `json:"current"`
+	Latest    string `json:"latest"`
 }
 
 // ShipContext is the resolved /vector:ship configuration surfaced by `vector context
@@ -54,7 +66,7 @@ type ShipContext struct {
 	AuthBootstrap string   `json:"authBootstrap,omitempty"`
 }
 
-// WorktreeContext describes the repo's bare+worktree layout for the /vector:raw
+// WorktreeContext describes the repo's bare+worktree layout for the /vector:idea
 // and /vector:bug orchestration: whether the [branch] placeholder is present
 // (Layout), the worktree root directory (Root — the literal prefix before
 // [branch], e.g. "code"), and the base branch + branch prefix used when creating
@@ -118,7 +130,7 @@ const (
 // docs/knowledge-architecture.md §6). Unknown commands are rejected by --for.
 var commandTiers = map[string]validationTier{
 	"status": tierTrust, "link": tierTrust, "close": tierTrust,
-	"archive": tierTrust, "standup": tierTrust, "propose": tierTrust, "sync": tierTrust,
+	"archive": tierTrust, "standup": tierTrust, "propose": tierTrust, "sync": tierTrust, "check": tierTrust,
 	"raw": tierLazy, "bug": tierLazy,
 	"apply": tierFull, "comment": tierFull,
 }
@@ -149,8 +161,8 @@ func newContextCmd() *cobra.Command {
 		Use:   "context",
 		Short: "print repo setup context (example path, language, build/lint/test commands)",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return runContextBody(repoRoot, forCmd, jsonOut, refresh)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runContextBody(repoRoot, forCmd, jsonOut, refresh, updateInfoFromContext(cmd.Context()))
 		},
 	}
 	f := cmd.Flags()
@@ -163,8 +175,9 @@ func newContextCmd() *cobra.Command {
 }
 
 // runContextBody holds the context business logic, unchanged from the pre-cobra
-// implementation except that flag values arrive as parameters.
-func runContextBody(repoRoot, forCmd string, jsonOut, refresh bool) error {
+// implementation except that flag values arrive as parameters. update is the
+// optional release notice computed once by the root hook (nil → field omitted).
+func runContextBody(repoRoot, forCmd string, jsonOut, refresh bool, update *UpdateInfo) error {
 	root, err := resolveRepoRoot(repoRoot)
 	if err != nil {
 		return err
@@ -248,6 +261,7 @@ func runContextBody(repoRoot, forCmd string, jsonOut, refresh bool) error {
 			AuthBootstrap: cfg.ResolvedShipAuthBootstrap(),
 		}
 	}
+	out.Update = update
 
 	// Validate (and lazily regenerate) the full intel cache, attaching a compact
 	// summary. Best-effort: a cache failure warns and omits intel rather than
@@ -285,6 +299,9 @@ func runContextBody(repoRoot, forCmd string, jsonOut, refresh bool) error {
 		fmt.Printf("%-16s base %s, mode %s, draft %v\n", "ship", out.Ship.BaseBranch, out.Ship.Mode, out.Ship.Draft)
 	} else {
 		fmt.Printf("%-16s %s\n", "ship", "(none)")
+	}
+	if out.Update != nil {
+		fmt.Printf("%-16s %s -> %s (run vector upgrade)\n", "update", out.Update.Current, out.Update.Latest)
 	}
 	return nil
 }

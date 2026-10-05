@@ -1,37 +1,15 @@
+/* The page never scrolls: the board is the application, not a document. Both
+   scroll axes live inside the board (horizontal on the column row, vertical
+   inside each column). */
 .app {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
 }
 
-.tabs {
-  display: flex;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-6) 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.tab {
-  border: none;
-  background: none;
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.tab:hover {
-  color: var(--color-text);
-}
-
-.tabActive {
-  color: var(--color-text);
-  border-bottom-color: var(--color-accent);
-}
+/* The view tabs moved into BoardHeader (one 56px status line, no second nav
+   row); their styles live in BoardHeader.module.css. */
 
 .content {
   display: flex;
@@ -42,6 +20,7 @@
 .placeholder {
   margin: auto;
   padding: var(--space-6);
-  font-size: 14px;
-  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ledger-text-dim);
 }

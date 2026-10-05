@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useFileContent, type ArtifactKey } from '../../api/useFileContent'
+import { FilePreviewError } from './FilePreviewError'
 import styles from './SpecDetailsDrawer.module.css'
 
 // MarkdownView (and its react-markdown dependency) is code-split out of the
@@ -110,7 +111,7 @@ interface FilePreviewModalProps {
 // size is clamped to the default floor and a ~95vw/95vh ceiling, and persisted
 // globally to localStorage so it survives reopens.
 export function FilePreviewModal({ specId, artifact, fileName, onClose }: FilePreviewModalProps) {
-  const { data, loading, error, reload } = useFileContent(specId, artifact)
+  const { data, loading, error, errorKind, reload } = useFileContent(specId, artifact)
   const closeRef = useRef<HTMLButtonElement>(null)
   // True only when a press began on the overlay itself. A resize drag presses a
   // handle (inside the panel) and releases over the overlay, which would fire a
@@ -252,14 +253,7 @@ export function FilePreviewModal({ specId, artifact, fileName, onClose }: FilePr
 
         <div className={styles.modalBody}>
           {loading && <p className={styles.muted}>loading file…</p>}
-          {error && (
-            <div className={styles.modalError}>
-              <p className={styles.error}>could not load file: {error}</p>
-              <button type="button" className={styles.retry} onClick={reload}>
-                Retry
-              </button>
-            </div>
-          )}
+          {error && <FilePreviewError kind={errorKind ?? 'failed'} message={error} onRetry={reload} />}
           {!loading && !error && data !== null && (
             <div className={styles.markdown}>
               <Suspense fallback={<p className={styles.muted}>loading file…</p>}>

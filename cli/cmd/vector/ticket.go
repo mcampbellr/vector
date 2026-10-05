@@ -343,7 +343,7 @@ func knownPrefixRe(prefixes []string) *regexp.Regexp {
 }
 
 // parseTicketFlag decodes the --ticket JSON ({provider,key,url,auto}) passed by
-// /vector:raw when it detects a ticket in the raw idea text. An empty flag yields
+// /vector:idea when it detects a ticket in the raw idea text. An empty flag yields
 // (nil, nil) — no ticket. The provider and key are required and the provider must
 // be known; the URL is optional.
 func parseTicketFlag(raw string) (*state.Ticket, error) {

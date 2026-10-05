@@ -1,7 +1,7 @@
 # Vector — UAT (lo testeable hoy)
 
 > Qué se puede aceptar manualmente en el estado actual. Crece a medida que aterrizan features.
-> Estado: **slice 1** — `internal/state` + `vector spec create|list` + command `/vector:raw`.
+> Estado: **slice 1** — `internal/state` + `vector spec create|list` + command `/vector:idea`.
 
 ## Build
 
@@ -78,13 +78,13 @@ Modelo OpenSpec: binario **global** + commands **per-proyecto** sembrados por `v
    ```bash
    vector init --repo-root <repo>       # o, dentro del repo: vector init
    ```
-   Tras sembrar, `/reload-plugins` o reiniciar la sesión para que el palette muestre `/vector:raw`.
+   Tras sembrar, `/reload-plugins` o reiniciar la sesión para que el palette muestre `/vector:idea`.
 
 ### Criterios de aceptación (init)
 
 | # | Acción | Esperado |
 |---|--------|----------|
-| 1 | `vector init` | crea `.claude/commands/vector/raw.md` (`created`) + esqueleto `.vector/` |
+| 1 | `vector init` | crea `.claude/commands/vector/idea.md` (`created`) + esqueleto `.vector/` |
 | 2 | `--dry-run` | reporta `created` pero **no escribe** nada |
 | 3 | re-`init` | `skipped` (no sobrescribe) |
 | 4 | command editado por el usuario + re-`init` | `skipped`; el contenido del usuario se **respeta** |
@@ -92,13 +92,13 @@ Modelo OpenSpec: binario **global** + commands **per-proyecto** sembrados por `v
 | 6 | archivos ajenos en `.claude/` (settings, CLAUDE.md, otros commands) | **intactos** |
 | 7 | `--json` | `{root, dryRun, files:[{path,action}]}` parseable |
 
-## UAT del command `/vector:raw`
+## UAT del command `/vector:idea`
 
-3. **Usar**: invocar `/vector:raw <idea>` → el command refina el texto y llama
+3. **Usar**: invocar `/vector:idea <idea>` → el command refina el texto y llama
    `vector spec create …`; verificar que aparece en `vector spec list` y en
    `.vector/specs/<id>/state.json`.
 
-> El palette muestra `/vector:raw` entero (project command con namespace por subdirectorio),
+> El palette muestra `/vector:idea` entero (project command con namespace por subdirectorio),
 > no `/raw (vector)`. Sin plugin ni marketplace.
 
 ## UAT de standup-digest (release `release-standup-digest`, 2026-06-25)

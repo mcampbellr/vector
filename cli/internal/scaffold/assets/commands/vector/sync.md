@@ -15,15 +15,15 @@ Your job is just to run it and report; **do not** author specs or edit `.vector/
 
 - `changes/<name>` active → `open` (0 tasks done) · `in-progress` (some) · `review` (all done).
 - `changes/archive/<date>-<name>` → `archived` (id keeps the change name, no date prefix).
-- **Standalone spec docs** at the repo's `spec-path` (e.g. a `/idea` spec with no OpenSpec
-  change, or a manual one) → `draft`, with `specDoc` pointing at the canonical copy. A change
+- **Standalone spec docs** at the repo's `spec-path` (e.g. a manual spec with no OpenSpec
+  change) → `open`, with compatibility OpenSpec provenance and `specDoc` pointing at the canonical copy. A change
   with the **same slug** wins (no duplicate).
 - **Superseded specs** — a spec whose frontmatter declares `supersededBy: <change-slug>` (or
   `status: superseded|implemented`) is **skipped**: the change of a *different* slug already
   represents that feature. This is the only cross-slug dedup — Vector never guesses by name.
 - `openspec/specs/` (applied capabilities) are **not** imported — they are the catalog, not work items.
-- Synced cards from changes carry `openspec{change,artifacts}` provenance; `/vector:raw` drafts
-  and any card already present are **never** touched (re-sync only adds what's missing).
+- Synced cards from changes carry `openspec{change,artifacts}` provenance; any card already
+  present is **never** touched (re-sync only adds what's missing).
 
 ## Bare + worktree layouts (`[branch]`)
 
@@ -43,8 +43,8 @@ A spec implemented by a change with a DIFFERENT slug can't be matched by the bin
 similarity is unsafe (false positives) and there is no reliable structural link. Resolve these
 ONCE, here in the command, so the binary stays deterministic and later syncs are silent:
 
-1. `vector sync --dry-run --json` → note the specs that would become `draft`.
-2. For each such draft spec: read its `spec.md`, and scan the changes (every worktree's
+1. `vector sync --dry-run --json` → note standalone specs that would become `open`.
+2. For each such standalone spec: read its `spec.md`, and scan the changes (every worktree's
    `openspec/changes/*` incl. `archive/`) for one that **implements that capability**, judging by
    the change's proposal/spec-delta **content** — never by name resemblance.
 3. Found a confident match → propose it to the user (`AskUserQuestion`, batched). On confirmation,
@@ -52,7 +52,7 @@ ONCE, here in the command, so the binary stays deterministic and later syncs are
    `code/<branch>/docs/specs/<slug>/spec.md` where `branch` is from `.vector/config.json`; add a
    `---`-fenced YAML block at the very top if none exists). This is a user-repo edit — only with
    the user's confirmation.
-4. No confident match → leave it as a draft. Never invent a link.
+4. No confident match → leave it as its own open card. Never invent a link.
 5. Run the real `vector sync`. Superseded specs are now suppressed deterministically, and the
    decision lives in the spec, so future syncs need no prompting.
 
@@ -73,8 +73,8 @@ ONCE, here in the command, so the binary stays deterministic and later syncs are
    ```bash
    vector sync --reconcile --json
    ```
-4. **Report** the board summary (counts by status) and remind the user that draft cards from
-   `/vector:raw` and any manual edits were preserved.
+4. **Report** the board summary (counts by status) and confirm existing cards and manual edits
+   were preserved.
 
 ## Notes
 

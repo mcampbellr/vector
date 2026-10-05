@@ -10,7 +10,7 @@ import (
 
 // runSpecRoute records an agent.routed event — the commercialization wedge that
 // feeds the Token Savings Meter. The kit commands call this after routing a step
-// to a cheap model (e.g. /vector:raw's Haiku refiner) so the saved cost is
+// to a cheap model (e.g. /vector:idea's Haiku refiner) so the saved cost is
 // captured. The binary owns the economics: callers pass the models + token
 // counts, and the price table derives cost/saved.
 func newSpecRouteCmd() *cobra.Command {

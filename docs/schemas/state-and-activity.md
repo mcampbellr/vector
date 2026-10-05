@@ -10,6 +10,7 @@
 ```
 .vector/
 ├── specs/<id>/state.json     # committed, 1 archivo por spec (sharded → conflictos locales)
+├── epics/<id>.json           # committed, 1 archivo por épica (se crea con la primera épica)
 ├── local/activity.jsonl      # gitignored, append-only, personal → /vector:daily + token meter
 └── board.json                # gitignored, DERIVADO (lo regenera `vector serve`)
 openspec/changes/<id>/        # proposal/design/tasks (lo crea /vector:apply); state lo referencia
@@ -66,7 +67,12 @@ type SpecState struct {
 	Labels        []string `json:"labels,omitempty"`
 	EstimateMin   int      `json:"estimateMinutes,omitempty"`
 	QuickWin      bool     `json:"quickWin,omitempty"`   // /vector:quick one-run change marker
-	Sketches      []SketchRef `json:"sketches,omitempty"` // Excalidraw wireframes (/vector:raw + /vector:research)
+	Focus         bool       `json:"focus,omitempty"`     // "trabajar esto primero" (eje aparte de priority)
+	FocusedAt     *time.Time `json:"focusedAt,omitempty"` // cuándo se marcó el focus
+	Epic          string     `json:"epic,omitempty"`      // id de .vector/epics/<id>.json
+	Resolution     Resolution `json:"resolution,omitempty"`     // por qué se cerró: done|obsolete|duplicate|superseded
+	ResolutionNote string     `json:"resolutionNote,omitempty"` // nota libre de la resolución (p. ej. "duplicate of x")
+	Sketches      []SketchRef `json:"sketches,omitempty"` // Excalidraw wireframes (/vector:idea + /vector:research)
 
 	Ticket    *Ticket       `json:"ticket,omitempty"`
 	RelatedTo []RelatedItem `json:"relatedTo,omitempty"`     // cause→bug trace (/vector:bug)
@@ -83,11 +89,40 @@ type SpecState struct {
 	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
+// Focus / Epic: aditivos + omitempty → specs sin ellos serializan idéntico (SchemaVersion
+// sigue en 1, sin migración). Focus lo escribe solo Store.SetFocus (`vector spec focus|unfocus`
+// o POST /api/specs/{id}/focus) y se limpia al pasar a closed/archived; ordena primero dentro
+// de la columna y del tier de status de `spec next`, antes que priority. Epic lo escriben
+// Store.AssignEpic / AssignEpicBulk / CreateSpec, que validan que la épica exista (bulk: valida
+// todos los ids antes de escribir). El focus de la épica NO se copia al spec: el focus efectivo
+// (spec.focus || épica.focus && !terminal) se deriva al leer (state.EpicIndex).
+//
+// Resolution / ResolutionNote: aditivos + omitempty. CloseSpecWith los escribe siempre al
+// cerrar (default done); ArchiveSpecWith los conserva salvo que se pase --resolution. Solo
+// `done` cuenta como progreso de épica; obsolete/duplicate/superseded = "dropped" (fuera de
+// done y total). Legacy: closed sin resolution = done; archived sin resolution = no-done
+// (SpecState.EffectiveResolution).
+
+// Epic vive en .vector/epics/<id>.json (committed). No guarda la lista de miembros: la
+// membresía es SpecState.Epic (una sola fuente de verdad).
+type Epic struct {
+	SchemaVersion int       `json:"schemaVersion"`         // EpicSchemaVersion = 1
+	ID            string    `json:"id"`                    // slug kebab-case (Slug(title) si no se da)
+	Title         string    `json:"title"`
+	Description   string    `json:"description,omitempty"`
+	Color         EpicColor `json:"color,omitempty"`       // slate|blue|teal|green|amber|orange|red|pink|violet
+	Order         int        `json:"order,omitempty"`      // 1 = primera; 0/ausente = sin orden (después de las ordenadas, por título)
+	Focus         bool       `json:"focus,omitempty"`      // sus specs no terminales heredan focus (derivado, nunca copiado)
+	FocusedAt     *time.Time `json:"focusedAt,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
 type Ticket struct {
 	Provider TicketProvider `json:"provider"`
 	Key      string         `json:"key"`   // e.g. MH-1438
 	URL      string         `json:"url"`
-	Auto     bool           `json:"auto"`  // true if auto-detected from /vector:raw text
+	Auto     bool           `json:"auto"`  // true if auto-detected from /vector:idea text
 }
 
 // RelatedItem traza la causa de un bug a la obra previa que lo originó
@@ -100,7 +135,7 @@ type RelatedItem struct {
 }
 
 // SketchRef es un wireframe Excalidraw adjunto a un spec, generado por el agente
-// vector-ui-ux-designer al final de `/vector:raw` y `/vector:research` y persistido por
+// vector-ui-ux-designer al final de `/vector:idea` y `/vector:research` y persistido por
 // `vector spec attach-sketch`. Optional + omitempty → specs sin sketch serializan idéntico
 // (backward-compatible; SchemaVersion sigue en 1, sin migración). El archivo vive en
 // .vector/specs/<id>/sketches/<name>; se sirve como descarga en `GET /api/file?artifact=sketch`.
@@ -170,6 +205,14 @@ const (
 	EvtBoardMoved    EventType = "board.moved"
 	EvtAgentRouted   EventType = "agent.routed" // Token Savings Meter
 	EvtWorkLogged    EventType = "work.logged"  // standup digest: trabajo hecho por apply
+	EvtSpecFocused   EventType = "spec.focused"   // sin payload
+	EvtSpecUnfocused EventType = "spec.unfocused" // sin payload
+	EvtEpicAssigned  EventType = "spec.epic-assigned" // EpicAssignedData
+	EvtEpicCreated   EventType = "epic.created"   // EpicEventData, sin specId
+	EvtEpicUpdated   EventType = "epic.updated"   // EpicEventData, sin specId
+	EvtEpicDeleted   EventType = "epic.deleted"   // EpicEventData, sin specId
+	EvtEpicFocused   EventType = "epic.focused"   // EpicEventData, sin specId
+	EvtEpicUnfocused EventType = "epic.unfocused" // EpicEventData, sin specId
 )
 
 // Event is one line of .vector/local/activity.jsonl.
@@ -190,6 +233,9 @@ type NoteAddedData     struct{ Text string; Pinned bool }
 type ReminderSetData   struct{ Text string; DueAt *time.Time }
 type BoardMovedData    struct{ From, To string }
 type SpecRelatedData   struct{ Kind RelatedKind; Ref string; Source RelatedSource } // espejo de RelatedItem; aditivo para timeline/standup
+type EpicAssignedData  struct{ Epic, Previous string } // Epic "" = se limpió; nunca transiciona status
+type EpicEventData     struct{ ID, Title string; Color EpicColor } // eventos de épica: sin specId → standup/timeline los ignoran
+type ResolutionData    struct{ Resolution Resolution; Note string } // payload de spec.closed (siempre) y de spec.archived (solo si corrige la resolución)
 
 // AgentRoutedData is the commercialization wedge: every cheap-agent route logs
 // what it would have cost on the baseline model.
@@ -234,7 +280,10 @@ servida en `GET /api/standup`.
 ## `board.json` (derivado, no committed)
 
 `vector serve` escanea `.vector/specs/*/state.json` → agrupa por `status` (columnas) y ordena
-por `priority`+`updatedAt`; cruza `activity.jsonl` para el roll-up de tokens ahorrados. Se
+por focus **efectivo** (propio o heredado de una épica con focus; card: `focus` + `focusInherited`)
++ `priority` + `updatedAt` (el orden de épica no reordena columnas); proyecta
+`.vector/epics/*.json` en `epics[]` en orden de épica (con `order`/`focus`/`total`/`done`/
+`dropped`/`byStatus` por épica); cada card lleva `resolution`/`resolutionNote` si las tiene; cruza `activity.jsonl` para el roll-up de tokens ahorrados. Se
 regenera, nunca se edita a mano → cero conflictos.
 
 ## Decisiones de diseño (por qué)

@@ -58,7 +58,8 @@ type Config struct {
 	// ChangesPath and SpecPath to a concrete worktree, for bare+worktree layouts.
 	ChangesPath string `json:"changesPath,omitempty"`
 	Branch      string `json:"branch,omitempty"`
-	// ProposeBranch overrides which worktree /vector:propose creates a change in
+	// ProposeBranch is a legacy config key that selects the worktree used while
+	// formalizing a change during authoring or compatibility apply.
 	// (bare+worktree layouts); falls back to Branch when empty.
 	ProposeBranch string `json:"proposeBranch,omitempty"`
 	// ApplyMode controls how much /vector:apply decides vs asks when selecting the
@@ -108,7 +109,7 @@ type Config struct {
 	// when the repo declares a [branch] layout; additive and backward-compatible.
 	BranchPrefix string `json:"branchPrefix,omitempty"`
 	// SketchEnabled globally gates the opt-in Excalidraw sketch step at the tail of
-	// /vector:raw and /vector:research. nil (absent) or true = enabled (the command
+	// /vector:idea and /vector:research. nil (absent) or true = enabled (the command
 	// may prompt on a strong UI signal); only an explicit false suppresses the prompt
 	// repo-wide. A pointer so absent and false are distinguishable; additive and
 	// backward-compatible (a legacy config loads it as nil = enabled). Not written by
@@ -120,6 +121,13 @@ type Config struct {
 	// nil-safe. Written only by `vector config set-ship` (strictly opt-in, never by
 	// init/update). SchemaVersion stays 1 (additive).
 	Ship *ShipConfig `json:"ship,omitempty"`
+	// StateRoot is an optional persistent root pin, resolved relative to this config
+	// when not absolute. It can confirm the canonical workspace root or select a
+	// root outside the current worktree family; command resolution rejects a target
+	// nested below an already-discovered canonical root. Invalid or self-referencing
+	// values are ignored. Empty preserves ordinary ancestor discovery. Not written by
+	// init/update; see ResolveStateRootPin.
+	StateRoot string `json:"stateRoot,omitempty"`
 }
 
 // IsSketchEnabled reports whether the tail sketch step is enabled for this repo:
@@ -500,7 +508,7 @@ func (c *Config) changesTemplate() string {
 	return DefaultChangesPath
 }
 
-// Defaults for the per-spec worktree the /vector:raw and /vector:bug orchestration
+// Defaults for the per-spec worktree the /vector:idea and /vector:bug orchestration
 // creates on bare+worktree layouts.
 const (
 	DefaultBaseBranch   = "main"
@@ -510,7 +518,7 @@ const (
 // HasBranchPlaceholder reports whether the repo declares a bare+worktree layout:
 // the [branch] placeholder is present in the resolved spec-path or changes-path
 // template. This is the signal that gates the worktree-resolve/create step in
-// /vector:raw and /vector:bug; false means that step is inert (non-worktree repos).
+// /vector:idea and /vector:bug; false means that step is inert (non-worktree repos).
 func (c *Config) HasBranchPlaceholder() bool {
 	return strings.Contains(c.SpecPath, branchPlaceholder) ||
 		strings.Contains(c.changesTemplate(), branchPlaceholder)
@@ -573,6 +581,80 @@ func (c *Config) SpecDocPath(repoRoot, slug string) (rel, abs string) {
 func Exists(repoRoot string) bool {
 	_, err := os.Stat(Path(repoRoot))
 	return err == nil
+}
+
+// FindAncestorConfigs walks up from startDir and returns every directory holding
+// a valid .vector/config.json, ordered from nearest to outermost. The walk starts
+// at startDir itself and stops at the filesystem root.
+//
+// A .vector/ directory WITHOUT a loadable config.json is a stray: it is recorded
+// in strayDirs (so the caller can warn) but never adopted, and the walk keeps
+// going up — an intermediate stray must not hide the real ancestor.
+//
+// It is read-only: no writes, no side effects, and no opinion on git/worktree
+// boundaries. Callers select the canonical root from the returned candidates.
+func FindAncestorConfigs(startDir string) (roots, strayDirs []string) {
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return nil, nil
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".vector")); err == nil {
+			if _, err := Load(dir); err == nil {
+				roots = append(roots, dir)
+			} else {
+				strayDirs = append(strayDirs, dir)
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return roots, strayDirs
+		}
+		dir = parent
+	}
+}
+
+// FindAncestorConfig returns the nearest valid Vector store for legacy callers.
+// New root-resolution code should use FindAncestorConfigs so a workspace-root
+// store can remain authoritative over a worktree-local copy.
+func FindAncestorConfig(startDir string) (root string, strayDirs []string, found bool) {
+	roots, strays := FindAncestorConfigs(startDir)
+	if len(roots) == 0 {
+		return "", strays, false
+	}
+	return roots[0], strays, true
+}
+
+// ResolveStateRootPin resolves c.StateRoot into an absolute repo root pin, given
+// configDir — the directory holding c (typically the canonical ancestor store).
+// A relative StateRoot is resolved against configDir. Returns ok=false (and the
+// caller must fall through to ordinary ancestor discovery)
+// instead of erroring) when StateRoot is empty, unresolvable, a self-reference
+// (resolves back to configDir itself — the trivial loop), or does not hold a
+// .vector/config.json that Load can parse. It is read-only and does not recurse
+// into the target's own StateRoot (no multi-hop chasing, so no non-trivial loop
+// is possible).
+func (c *Config) ResolveStateRootPin(configDir string) (root string, ok bool) {
+	raw := strings.TrimSpace(c.StateRoot)
+	if raw == "" {
+		return "", false
+	}
+	target := raw
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(configDir, target)
+	}
+	abs, err := filepath.Abs(target)
+	if err != nil {
+		return "", false
+	}
+	abs = filepath.Clean(abs)
+	if absConfigDir, err := filepath.Abs(configDir); err == nil && abs == filepath.Clean(absConfigDir) {
+		return "", false // self-reference: ignore, fall through to nearest-wins
+	}
+	if _, err := Load(abs); err != nil {
+		return "", false // invalid or unreachable pin: ignore, fall through
+	}
+	return abs, true
 }
 
 // Load reads an existing config.

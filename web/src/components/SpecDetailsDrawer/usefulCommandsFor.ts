@@ -7,7 +7,7 @@ export interface UsefulCommand {
 
 /**
  * Returns the context-aware slash commands worth surfacing for a card, beyond
- * its primary "next command" (which the drawer shows separately via NextCommand).
+ * its primary next step (which the drawer shows separately via NextStep).
  * The set is gated by the spec's state-machine legality and its current
  * metadata: `/vector:link` appears only when the spec has no ticket; the status
  * moves shown are the legal ones for the current status. The board stays
@@ -31,6 +31,11 @@ export function usefulCommandsFor(card: Card): UsefulCommand[] {
       commands.push({ label: 'Resume work', command: `/vector:status ${id} in-progress` })
       break
     case 'review':
+      // The primary next command is ship until a PR is recorded; keep close
+      // reachable for specs that end without one (obsolete, duplicate, no-PR repos).
+      if (!card.pr) {
+        commands.push({ label: 'Close without PR', command: `/vector:close ${id}` })
+      }
       commands.push({ label: 'Reopen', command: `/vector:status ${id} in-progress` })
       break
     case 'closed':

@@ -1,9 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/mariocampbell/vector/internal/config"
+	"github.com/mariocampbell/vector/internal/state"
 )
 
 // runInitQuiet runs runInit with stdout suppressed (it prints a report we don't
@@ -11,6 +17,53 @@ import (
 func runInitQuiet(t *testing.T, args []string) {
 	t.Helper()
 	captureStdout(t, func() error { return runInit(args) })
+}
+
+func TestUpdateMigratesLegacyDraftsIdempotently(t *testing.T) {
+	root := t.TempDir()
+	runInitQuiet(t, []string{"--repo-root", root})
+	store, err := state.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.CreateSpec(state.CreateSpecParams{
+		ID: "legacy-card", Title: "Legacy card", Priority: state.PriorityHigh,
+		Ticket: &state.Ticket{Provider: state.TicketGitHub, Key: "GH-7"},
+		Actor:  "old-vector", Now: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(store.StatePath(created.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = bytes.Replace(b, []byte(`"status": "open"`), []byte(`"status": "draft"`), 1)
+	if err := os.WriteFile(store.StatePath(created.ID), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runUpdateQuiet(t, []string{"--repo-root", root})
+	migrated, err := store.ReadSpec(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated.Status != state.StatusOpen || migrated.OpenSpec == nil || migrated.OpenSpec.Change != created.ID {
+		t.Fatalf("migration did not open card with compatibility provenance: %+v", migrated)
+	}
+	if migrated.Priority != state.PriorityHigh || migrated.Ticket == nil || migrated.Ticket.Key != "GH-7" {
+		t.Fatalf("migration lost metadata: %+v", migrated)
+	}
+
+	before := migrated.UpdatedAt
+	runUpdateQuiet(t, []string{"--repo-root", root})
+	again, err := store.ReadSpec(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.UpdatedAt.Equal(before) {
+		t.Fatalf("repeated update rewrote migrated state: %v != %v", again.UpdatedAt, before)
+	}
 }
 
 func runUpdateQuiet(t *testing.T, args []string) {
@@ -102,5 +155,43 @@ func TestUpdateLanguageFlag(t *testing.T) {
 	}
 	if kept.Language != "fr" {
 		t.Errorf("update without flag cleared language: got %q, want fr", kept.Language)
+	}
+}
+
+func TestUpdateKitRootSeedsNestedCheckoutWithoutMovingState(t *testing.T) {
+	root := t.TempDir()
+	runInitQuiet(t, []string{"--repo-root", root})
+	kitRoot := filepath.Join(root, "code", "main")
+	legacy := filepath.Join(kitRoot, ".claude", "commands", "vector", "propose.md")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("legacy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runUpdateQuiet(t, []string{"--repo-root", root, "--kit-root", "code/main"})
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("obsolete nested command still exists: %v", err)
+	}
+	applyPath := filepath.Join(kitRoot, ".claude", "commands", "vector", "apply.md")
+	b, err := os.ReadFile(applyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "/vector:propose") {
+		t.Fatalf("nested kit still instructs manual propose: %s", applyPath)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".vector", "config.json")); err != nil {
+		t.Fatalf("canonical config moved or disappeared: %v", err)
+	}
+}
+
+func TestUpdateKitRootRejectsParentDirectory(t *testing.T) {
+	root := t.TempDir()
+	runInitQuiet(t, []string{"--repo-root", root})
+	err := runUpdate([]string{"--repo-root", root, "--kit-root", ".."})
+	if err == nil || !strings.Contains(err.Error(), "must be inside repo root") {
+		t.Fatalf("error = %v, want containment failure", err)
 	}
 }

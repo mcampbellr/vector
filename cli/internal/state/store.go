@@ -14,8 +14,9 @@ import (
 // Store is the single writer of Vector's on-disk state, rooted at a repo's
 // .vector directory. All write methods serialize through mu.
 type Store struct {
-	root string // absolute path to the .vector directory
-	mu   sync.Mutex
+	root      string // absolute path to the .vector directory
+	mu        sync.Mutex
+	fallbacks ArtifactFallbacks // extra read locations for ReadSpecArtifact
 }
 
 // Open returns a Store for the .vector directory under repoRoot, creating the
@@ -45,7 +46,7 @@ type CreateSpecParams struct {
 	ID       string // optional; derived from Title via Slug if empty
 	Repo     string
 	Priority Priority // defaults to PriorityNormal if empty
-	Status   Status   // defaults to StatusDraft if empty
+	Status   Status   // defaults to StatusOpen if empty
 	Source   string   // activity source: "raw" (default) | "sync"
 	Body     string   // spec doc content; skipped if empty
 	Actor    string
@@ -58,7 +59,7 @@ type CreateSpecParams struct {
 	SpecDocRel     string
 
 	// OpenSpec, when set, records the source change (used by `vector sync` to mark
-	// a card as derived from an OpenSpec change rather than a /vector:raw draft).
+	// a card as derived from an OpenSpec change rather than a /vector:idea draft).
 	OpenSpec *OpenSpec
 
 	// NeedsUAT marks the card as awaiting manual UAT. Only honored when Status is
@@ -70,7 +71,7 @@ type CreateSpecParams struct {
 	QuickWin bool
 
 	// Ticket, when set, seeds the spec's external-tracker link at creation time
-	// (e.g. a ref detected in a /vector:raw idea, or sync's conservative scan). It
+	// (e.g. a ref detected in a /vector:idea idea, or sync's conservative scan). It
 	// is persisted on state.json and also emits a spec.linked event alongside
 	// spec.created. Auto-detected seeds carry Auto:true.
 	Ticket *Ticket
@@ -80,6 +81,11 @@ type CreateSpecParams struct {
 	// the caller that wants degrade semantics validates/filters before calling.
 	// Each persisted relation also emits a spec.related event.
 	RelatedTo []RelatedItem
+
+	// Epic, when set, groups the new spec under an existing epic. The epic must
+	// exist (ErrInvalidInput otherwise); a spec.epic-assigned event is emitted
+	// alongside spec.created.
+	Epic string
 }
 
 // normalizeRelated lowercases the kind/source, trims the ref, and defaults an
@@ -151,7 +157,7 @@ func (s *Store) RelateSpec(id string, item RelatedItem, actor string, now time.T
 	now = now.UTC()
 	spec.RelatedTo = append(spec.RelatedTo, item)
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 	if err := s.appendRelatedEvent(spec.ID, spec.Repo, item, now, actor); err != nil {
@@ -204,7 +210,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 
 	status := p.Status
 	if status == "" {
-		status = StatusDraft
+		status = StatusOpen
 	}
 	if !status.Valid() {
 		return nil, fmt.Errorf("invalid status %q", status)
@@ -230,6 +236,13 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		}
 	}
 
+	epicID := strings.TrimSpace(p.Epic)
+	if epicID != "" {
+		if err := s.requireEpic(epicID); err != nil {
+			return nil, err
+		}
+	}
+
 	// Resolve where the spec doc lives: the caller's path (repo convention or an
 	// OpenSpec change), or the .vector fallback when neither is given.
 	docAbs, docRel := p.SpecDocAbsPath, p.SpecDocRel
@@ -252,6 +265,7 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		QuickWin:      p.QuickWin,
 		Ticket:        p.Ticket,
 		RelatedTo:     related,
+		Epic:          epicID,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -273,6 +287,11 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 		if err := writeFileAtomic(docAbs, []byte(p.Body)); err != nil {
 			return nil, err
 		}
+	}
+	// Snapshot a doc that lives outside .vector (e.g. in a per-spec worktree) so it
+	// survives that worktree's removal; sync-created specs point at an existing doc.
+	if err := s.snapshotSpecDoc(spec); err != nil {
+		return nil, err
 	}
 
 	source, template := p.Source, ""
@@ -305,6 +324,11 @@ func (s *Store) CreateSpec(p CreateSpecParams) (*SpecState, error) {
 	}
 	for _, item := range spec.RelatedTo {
 		if err := s.appendRelatedEvent(spec.ID, spec.Repo, item, now, p.Actor); err != nil {
+			return nil, err
+		}
+	}
+	if spec.Epic != "" {
+		if err := s.appendEpicAssignedEvent(spec, "", now, p.Actor); err != nil {
 			return nil, err
 		}
 	}
@@ -343,7 +367,7 @@ func (s *Store) LinkSpec(id string, ticket Ticket, actor string, now time.Time) 
 	linked := ticket
 	spec.Ticket = &linked
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 	if err := s.appendLinkedEvent(spec, now, actor); err != nil {
@@ -399,7 +423,7 @@ func (s *Store) RecordPR(id, url string, number int, draft bool, actor string, n
 	now = now.UTC()
 	spec.PR = &PullRequest{URL: url, Number: number, Draft: draft, OpenedAt: now}
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 	if err := s.appendPROpenedEvent(spec, now, actor); err != nil {
@@ -452,6 +476,13 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ne
 	if spec.Status.IsTerminal() {
 		status = spec.Status
 	}
+	// A tasks.md-derived status must never pull a card backward out of review to
+	// in-progress: that silent regression hides real signal (e.g. an explicitly
+	// deferred task) behind an automatic move. `vector check` surfaces this as
+	// review-with-pending-tasks (Medium) for a human decision instead.
+	if spec.Status == StatusReview && status == StatusInProgress {
+		status = StatusReview
+	}
 	// NeedsUAT is a refinement of review; it never persists outside it.
 	wantUAT := needsUAT && status == StatusReview
 	if spec.Status == status && openSpecEqual(spec.OpenSpec, openSpec) && spec.NeedsUAT == wantUAT {
@@ -465,7 +496,7 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ne
 	spec.NeedsUAT = wantUAT
 	spec.UpdatedAt = now
 	setStatusTimestamp(spec, status, now)
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return false, err
 	}
 
@@ -487,8 +518,9 @@ func (s *Store) ReconcileStatus(id string, status Status, openSpec *OpenSpec, ne
 	return true, nil
 }
 
-// ProposeSpec formalizes a draft spec: it records the OpenSpec change provenance
-// and transitions draft → open, appending spec.proposed + status.changed events.
+// ProposeSpec is the internal compatibility transition for state written before
+// v0.8.0. It records OpenSpec provenance and migrates legacy draft → open,
+// appending spec.proposed + status.changed events.
 // It does NOT stamp StartedAt — open means the change exists but work has not
 // started; StartedAt is set later at /vector:apply (in-progress). Errors if the
 // spec is not in draft.
@@ -503,15 +535,15 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 	if err != nil {
 		return nil, err
 	}
-	if spec.Status != StatusDraft {
-		return nil, fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", id, spec.Status)
+	if spec.Status != StatusLegacyDraft {
+		return nil, fmt.Errorf("spec %q is %q, not a legacy draft", id, spec.Status)
 	}
 
 	now = now.UTC()
 	spec.Status = StatusOpen
 	spec.OpenSpec = openSpec
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return nil, err
 	}
 
@@ -522,7 +554,7 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 	if err := s.appendEvent(Event{V: EventVersion, TS: now, Type: EvtSpecProposed, SpecID: id, Repo: spec.Repo, Actor: actor, Data: proposed}); err != nil {
 		return nil, err
 	}
-	changed, err := json.Marshal(StatusChangedData{From: StatusDraft, To: StatusOpen, Trigger: "command"})
+	changed, err := json.Marshal(StatusChangedData{From: StatusLegacyDraft, To: StatusOpen, Trigger: "migration"})
 	if err != nil {
 		return nil, fmt.Errorf("marshal status.changed data: %w", err)
 	}
@@ -534,7 +566,7 @@ func (s *Store) ProposeSpec(id string, openSpec *OpenSpec, actor string, now tim
 
 // statusFixable reports whether a spec in the given status may be fixed. A fix is
 // an in-flight correction (/vector:fix), so only specs already in the working set
-// qualify; draft/closed/archived are out of scope.
+// qualify; closed/archived are out of scope.
 func statusFixable(st Status) bool {
 	switch st {
 	case StatusOpen, StatusInProgress, StatusNeedsAttention, StatusReview:
@@ -550,7 +582,7 @@ func statusFixable(st Status) bool {
 // additive event, all under one lock — modeled on ProposeSpec. It does NOT
 // transition status: lifecycle moves go through SetStatus (the LOCKED machine),
 // keeping the binary's single-writer guarantee without re-entering the mutex.
-// Errors if the spec is draft/closed/archived (only an open/in-progress/
+// Errors if the spec is closed/archived (only an open/in-progress/
 // needs-attention/review spec can be fixed).
 func (s *Store) FixSpec(id, classification, validationResult string, artifacts, files []string, actor string, now time.Time) (*SpecState, error) {
 	s.mu.Lock()
@@ -566,7 +598,7 @@ func (s *Store) FixSpec(id, classification, validationResult string, artifacts, 
 
 	now = now.UTC()
 	spec.UpdatedAt = now
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return nil, err
 	}
 
@@ -634,7 +666,7 @@ func (s *Store) AttachSketch(id string, file []byte, ref SketchRef, actor string
 		spec.Sketches = append(spec.Sketches, ref)
 	}
 	spec.UpdatedAt = ref.CreatedAt.UTC()
-	if err := writeSpecFile(s.statePath(id), spec); err != nil {
+	if err := s.writeSpecState(spec); err != nil {
 		return "", err
 	}
 
@@ -819,6 +851,16 @@ func (s *Store) appendEvent(e Event) error {
 		return fmt.Errorf("write activity log: %w", err)
 	}
 	return nil
+}
+
+// writeSpecState refreshes the spec doc snapshot (see snapshotSpecDoc) and then
+// persists state.json. The snapshot runs first so a failure leaves state untouched.
+// The caller must hold s.mu.
+func (s *Store) writeSpecState(spec *SpecState) error {
+	if err := s.snapshotSpecDoc(spec); err != nil {
+		return err
+	}
+	return writeSpecFile(s.statePath(spec.ID), spec)
 }
 
 func writeSpecFile(path string, spec *SpecState) error {

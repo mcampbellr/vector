@@ -24,7 +24,7 @@ agents, and the expensive models handle design and implementation. The second is
 of truth. The JSON state drives the board, the standup digest, and the activity trace, so nothing
 drifts out of sync.
 
-![Vector kanban board: spec cards spread across draft, open, in-progress, needs-attention, review, and closed columns, each showing its status, priority flag, ticket link, and apply command](docs/assets/board.png)
+![Vector kanban board: spec cards spread across open, in-progress, needs-attention, review, and closed columns, each showing its status, priority flag, ticket link, and apply command](docs/assets/board.png)
 
 ## Why Vector
 
@@ -99,6 +99,34 @@ cd vector/cli
 go build -o ~/.local/bin/vector ./cmd/vector
 ```
 
+### Upgrading
+
+Released builds check GitHub Releases for a newer version at most once a day (a stale check adds
+at most ~1s to that one command, offline included, and stays silent on any network error). When one exists, every
+command prints a one-line notice on **stderr** — stdout and `--json` output are never affected —
+and `vector context --json` gains an additive `update` field (`available`, `current`, `latest`)
+that the `/vector:*` commands use to offer the upgrade. Locally built (`dev`) binaries skip the
+check entirely.
+
+Replace the installed binary in place:
+
+```bash
+vector upgrade              # latest release; asks y/N in a terminal
+vector upgrade --yes        # no prompt (required when stdin is not a terminal)
+vector upgrade --dry-run    # resolve, download and verify the checksum only
+vector upgrade --target v0.1.0 --force   # pin a tag; --force allows reinstall/downgrade
+```
+
+`vector upgrade` downloads the archive for your platform plus `checksums.txt`, verifies the
+SHA256 before touching anything, resolves symlinks so the real binary is replaced (never the
+link), keeps a `.bak` copy and restores it if the new binary fails its version check. It never
+uses `sudo`: if the binary's directory is not writable, it refuses. Pre-releases are never
+offered. `--json` prints the upgrade report only. On Windows the running `vector.exe` is renamed
+to `vector.exe.old` and removed on the next invocation.
+
+`vector upgrade` replaces the binary; `vector update` is different — it re-seeds the `/vector:*`
+kit into a repo after an upgrade.
+
 ### Set up a repo
 
 Make sure `~/.local/bin` is on your `PATH`, then run `vector init` inside each repo you want to
@@ -128,6 +156,46 @@ Completion scripts are generated at runtime (nothing embedded), so they always m
 you have installed. Machine-readable `--json` output is unaffected by the styled human surface —
 scripts that consume `vector <command> --json` see byte-identical output.
 
+#### `vector open` — jump into a spec from tmux
+
+`vector open <id>` opens (or focuses) a tmux window named `◆ <slug>` with its cwd in the spec's
+worktree and starts Claude Code with the command the spec's status calls for:
+`/vector:apply <id>` for open, in-progress and needs-attention, `/vector:close <id>` for review.
+Closed and archived specs open a plain shell with a "no next command" notice.
+
+```bash
+vector open add-dark-mode            # open or focus the spec's window
+vector open add-dark-mode --print    # show the tmux/git commands without running them
+vector open                          # pick among in-progress and focused specs (fzf)
+```
+
+| Flag | Effect |
+|---|---|
+| `--cmd <slash-command>` | Start Claude with this command instead of the computed one (must start with `/`). |
+| `--no-claude` | Open the window with your shell only. |
+| `--split` | Split the current window (`split-window -h`) instead of opening a new one. Inside tmux only. |
+| `--print` | Dry run: print the commands (including any `git worktree add`). Only read-only tmux/git queries run; nothing is created, tagged, attached or written. |
+| `--yes` | Create the spec's missing worktree without asking. |
+
+- **Idempotent**: the window is tagged with the tmux user option `@vector-spec <id>`, so a second
+  `vector open` focuses it even after you rename it. Outside tmux it creates (or reuses) a session
+  named after the repo and attaches to it. `--split` panes are not tagged, so each `--split` adds a
+  new pane.
+- **Worktrees**: on a bare+worktree layout (`[branch]` in the spec path) the cwd is
+  `<worktree-root>/<id>` (or wherever the `<prefix><id>` branch is already checked out). When that
+  worktree is missing, `vector open` offers to create it — checking out the existing local branch,
+  tracking `origin/<prefix><id>`, or forking a new branch from the base — asking first on a TTY or
+  proceeding with `--yes`; without a TTY or `--yes` it stops without creating anything. A
+  registration whose directory is gone asks you to run `git worktree prune` first. Other layouts
+  use the repo root.
+- **Active spec**: when it launches Claude, it records the spec in `~/.vector/<repo-id>/active.json`
+  (personal, outside the repo). It never writes Vector's board state.
+- Without an id, it uses `fzf` when installed and attached to a terminal; otherwise it lists the
+  candidates and exits non-zero asking for the id.
+- **From the board**: a card's details drawer offers the line under **Next step**, as `From a
+  terminal` next to the `Inside Claude Code` slash command. They are alternatives, not steps —
+  `vector open` already starts Claude with that same command, so running both applies the spec twice.
+
 ## Quickstart
 
 Vector is built to drop into an existing repo. Four steps take you from nothing to a board:
@@ -141,7 +209,7 @@ vector init                      # seed the commands and detect your stack
 ```
 
 ```text
-/vector:raw "add user authentication"   # create a new spec from scratch
+/vector:idea "add user authentication"   # create a new spec from scratch
 ```
 
 ```bash
@@ -150,29 +218,76 @@ vector serve                     # open the local board
 
 Run `/vector:sync` first. It is idempotent and additive: in a repo that already uses OpenSpec it
 pulls those changes onto the board so you never recreate specs by hand, and in a fresh repo it
-simply finds nothing and does no harm. Reach for `/vector:raw` for anything new. Either way the
-cards land in the `open` column — open the board in your browser to watch them move as you propose
-and apply each change.
+simply finds nothing and does no harm. Reach for `/vector:idea` for anything new. Either way the
+cards land in the `open` column — open the board in your browser to watch them move as you apply
+each change.
 
 ## Key Concepts
 
 | Concept | What it means |
 |---|---|
-| **spec** | The unit of work, equivalent to a card on the board. You create one with `/vector:raw`. It carries a status, a priority, and an optional ticket link. |
-| **OpenSpec** | The change model Vector builds on (proposal / design / tasks). A spec becomes an OpenSpec change when you formalize it with `/vector:propose`. |
+| **spec** | The unit of work, equivalent to a card on the board. You create one with `/vector:idea`. It carries a status, a priority, and an optional ticket link. |
+| **OpenSpec** | The change model Vector builds on (proposal / design / tasks). Vector creates these artifacts as part of spec authoring, before the card lands open. |
 | **board** | The kanban view. Columns are spec *states* (open, in-progress, needs-attention, review, closed, archived). See [`docs/domain-contract.md`](docs/domain-contract.md). |
 | **token routing** | Each command sends a task to the cheapest capable agent. Trivial work goes to Haiku or Sonnet; implementation goes to Opus. |
 | **`/vector:*` commands** | Project commands that run inside Claude Code, seeded into `.claude/commands/vector/`. See [`docs/plugin-and-commands.md`](docs/plugin-and-commands.md). |
 | **`vector init`** | The terminal subcommand that bootstraps a repo: it seeds the commands, detects your stack, and asks for consent before touching anything. |
+| **focus** | Your "work on this first" marker, separate from priority. Focused specs sort first in their column and win `/vector:apply` selection within the same status tier. Focusing an **epic** gives every open spec in it focus (inherited, shown as an outlined pin). |
+| **epic** | A named group of specs (e.g. "App Mobile") stored in `.vector/epics/<id>.json`, with an optional order (1 = first) and progress (done of total) on the board's epics view. |
+| **resolution** | Why a spec was closed: `done` (default), `obsolete`, `duplicate` or `superseded`. Only `done` counts toward epic progress; the others are reported as *dropped*. |
 
 Click a card to open its details drawer — status, priority, ticket, the next command to run, the
 activity history, and the spec files. Open a file to read the spec itself, rendered from disk.
 
 ![A spec's details drawer open beside a modal rendering the spec.md markdown — goal, scope, and user flow](docs/assets/spec-view.png)
 
+## Focus and epics
+
+Mark the specs you want picked up first, and group related specs under epics — from the terminal
+or straight from the board (the pin on a card, the epic select in the details drawer, and the
+**epics** tab with its "new epic" form; the header filter narrows the kanban to one epic).
+
+```bash
+vector spec focus add-login                       # sorts ahead of priority; `vector spec unfocus` clears it
+vector epic create --title "App Mobile" --color blue --order 1
+vector spec epic --epic app-mobile add-login add-signup   # bulk assign (validated first; --stdin reads ids)
+vector spec epic --clear add-login                # or the single form: vector spec epic add-login app-mobile
+vector epic focus app-mobile                      # every open spec in it inherits focus; `epic unfocus` clears
+vector epic update app-mobile --order 2           # 1 = first; --order 0 unsets it
+vector epic list                                  # in order, with progress (done/total, dropped)
+vector epic show app-mobile                       # the epic and its specs
+vector spec list --epic app-mobile --status open,in-progress --focus   # or --no-epic
+vector epic delete app-mobile                     # refused while any spec still belongs to it
+```
+
+`vector spec next` (and `/vector:apply`) rank within a status tier by focus (own or inherited from
+the epic), then **epic order** (specs of lower-order epics first; no epic / unordered last), then
+priority, then recency. Board columns keep focus → priority → recency.
+
+Closing records a **resolution**:
+
+```bash
+vector spec close add-login                                   # resolution done (default)
+vector spec close login-v1 --resolution duplicate --note "duplicate of login-v2"
+vector spec archive old-spec --resolution done                # override when archiving (e.g. legacy closes)
+```
+
+Epic progress counts `done` resolutions only; obsolete/duplicate/superseded specs are *dropped*
+(out of done and total). Specs closed before resolutions existed: closed ones count as done,
+archived ones do not. An illegal transition (e.g. closing a `needs-attention` spec) fails with the
+legal next statuses and the command for each.
+
+From Claude Code, `/vector:epic` does the same in natural language ("put these 5 specs in the App
+Mobile epic", "put App Mobile first", "pin the payments epic", "what's in the payments epic"), and `/vector:idea`, `/vector:bug`, `/vector:quick`,
+and `/vector:research` tag a new spec with the epic your request names or clearly matches, asking
+only when more than one fits.
+
+Board writes go through the same binary-owned mutators as the CLI and are accepted only from the
+board's own page (same-origin), so other sites cannot change your state.
+
 ## Design sketches
 
-When you author a UI-facing spec with `/vector:raw` or `/vector:research`, Vector can turn its
+When you author a UI-facing spec with `/vector:idea` or `/vector:research`, Vector can turn its
 written description into an **Excalidraw wireframe** — no leaving Claude Code, no modeling the
 layout by hand. At the tail of the command, a conservative heuristic detects UI work and, on your
 confirmation, an embedded Sonnet agent (`vector-ui-ux-designer`) emits a valid `.excalidraw`
@@ -181,7 +296,7 @@ as a **download** in the *Files* section (open it at [excalidraw.com](https://ex
 
 It is opt-in per run and opt-out-able globally (`--no-sketch`, or `sketchEnabled: false` in
 `.vector/config.json`), and soft-fails: a malformed sketch is silently rejected, leaving the spec a
-clean draft.
+clean open card.
 
 Below is a sketch Vector generated for a product-detail-page spec — desktop and mobile,
 thumbnail rail, hero, size/color selectors, add-to-cart, detail tabs, and editorial sections:
@@ -195,18 +310,18 @@ the commands call it rather than editing `.vector/` by hand.
 
 | Command | What it does |
 |---|---|
-| `/vector:raw` | Turn a raw idea into a complete, validated 20-section spec and register it on the board as a draft. |
+| `/vector:idea` | Turn a raw idea into a complete, validated 20-section spec, create its OpenSpec artifacts, and register it open. |
 | `/vector:research` | Investigate whether an idea is worth building first: run feasibility lenses, gate a go/no-go verdict, then author the spec with the report embedded. |
 | `/vector:bug` | Turn a bug report into a validated spec, deducing the root cause from git history and recording it as a queryable relation. |
-| `/vector:propose` | Formalize a draft spec into an OpenSpec change (proposal, design, tasks) and move the card from draft to open. |
 | `/vector:apply` | Pick the next work-item by status and priority, start it, and implement the change. Autonomy is configurable. |
 | `/vector:ship` | Land a reviewed spec as a pull request: commit the implementation, rebase onto the base branch, generate the PR text, push, open a draft PR, and record it on the card. |
 | `/vector:fix` | Correct work already specified on the board (a missed detail, a UAT finding, a small course-correction) through the refiner and clarity gate. |
 | `/vector:quick` | Apply a small, low-risk change in a single run: register a quick-win card, implement it, run the gate, and land it in review. |
 | `/vector:comment` | Evaluate a review or ticket comment against the real diff with a skeptical agent, and implement only when the comment is valid and low-risk. |
+| `/vector:epic` | Manage epics in natural language: create, list, show, update, reorder, focus, or delete epics and assign or unassign existing specs, confirming bulk or ambiguous changes. |
 | `/vector:link` | Link a spec card to its external ticket (Jira, Linear, GitHub), inferring the provider from the reference. |
 | `/vector:status` | Move a spec to a target status when the transition is legal. Use it to flag or clear needs-attention. |
-| `/vector:close` | Close a finished spec, flipping its card to closed after review. |
+| `/vector:close` | Close a finished spec, flipping its card to closed after review and recording its resolution (done, obsolete, duplicate, superseded). |
 | `/vector:archive` | Archive a closed spec, moving its card out of the active board into the archived view. |
 | `/vector:standup` | Project the activity since your last standup and generate a scrum digest with a cheap agent. |
 | `/vector:sync` | Import a repo's existing OpenSpec changes onto the board, idempotently. |
@@ -219,14 +334,11 @@ You run `vector init` in your repo. Vector seeds the `/vector:*` commands into
 `.claude/commands/vector/`, detects how you build and test, and writes the `.vector/` state
 directory.
 
-In Claude Code, you run `/vector:raw "add user authentication"`. Vector authors a full spec at
+In Claude Code, you run `/vector:idea "add user authentication"`. Vector authors a full spec at
 `.vector/specs/add-user-authentication/spec.md` and the card appears in the `open` column.
 
-When you are ready to plan the change, you run `/vector:propose`. Claude drafts the OpenSpec
-artifacts (proposal, design, tasks) and may ask a few clarifying questions before moving the card
-from draft to open.
-
-You run `/vector:apply`. Claude implements the spec, checking off the tasks as it goes. The card
+Spec authoring also creates the OpenSpec proposal, design, and tasks, so the next command is
+`/vector:apply`. Claude implements the spec, checking off the tasks as it goes. The card
 moves to `in-progress` while the work happens, then to `review` once the build and tests pass.
 
 Throughout, `vector serve` keeps a local board open in your browser. It reflects each transition

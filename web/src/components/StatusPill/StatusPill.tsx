@@ -2,7 +2,6 @@ import type { Status } from '../../types/board'
 import styles from './StatusPill.module.css'
 
 const LABELS: Record<Status, string> = {
-  draft: 'Draft',
   open: 'Open',
   'in-progress': 'Progress',
   'needs-attention': 'Attention',

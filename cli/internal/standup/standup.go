@@ -40,7 +40,14 @@ func ParseSince(window string, now time.Time) (time.Time, error) {
 
 // Projection is the structured standup view returned for a period.
 type Projection struct {
-	Since   time.Time      `json:"since"`
+	Since time.Time `json:"since"`
+	// Until is the exclusive upper bound of the projected window [Since, Until):
+	// the "to" the caller captured once for this invocation. It is surfaced so the
+	// commit step can reuse the exact same boundary to advance the marker, closing
+	// the race between "now captured at generation" and "marker advanced at commit"
+	// (see runStandup/runStandupCommitBody). Zero when the caller left the window
+	// open-ended (board/summarize timelines), so omitempty keeps it off those.
+	Until   time.Time      `json:"until,omitempty"`
 	PerSpec []SpecActivity `json:"perSpec"`
 	Totals  Totals         `json:"totals"`
 	// Language is the repo's configured prose language (config.language), supplied
@@ -59,6 +66,13 @@ type SpecActivity struct {
 	Ticket      *state.Ticket             `json:"ticket,omitempty"`
 	Work        []state.WorkLoggedData    `json:"work,omitempty"`
 	Transitions []state.StatusChangedData `json:"transitions,omitempty"`
+	// Fixed carries the /vector:fix corrections (spec.fixed) seen in the window,
+	// each with its Classification and touched Files, so the digest agent can
+	// describe a spec whose only activity was a fix — a spec.fixed event that
+	// would otherwise leave nothing but a ChangeCount. A dedicated field (rather
+	// than folding it into Work) keeps the fix classification/artifacts distinct
+	// from work.logged notes.
+	Fixed []state.FixedData `json:"fixed,omitempty"`
 	// PriorSummary is the spec's last persisted post-action summary, supplied by
 	// the caller (enrichProjection) as context for the digest agent. Project stays
 	// store-free, so Project never sets it.
@@ -80,18 +94,25 @@ type Totals struct {
 	ByStatus map[string]int `json:"byStatus"`
 }
 
-// Project groups every event with TS >= since by spec. Title is best-effort from
-// a spec.created event seen in the window (callers with a store enrich the rest);
-// LastStatus is the latest status.changed.To in the window. byStatus counts specs
-// by that last-seen status. Malformed payloads are skipped, never fatal.
-func Project(events []state.Event, since time.Time) Projection {
+// Project groups every event in the half-open window [since, until) by spec.
+// Title is best-effort from a spec.created event seen in the window (callers with
+// a store enrich the rest); LastStatus is the latest status.changed.To in the
+// window. byStatus counts specs by that last-seen status. Malformed payloads are
+// skipped, never fatal.
+//
+// The window is half-open: an event with TS == until is excluded here and picked
+// up by the next period (whose since == this until), so a boundary event is never
+// dropped nor double-counted. A zero until means open-ended (no upper bound) — the
+// board/summarize timelines that only care about "since" pass it that way.
+func Project(events []state.Event, since, until time.Time) Projection {
 	since = since.UTC()
+	until = until.UTC()
 	order := make([]string, 0)
 	bySpec := make(map[string]*SpecActivity)
 	total := 0
 
 	for _, e := range events {
-		if e.SpecID == "" || e.TS.Before(since) {
+		if e.SpecID == "" || e.TS.Before(since) || (!until.IsZero() && !e.TS.Before(until)) {
 			continue
 		}
 		sa := bySpec[e.SpecID]
@@ -122,6 +143,11 @@ func Project(events []state.Event, since time.Time) Projection {
 			if json.Unmarshal(e.Data, &d) == nil {
 				sa.Work = append(sa.Work, d)
 			}
+		case state.EvtSpecFixed:
+			var d state.FixedData
+			if json.Unmarshal(e.Data, &d) == nil {
+				sa.Fixed = append(sa.Fixed, d)
+			}
 		}
 	}
 
@@ -138,13 +164,15 @@ func Project(events []state.Event, since time.Time) Projection {
 
 	return Projection{
 		Since:   since,
+		Until:   until,
 		PerSpec: perSpec,
 		Totals:  Totals{Specs: len(perSpec), Changes: total, ByStatus: byStatus},
 	}
 }
 
 // TimelineEvent is one flattened entry of a spec's activity timeline, covering
-// both status.changed and work.logged shapes (omitempty keeps each line minimal).
+// status.changed, work.logged and spec.fixed shapes (omitempty keeps each line
+// minimal).
 type TimelineEvent struct {
 	TS             time.Time `json:"ts"`
 	Type           string    `json:"type"`
@@ -155,16 +183,22 @@ type TimelineEvent struct {
 	FilesTouched   []string  `json:"filesTouched,omitempty"`
 	TasksCompleted []string  `json:"tasksCompleted,omitempty"`
 	Note           string    `json:"note,omitempty"`
+	// Classification carries the /vector:fix verdict for a spec.fixed entry
+	// (spec-only|code-only|spec+code); its own field because Note/Trigger would be
+	// ambiguous with work.logged/status.changed.
+	Classification string `json:"classification,omitempty"`
 }
 
-// Timeline projects a single spec's events (TS >= since) into a flat, ordered
-// list for the board's SpecTimeline. Events are returned in file order (the
-// activity log is append-only, so that is chronological).
-func Timeline(events []state.Event, specID string, since time.Time) []TimelineEvent {
+// Timeline projects a single spec's events in the half-open window [since, until)
+// into a flat, ordered list for the board's SpecTimeline. Events are returned in
+// file order (the activity log is append-only, so that is chronological). A zero
+// until means open-ended (no upper bound), matching Project.
+func Timeline(events []state.Event, specID string, since, until time.Time) []TimelineEvent {
 	since = since.UTC()
+	until = until.UTC()
 	out := make([]TimelineEvent, 0)
 	for _, e := range events {
-		if e.SpecID != specID || e.TS.Before(since) {
+		if e.SpecID != specID || e.TS.Before(since) || (!until.IsZero() && !e.TS.Before(until)) {
 			continue
 		}
 		te := TimelineEvent{TS: e.TS.UTC(), Type: string(e.Type)}
@@ -178,6 +212,11 @@ func Timeline(events []state.Event, specID string, since time.Time) []TimelineEv
 			var d state.WorkLoggedData
 			if json.Unmarshal(e.Data, &d) == nil {
 				te.FilesTouched, te.TasksCompleted, te.Note = d.FilesTouched, d.TasksCompleted, d.Note
+			}
+		case state.EvtSpecFixed:
+			var d state.FixedData
+			if json.Unmarshal(e.Data, &d) == nil {
+				te.FilesTouched, te.Classification = d.Files, d.Classification
 			}
 		}
 		out = append(out, te)

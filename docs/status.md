@@ -43,7 +43,7 @@ comercial día-0. Visión: `docs/vision.md`.
 - `vector update` — re-siembra el kit preservando config/state; `kitVersion` stamp.
 - `vector sync` — proyecta OpenSpec changes + spec docs al board (idempotente, multi-worktree,
   `supersededBy`, branch=preferencia). Ver `docs/sync-and-dedup.md`.
-- `vector spec create|list|propose` — `propose` flipea `draft → open` con provenance OpenSpec.
+- `vector spec create|list` — las creaciones normales nacen `open` con provenance OpenSpec.
 - **`vector spec apply|status|close|archive|next`** — transiciones sobre la **máquina de estados
   LOCKED** (`internal/state/transition.go`): `apply` (open→in-progress, `startedAt`), `status`
   (genérico validado, resuelve needs-attention), `close`/`archive`, `next` (pick por
@@ -68,8 +68,8 @@ board lo muestra como badge "UAT" (review-gated). Los subcomandos de transición
 
 ## Qué está construido (kit)
 
-- Commands: `/vector:raw` (idea → spec 20-secciones validado → card `draft`), `/vector:sync`,
-  `/vector:propose`, **`/vector:apply`** (selección por `applyMode` → start → delegate/native →
+- Commands: `/vector:idea` (idea → spec 20-secciones validado + OpenSpec → card `open`),
+  `/vector:sync`, **`/vector:apply`** (selección por `applyMode` → start → delegate/native →
   implementar → `review`; no auto-commitea). Ver `docs/apply-design.md`.
 - Agents: `vector-spec-refiner` (Haiku), `vector-spec-validator` (Sonnet). Template:
   `kit/vector/spec-template.md`.
@@ -90,7 +90,7 @@ board lo muestra como badge "UAT" (review-gated). Los subcomandos de transición
 
 ## Decisiones cerradas (LOCKED — leer antes de tocar)
 
-- `docs/domain-contract.md` — estados (`draft·open·in-progress·needs-attention·review·closed·archived`),
+- `docs/domain-contract.md` — estados (`open·in-progress·needs-attention·review·closed·archived`),
   columnas=estado, mapa comando→state (§5), máquina de estados.
 - `docs/plugin-and-commands.md` — `/vector:*` son **project commands** (namespace por subdirectorio,
   estilo opsx), NO un plugin. Instalación per-proyecto.
@@ -99,10 +99,7 @@ board lo muestra como badge "UAT" (review-gated). Los subcomandos de transición
 
 ## Board actual (de Vector sobre sí mismo)
 
-- `add-propose-command` → **`review`** (UAT) — impl done, solo QA manual `5.3` pendiente; el flag
-  `needsUat` se activó vía `sync --reconcile`. Change en `openspec/changes/add-propose-command/`.
-- `review-uat-flag` → **`closed`** — la feature `needsUat`, recorrida de punta a punta esta sesión
-  (`raw → propose → apply → review → close`). Change en `openspec/changes/review-uat-flag/`.
+- `review-uat-flag` → **`closed`** — la feature `needsUat`, recorrida de punta a punta.
   El `tasks.md` tiene `6.3` (UAT manual) sin marcar; se cerró aceptándolo.
 
 ## Próximo (sugerencias)

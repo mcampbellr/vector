@@ -58,7 +58,7 @@ Exactly one of: `spec-only` · `code-only` · `spec+code`. One sentence justifyi
 Exactly one of: `CLEAR` · `NEEDS_CLARIFICATION` · `OutOfScope`.
 - `CLEAR` — the correction is unambiguous and the command can run it now.
 - `NEEDS_CLARIFICATION` — at least one blocking unknown (listed in Open Questions) must be answered first.
-- `OutOfScope` — this is not a correction of already-specified work but a fresh feature / standalone bug; name where it belongs (`/vector:raw`, `/idea`, or `/vector:bug`) and stop.
+- `OutOfScope` — this is not a correction of already-specified work but a fresh feature / standalone bug; name where it belongs (`/vector:idea`, `/idea`, or `/vector:bug`) and stop.
 
 ## Artefacts To Amend
 

@@ -1,28 +1,32 @@
-import { useState } from 'react'
-import type { Card, Column } from '../../types/board'
+import { useMemo } from 'react'
+import type { Card, Column, EpicSummary } from '../../types/board'
 import { BoardColumn } from '../BoardColumn/BoardColumn'
-import { SpecDetailsDrawer } from '../SpecDetailsDrawer'
 import styles from './KanbanBoard.module.css'
 
 interface KanbanBoardProps {
   columns: Column[]
+  epics: EpicSummary[]
+  onSelectCard: (card: Card) => void
 }
 
-// KanbanBoard owns the selected-card UI state for the details drawer. Selection
-// is local UI state, not domain state — the board stays a read-only projection
-// (architecture/state-model.md). One drawer is rendered at the board level for
-// the currently selected card.
-export function KanbanBoard({ columns }: KanbanBoardProps) {
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null)
+// KanbanBoard is a projection of the board columns (architecture/state-model.md);
+// the only writes it can trigger are the per-card focus toggles, which go to the
+// API and come back through the SSE board push. Selection state and the details drawer live
+// in App — elevated so the command palette and the standup/tokens views can
+// open a spec too; the board only delegates clicks through onSelectCard.
+export function KanbanBoard({ columns, epics, onSelectCard }: KanbanBoardProps) {
+  const epicsById = useMemo(() => new Map(epics.map((epic) => [epic.id, epic])), [epics])
 
   return (
     <div className={styles.board}>
       {columns.map((column) => (
-        <BoardColumn key={column.status} column={column} onSelectCard={setSelectedCard} />
+        <BoardColumn
+          key={column.status}
+          column={column}
+          epicsById={epicsById}
+          onSelectCard={onSelectCard}
+        />
       ))}
-      {selectedCard && (
-        <SpecDetailsDrawer card={selectedCard} onClose={() => setSelectedCard(null)} />
-      )}
     </div>
   )
 }

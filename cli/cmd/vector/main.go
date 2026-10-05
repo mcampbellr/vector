@@ -20,6 +20,7 @@ import (
 	"github.com/mariocampbell/vector/internal/openspec"
 	"github.com/mariocampbell/vector/internal/scaffold"
 	"github.com/mariocampbell/vector/internal/state"
+	"github.com/mariocampbell/vector/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -75,6 +76,9 @@ func newInitCmd() *cobra.Command {
 		Short: "seed /vector:* commands and initialize the .vector state skeleton",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			// init must use the same canonical root as every other command. In a
+			// workspace with worktrees, --force may overwrite generated assets but
+			// must never authorize a second .vector store in a worktree.
 			root, err := resolveRepoRoot(repoRoot)
 			if err != nil {
 				return err
@@ -181,9 +185,59 @@ func newInitCmd() *cobra.Command {
 // runUpdate re-seeds the /vector:* kit artifacts (commands, agents, template) to
 // match the binary, preserving the repo's config (.vector/config.json) and state
 // (.vector/specs, activity). Use it to refresh a repo after upgrading the binary.
+type legacyDraftMigration struct {
+	Found    int      `json:"found"`
+	Migrated int      `json:"migrated"`
+	IDs      []string `json:"ids,omitempty"`
+}
+
+func migrateLegacyDrafts(root string, cfg *config.Config, dryRun bool) (legacyDraftMigration, error) {
+	report := legacyDraftMigration{}
+	store, err := state.Open(root)
+	if err != nil {
+		return report, err
+	}
+	specs, err := store.ListSpecs()
+	if err != nil {
+		return report, err
+	}
+
+	artifacts := map[string]state.ArtifactSet{}
+	if changes, readErr := readCanonicalChanges(cfg, root); readErr == nil {
+		for _, change := range changes {
+			artifacts[change.Name] = state.ArtifactSet{
+				Proposal: change.HasProposal,
+				Design:   change.HasDesign,
+				Tasks:    change.HasTasks,
+			}
+		}
+	}
+
+	for _, spec := range specs {
+		if spec.Status != state.StatusLegacyDraft {
+			continue
+		}
+		report.Found++
+		report.IDs = append(report.IDs, spec.ID)
+		if dryRun {
+			continue
+		}
+		openSpec := spec.OpenSpec
+		if openSpec == nil || openSpec.Change == "" {
+			openSpec = &state.OpenSpec{Change: spec.ID, Artifacts: artifacts[spec.ID]}
+		}
+		if _, err := store.ProposeSpec(spec.ID, openSpec, resolveActor(), time.Now()); err != nil {
+			return report, fmt.Errorf("migrate legacy draft %q: %w", spec.ID, err)
+		}
+		report.Migrated++
+	}
+	return report, nil
+}
+
 func newUpdateCmd() *cobra.Command {
 	var (
 		repoRoot string
+		kitRoot  string
 		dryRun   bool
 		language string
 		jsonOut  bool
@@ -193,12 +247,19 @@ func newUpdateCmd() *cobra.Command {
 		Short: "re-seed the /vector:* kit to match the binary, preserving config and state",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			root, err := resolveRepoRoot(repoRoot)
+			root, strays, err := resolveRepoRootStrays(repoRoot)
 			if err != nil {
 				return err
 			}
+			if !jsonOut {
+				warnStrayStores(strays, root)
+			}
 			if !config.Exists(root) {
 				return fmt.Errorf("no .vector/config.json in %s — run `vector init` first", root)
+			}
+			commandsRoot, err := resolveKitRoot(root, kitRoot)
+			if err != nil {
+				return err
 			}
 			cfg, err := config.Load(root)
 			if err != nil {
@@ -210,9 +271,13 @@ func newUpdateCmd() *cobra.Command {
 			}
 
 			// Force-overwrite the seeded kit artifacts; never touches config or state.
-			results, err := scaffold.SeedCommands(root, scaffold.SeedOptions{Force: true, DryRun: dryRun})
+			results, err := scaffold.SeedCommands(commandsRoot, scaffold.SeedOptions{Force: true, DryRun: dryRun})
 			if err != nil {
 				return fmt.Errorf("re-seed vector kit: %w", err)
+			}
+			migration, err := migrateLegacyDrafts(root, cfg, dryRun)
+			if err != nil {
+				return fmt.Errorf("migrate legacy state: %w", err)
 			}
 			// A provided --language sets/changes the prose language; absent, it is left
 			// as-is (update never clears a configured language).
@@ -243,11 +308,13 @@ func newUpdateCmd() *cobra.Command {
 			if jsonOut {
 				b, err := json.MarshalIndent(struct {
 					Root        string                `json:"root"`
+					KitRoot     string                `json:"kitRoot"`
 					DryRun      bool                  `json:"dryRun"`
 					FromVersion string                `json:"fromVersion"`
 					ToVersion   string                `json:"toVersion"`
 					Files       []scaffold.FileResult `json:"files"`
-				}{Root: root, DryRun: dryRun, FromVersion: prev, ToVersion: version, Files: results}, "", "  ")
+					Migration   legacyDraftMigration  `json:"legacyDraftMigration"`
+				}{Root: root, KitRoot: commandsRoot, DryRun: dryRun, FromVersion: prev, ToVersion: version, Files: results, Migration: migration}, "", "  ")
 				if err != nil {
 					return fmt.Errorf("marshal json result: %w", err)
 				}
@@ -256,10 +323,14 @@ func newUpdateCmd() *cobra.Command {
 			}
 
 			fmt.Printf("vector update: %s\n", root)
+			if commandsRoot != root {
+				fmt.Printf("  %-12s %s\n", "kit root", commandsRoot)
+			}
 			fmt.Printf("  kit %s -> %s\n", prev, version)
 			for _, r := range results {
 				fmt.Printf("  %-12s %s\n", r.Action, r.Path)
 			}
+			fmt.Printf("  %-12s %d legacy cards migrated to open\n", "migration", migration.Migrated)
 			if lang := cfg.ResolvedLanguage(); lang != "" {
 				fmt.Printf("  %-12s agent prose language: %s\n", "language", lang)
 			}
@@ -273,16 +344,44 @@ func newUpdateCmd() *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
+	f.StringVar(&kitRoot, "kit-root", "", "checkout root for generated command files (defaults to repo root; must be inside it)")
 	f.BoolVar(&dryRun, "dry-run", false, "show what would change without writing")
 	f.StringVar(&language, "language", "", "set/change the prose language for Vector agents (e.g. es, Spanish); unset = leave as-is")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
 }
 
+// resolveKitRoot keeps Vector state/config anchored at repoRoot while allowing
+// generated commands to live in a nested checkout (for example code/main in a
+// bare+worktree workspace). Relative paths are resolved from repoRoot. Refusing
+// parents avoids turning an updater invocation into an arbitrary filesystem
+// writer while still covering every supported workspace layout.
+func resolveKitRoot(repoRoot, requested string) (string, error) {
+	if strings.TrimSpace(requested) == "" {
+		return repoRoot, nil
+	}
+	target := requested
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(repoRoot, target)
+	}
+	target, err := filepath.Abs(target)
+	if err != nil {
+		return "", fmt.Errorf("resolve kit root: %w", err)
+	}
+	rel, err := filepath.Rel(repoRoot, target)
+	if err != nil {
+		return "", fmt.Errorf("resolve kit root: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("kit root %s must be inside repo root %s", target, repoRoot)
+	}
+	return target, nil
+}
+
 // runSync projects the repo's OpenSpec changes onto the Vector board. It is
 // additive and idempotent: new changes become cards (status by task progress),
-// existing sync-owned cards are left alone unless --reconcile, and /vector:raw
-// drafts are never touched. Applied capability specs (openspec/specs/) are skipped.
+// existing sync-owned cards are left alone unless --reconcile. Applied
+// capability specs (openspec/specs/) are skipped.
 func newSyncCmd() *cobra.Command {
 	var (
 		repoRoot  string
@@ -416,14 +515,18 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 				}
 			}
 			results = append(results, syncResult{c.Name, string(status), "created"})
-		case existing.OpenSpec == nil: // user-authored (e.g. a /vector:raw draft) — never touch
+		case existing.OpenSpec == nil: // user-authored (e.g. a /vector:idea draft) — never touch
 			results = append(results, syncResult{c.Name, string(existing.Status), "skipped (not sync-owned)"})
 		case reconcile:
 			// Terminal cards (closed/archived) are never reconciled back to a
-			// tasks-derived status; mirror ReconcileStatus's guard in the preview.
+			// tasks-derived status, and a review card never regresses to
+			// in-progress; mirror ReconcileStatus's guards in the preview.
 			effective := status
 			if existing.Status.IsTerminal() {
 				effective = existing.Status
+			}
+			if existing.Status == state.StatusReview && effective == state.StatusInProgress {
+				effective = state.StatusReview
 			}
 			if dryRun {
 				action := "unchanged"
@@ -454,7 +557,7 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 		}
 	}
 
-	// Standalone spec docs with no matching change → import as drafts.
+	// Standalone spec docs with no matching change are actionable open cards.
 	for _, d := range specDocs {
 		if seen[d.Slug] {
 			continue // a change with this slug is authoritative
@@ -475,12 +578,13 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 		switch {
 		case rerr != nil && !errors.Is(rerr, os.ErrNotExist):
 			return rerr
-		case rerr != nil: // not found → create draft
+		case rerr != nil: // not found → create open compatibility card
 			if !dryRun {
 				if _, err := store.CreateSpec(state.CreateSpecParams{
 					ID:         d.Slug,
 					Title:      humanizeSlug(d.Slug),
-					Status:     state.StatusDraft,
+					Status:     state.StatusOpen,
+					OpenSpec:   &state.OpenSpec{Change: d.Slug},
 					Source:     "sync",
 					SpecDocRel: d.Rel,
 					Actor:      actor,
@@ -489,7 +593,7 @@ func runSyncBody(repoRoot, branch string, reconcile, dryRun, jsonOut bool) error
 					return err
 				}
 			}
-			results = append(results, syncResult{d.Slug, string(state.StatusDraft), "created"})
+			results = append(results, syncResult{d.Slug, string(state.StatusOpen), "created"})
 		default:
 			results = append(results, syncResult{d.Slug, string(existing.Status), "skipped (exists)"})
 		}
@@ -633,13 +737,12 @@ func newSpecCmd() *cobra.Command {
 		Use:   "spec",
 		Short: "create and transition specs on the board",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return fmt.Errorf("usage: vector spec <create|list|propose|apply|fix|link|pr|relate|status|close|archive|next|worklog|summarize|route|attach-sketch> ...")
+			return fmt.Errorf("usage: vector spec <create|list|apply|fix|link|pr|relate|status|close|archive|next|focus|unfocus|epic|worklog|summarize|route|attach-sketch> ...")
 		},
 	}
 	cmd.AddCommand(
 		newSpecCreateCmd(),
 		newSpecListCmd(),
-		newSpecProposeCmd(),
 		newSpecApplyCmd(),
 		newSpecFixCmd(),
 		newSpecLinkCmd(),
@@ -649,6 +752,9 @@ func newSpecCmd() *cobra.Command {
 		newSpecCloseCmd(),
 		newSpecArchiveCmd(),
 		newSpecNextCmd(),
+		newSpecFocusCmd(),
+		newSpecUnfocusCmd(),
+		newSpecEpicCmd(),
 		newSpecWorklogCmd(),
 		newSpecSummarizeCmd(),
 		newSpecRouteCmd(),
@@ -657,10 +763,8 @@ func newSpecCmd() *cobra.Command {
 	return cmd
 }
 
-// runSpecPropose formalizes a draft spec: records the OpenSpec change provenance
-// and transitions draft → open. The /vector:propose command creates the actual
-// change artifacts (delegated to OpenSpec, or native) and then calls this to flip
-// the board state — the binary stays the sole state writer.
+// newSpecProposeCmd retains the internal compatibility transition for old state.
+// It is deliberately not registered in the public command tree.
 func newSpecProposeCmd() *cobra.Command {
 	var (
 		idFlag    string
@@ -718,8 +822,8 @@ func newSpecProposeCmd() *cobra.Command {
 				fmt.Printf("spec %q is already open (no change)\n", specID)
 				return nil
 			}
-			if spec.Status != state.StatusDraft {
-				return fmt.Errorf("spec %q is %q, not draft (only a draft can be proposed)", specID, spec.Status)
+			if spec.Status != state.StatusLegacyDraft {
+				return fmt.Errorf("spec %q is %q, not a legacy draft", specID, spec.Status)
 			}
 
 			if dryRun {
@@ -808,6 +912,9 @@ func newSpecCreateCmd() *cobra.Command {
 		ticketJSON  string
 		relatedJSON string
 		quickWin    bool
+		epic        string
+		change      string
+		artifacts   string
 		repoRoot    string
 		jsonOut     bool
 	)
@@ -828,9 +935,12 @@ func newSpecCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			root, err := resolveRepoRoot(repoRoot)
+			root, strays, err := resolveRepoRootStrays(repoRoot)
 			if err != nil {
 				return err
+			}
+			if !jsonOut {
+				warnStrayStores(strays, root)
 			}
 
 			specID := id
@@ -861,6 +971,21 @@ func newSpecCreateCmd() *cobra.Command {
 				fmt.Fprintf(os.Stderr, "warning: ignoring --related (%v); creating card without relations\n", relErr)
 				related = nil
 			}
+			var openSpec *state.OpenSpec
+			if change != "" || artifacts != "" {
+				changeName := change
+				if changeName == "" {
+					changeName = specID
+				}
+				if changeName != state.Slug(changeName) {
+					return fmt.Errorf("invalid --change %q: must be kebab-case", changeName)
+				}
+				arts, parseErr := parseArtifacts(artifacts)
+				if parseErr != nil {
+					return parseErr
+				}
+				openSpec = &state.OpenSpec{Change: changeName, Artifacts: arts}
+			}
 
 			spec, err := store.CreateSpec(state.CreateSpecParams{
 				Title:          title,
@@ -872,6 +997,8 @@ func newSpecCreateCmd() *cobra.Command {
 				QuickWin:       quickWin,
 				Ticket:         ticket,
 				RelatedTo:      related,
+				Epic:           epic,
+				OpenSpec:       openSpec,
 				Actor:          resolveActor(),
 				Now:            time.Now(),
 				SpecDocAbsPath: docAbs,
@@ -902,11 +1029,14 @@ func newSpecCreateCmd() *cobra.Command {
 	f.StringVar(&id, "id", "", "spec id (kebab-case); derived from title if empty")
 	f.StringVar(&repo, "repo", "", "repo name for the board")
 	f.StringVar(&priority, "priority", "normal", "urgent|high|normal|low")
-	f.StringVar(&status, "status", "draft", "draft|open|in-progress|needs-attention|review|closed|archived")
+	f.StringVar(&status, "status", "open", "open|in-progress|needs-attention|review|closed|archived")
 	f.StringVar(&bodyFile, "body-file", "", "path to the spec doc body, or - for stdin")
 	f.StringVar(&ticketJSON, "ticket", "", "seed an external ticket link as JSON {provider,key,url,auto}")
 	f.StringVar(&relatedJSON, "related", "", "seed cause→bug relations as JSON [{\"kind\":\"spec\",\"ref\":\"id\",\"source\":\"blame\"}]")
 	f.BoolVar(&quickWin, "quick-win", false, "mark the card as a /vector:quick one-run change")
+	f.StringVar(&epic, "epic", "", "group the card under an existing epic (id from `vector epic list`)")
+	f.StringVar(&change, "change", "", "OpenSpec change name (defaults to the spec id when --artifacts is set)")
+	f.StringVar(&artifacts, "artifacts", "", "comma list of existing OpenSpec artifacts: proposal,design,tasks")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit a JSON result for tooling")
 	return cmd
@@ -937,14 +1067,25 @@ func formatRelations(items []state.RelatedItem) string {
 
 func newSpecListCmd() *cobra.Command {
 	var (
-		repoRoot string
-		jsonOut  bool
+		epicFilter   string
+		noEpic       bool
+		statusFilter string
+		focusOnly    bool
+		repoRoot     string
+		jsonOut      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "list specs on the board",
+		Short: "list specs on the board (filter with --epic/--no-epic, --status, --focus)",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			if epicFilter != "" && noEpic {
+				return errors.New("--epic and --no-epic are mutually exclusive")
+			}
+			statuses, err := parseStatusFilter(statusFilter)
+			if err != nil {
+				return err
+			}
 			root, err := resolveRepoRoot(repoRoot)
 			if err != nil {
 				return err
@@ -953,10 +1094,29 @@ func newSpecListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			specs, err := store.ListSpecs()
+			if epicFilter != "" {
+				if _, err := store.GetEpic(epicFilter); err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						return fmt.Errorf("unknown epic %q (list them with `vector epic list`)", epicFilter)
+					}
+					return err
+				}
+			}
+			allSpecs, err := store.ListSpecs()
 			if err != nil {
 				return err
 			}
+			epics, err := store.ListEpics()
+			if err != nil {
+				return err
+			}
+			epicIndex := state.NewEpicIndex(epics)
+			specs := filterSpecs(allSpecs, specListFilter{
+				epic:     epicFilter,
+				noEpic:   noEpic,
+				statuses: statuses,
+				focus:    focusOnly,
+			}, epicIndex)
 			if jsonOut {
 				// A robust contract for cause deduction: id/title/status/priority + the
 				// OpenSpec change name (commits map to it) and any existing relations.
@@ -974,6 +1134,26 @@ func newSpecListCmd() *cobra.Command {
 					if len(s.RelatedTo) > 0 {
 						entry["relatedTo"] = s.RelatedTo
 					}
+					// Additive, present only when set, so specs without them keep the
+					// exact pre-existing shape.
+					if s.Focus {
+						entry["focus"] = true
+					}
+					if s.Epic != "" {
+						entry["epic"] = s.Epic
+					}
+					if epicIndex.InheritsFocus(s) {
+						entry["focusInherited"] = true
+					}
+					if s.Flag != nil {
+						entry["needsAttention"] = s.Flag
+					}
+					if s.Resolution != "" {
+						entry["resolution"] = string(s.Resolution)
+					}
+					if s.ResolutionNote != "" {
+						entry["resolutionNote"] = s.ResolutionNote
+					}
 					out = append(out, entry)
 				}
 				return printJSONValue(out)
@@ -982,16 +1162,85 @@ func newSpecListCmd() *cobra.Command {
 				fmt.Println("no specs")
 				return nil
 			}
+			// "*" marks a focused spec ("~" focus inherited from its epic); the epic,
+			// the needs-attention summary and a non-done resolution trail the title.
 			for _, s := range specs {
-				fmt.Printf("%-40s %-16s %-8s %s\n", s.ID, s.Status, s.Priority, s.Title)
+				suffix := ""
+				if s.Epic != "" {
+					suffix += "  [epic: " + s.Epic + "]"
+				}
+				if s.Flag != nil {
+					summary := s.Flag.Summary
+					if summary == "" {
+						summary = s.Flag.Reason
+					}
+					suffix += "  [needs attention: " + summary + "]"
+				}
+				if s.Resolution != "" && s.Resolution != state.ResolutionDone {
+					suffix += "  [" + string(s.Resolution) + "]"
+				}
+				marker := focusMarker(s.Focus)
+				if epicIndex.InheritsFocus(s) {
+					marker = "~"
+				}
+				fmt.Printf("%s %-40s %-16s %-8s %s%s\n", marker, s.ID, s.Status, s.Priority, s.Title, suffix)
 			}
 			return nil
 		},
 	}
 	f := cmd.Flags()
+	f.StringVar(&epicFilter, "epic", "", "only specs in this epic")
+	f.BoolVar(&noEpic, "no-epic", false, "only specs without an epic")
+	f.StringVar(&statusFilter, "status", "", "only specs in these statuses (comma list, e.g. open,in-progress)")
+	f.BoolVar(&focusOnly, "focus", false, "only specs with effective focus (own, or inherited from a focused epic)")
 	f.StringVar(&repoRoot, "repo-root", "", "repo root (defaults to git toplevel or cwd)")
 	f.BoolVar(&jsonOut, "json", false, "emit specs as a JSON array for tooling (cause resolution)")
 	return cmd
+}
+
+// specListFilter narrows `vector spec list`; the zero value keeps every spec.
+type specListFilter struct {
+	epic     string
+	noEpic   bool
+	statuses map[state.Status]bool
+	focus    bool
+}
+
+// filterSpecs applies filter, preserving the input order. focus matches the
+// effective focus (own marker or inherited from a focused epic).
+func filterSpecs(specs []*state.SpecState, filter specListFilter, epicIndex state.EpicIndex) []*state.SpecState {
+	out := make([]*state.SpecState, 0, len(specs))
+	for _, spec := range specs {
+		switch {
+		case filter.epic != "" && spec.Epic != filter.epic:
+			continue
+		case filter.noEpic && spec.Epic != "":
+			continue
+		case len(filter.statuses) > 0 && !filter.statuses[spec.Status]:
+			continue
+		case filter.focus && !epicIndex.EffectiveFocus(spec):
+			continue
+		}
+		out = append(out, spec)
+	}
+	return out
+}
+
+// parseStatusFilter parses a comma list of statuses, rejecting unknown ones.
+func parseStatusFilter(list string) (map[state.Status]bool, error) {
+	values := splitCSV(list)
+	if len(values) == 0 {
+		return nil, nil
+	}
+	statuses := make(map[state.Status]bool, len(values))
+	for _, value := range values {
+		status := state.Status(value)
+		if !status.Valid() {
+			return nil, fmt.Errorf("invalid --status %q (want open|in-progress|needs-attention|review|closed|archived)", value)
+		}
+		statuses[status] = true
+	}
+	return statuses, nil
 }
 
 func readBody(path string) (string, error) {
@@ -1013,18 +1262,86 @@ func readBody(path string) (string, error) {
 	}
 }
 
-// resolveRepoRoot returns the explicit root if given, else the git toplevel,
-// else the current working directory.
+// resolveRepoRoot returns the canonical Vector root for a command, discarding
+// any stray .vector/ directories seen on the way up. Callers with a human output
+// branch should use resolveRepoRootStrays and warn about them.
 func resolveRepoRoot(explicit string) (string, error) {
+	root, _, err := resolveRepoRootStrays(explicit)
+	return root, err
+}
+
+// resolveRepoRootStrays resolves the canonical Vector root and reports stray
+// .vector/ directories skipped on the way up. When multiple valid stores are
+// physical ancestors of the working directory, the outermost one is the single
+// source of truth; an inner worktree store is a copy, never an alternative board.
+func resolveRepoRootStrays(explicit string) (root string, strays []string, err error) {
+	var canonical string
+	discoveryStart, cwdErr := os.Getwd()
+	if cwdErr == nil {
+		if explicit != "" {
+			discoveryStart = explicit
+		} else if envRoot := strings.TrimSpace(os.Getenv("VECTOR_REPO_ROOT")); envRoot != "" {
+			discoveryStart = envRoot
+		}
+		roots, strayDirs := config.FindAncestorConfigs(discoveryStart)
+		strays = strayDirs
+		if len(roots) > 0 {
+			canonical = roots[len(roots)-1]
+		}
+	}
 	if explicit != "" {
-		return filepath.Abs(explicit)
+		return resolveRootOverride("--repo-root", explicit, canonical)
+	}
+	if envRoot := strings.TrimSpace(os.Getenv("VECTOR_REPO_ROOT")); envRoot != "" {
+		return resolveRootOverride("VECTOR_REPO_ROOT", envRoot, canonical)
+	}
+	if canonical != "" {
+		cfg, loadErr := config.Load(canonical)
+		if loadErr != nil {
+			return "", strays, loadErr
+		}
+		if pinned, ok := cfg.ResolveStateRootPin(canonical); ok {
+			return resolveRootOverride("stateRoot", pinned, canonical)
+		}
+		return canonical, strays, nil
 	}
 	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
 		if root := strings.TrimSpace(string(out)); root != "" {
-			return root, nil
+			return root, strays, nil
 		}
 	}
-	return os.Getwd()
+	cwd, err := os.Getwd()
+	return cwd, strays, err
+}
+
+// resolveRootOverride accepts an explicit root outside the current workspace but
+// rejects a target nested under an already-discovered canonical store. This keeps
+// flags and pins from reintroducing a split board through a worktree-local path.
+func resolveRootOverride(source, value, canonical string) (string, []string, error) {
+	root, err := filepath.Abs(value)
+	if err != nil {
+		return "", nil, err
+	}
+	root = filepath.Clean(root)
+	if canonical == "" || root == canonical || !isNestedPath(root, canonical) {
+		return root, nil, nil
+	}
+	return "", nil, fmt.Errorf("%s points inside the workspace at %s; use the canonical Vector root %s", source, root, canonical)
+}
+
+func isNestedPath(path, parent string) bool {
+	rel, err := filepath.Rel(parent, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// warnStrayStores prints a human-branch warning naming each stray .vector/ (a
+// directory with no loadable config.json) skipped while anchoring, plus the
+// canonical root actually in use. Never call it from a --json branch: the JSON
+// shapes are a byte-identical contract.
+func warnStrayStores(strays []string, canonical string) {
+	for _, stray := range strays {
+		fmt.Println(ui.Warning(fmt.Sprintf("ignoring stray .vector/ at %s (no config.json); using canonical store at %s — run `vector doctor` to consolidate", stray, canonical)))
+	}
 }
 
 // resolveActor identifies who triggered an action, for the activity log.
@@ -1057,7 +1374,7 @@ func printJSONValue(v any) error {
 
 // DetectTicketResponse is the JSON output of `vector detect-ticket`. It bundles
 // the detected ticket (nil when absent or ambiguous) with the repo's configured
-// language and ticket defaults, so callers (e.g. /vector:raw) can resolve both
+// language and ticket defaults, so callers (e.g. /vector:idea) can resolve both
 // ticket and language from a single binary invocation.
 type DetectTicketResponse struct {
 	Ticket                *state.Ticket        `json:"ticket"`
@@ -1077,7 +1394,7 @@ func newDetectTicketCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "detect-ticket",
-		Short: "detect an external ticket from text (for /vector:raw and /vector:bug)",
+		Short: "detect an external ticket from text (for /vector:idea and /vector:bug)",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			root, err := resolveRepoRoot(repoRoot)
@@ -1170,7 +1487,7 @@ usage:
   vector serve [--port N] [--host addr] [--web-dir path] [--repo-root path]
   vector standup [--since 24h|today|7d] [--json]
   vector standup commit --digest-file -|path
-  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status draft] [--quick-win] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
+  vector spec create --title "..." [--id slug] [--repo name] [--priority normal] [--status open] [--change slug] [--artifacts proposal,design,tasks] [--quick-win] [--epic id] [--body-file -|path] [--ticket '{"provider":"jira","key":"ACME-1"}'] [--related '[{"kind":"spec","ref":"id","source":"blame"}]'] [--json]
   vector spec propose <id> [--change name] [--artifacts proposal,design,tasks] [--dry-run] [--json]
   vector spec apply <id> [--json]
   vector spec link <id> <ref> [--provider jira|linear|github|other] [--json]
@@ -1180,6 +1497,14 @@ usage:
   vector spec close <id> [--json]
   vector spec archive <id> [--json]
   vector spec next [--json]
+  vector spec focus <id> [--json]
+  vector spec unfocus <id> [--json]
+  vector spec epic <id> <epic-id> | --clear [--json]
+  vector epic create --title "..." [--id slug] [--description "..."] [--color slate|blue|teal|green|amber|orange|red|pink|violet] [--json]
+  vector epic list [--json]
+  vector epic show <id> [--json]
+  vector epic update <id> [--title "..."] [--description "..."] [--color token] [--json]
+  vector epic delete <id> [--json]
   vector spec worklog <id> [--files a.go,b.go] [--tasks "DTO mapper"] [--note "..."] [--json]
   vector spec summarize <id> [--json]
   vector spec summarize commit <id> --action <name> --summary-file -|path [--json]

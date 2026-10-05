@@ -8,8 +8,8 @@
 
 | Superficie | Qué es | Ejemplos |
 |------------|--------|----------|
-| **Binario Go** (`cli/`) | Comando de terminal (árbol **cobra**); **único escritor** del state. Global (uno en el `PATH`). Expone `--help` estilizado auto-generado y `vector completion <bash\|zsh\|fish\|powershell>` (scripts on-the-fly). | `vector serve`, `vector init`, `vector spec create …`, `vector completion zsh` |
-| **Commands de Claude** (`kit/`) | Markdown invocado dentro de Claude que **llama al binario**. Per-proyecto, en `.claude/commands/vector/`. | `/vector:raw`, `/vector:status`, … |
+| **Binario Go** (`cli/`) | Comando de terminal (árbol **cobra**); **único escritor** del state. Global (uno en el `PATH`). Expone `--help` estilizado auto-generado y `vector completion <bash\|zsh\|fish\|powershell>` (scripts on-the-fly). | `vector serve`, `vector init`, `vector spec create …`, `vector open <id>` (abre/enfoca la ventana de tmux del spec con Claude y su próximo comando), `vector completion zsh` |
+| **Commands de Claude** (`kit/`) | Markdown invocado dentro de Claude que **llama al binario**. Per-proyecto, en `.claude/commands/vector/`. | `/vector:idea`, `/vector:status`, … |
 
 Los commands **nunca** editan el JSON directamente: invocan al binario (disciplina
 CLI-owns-writes, ver `architecture/state-model.md`).
@@ -20,10 +20,10 @@ Decisión corregida (la versión previa de este doc asumía que el colon requer�
 falso). Claude Code namespacea los **project commands** por el subdirectorio bajo
 `.claude/commands/`:
 
-- `.claude/commands/vector/raw.md` → se invoca y **se muestra en el palette** como `/vector:raw`.
-- El subdirectorio (`vector`) = parte antes del colon; el nombre del archivo (`raw`) = parte
-  después. **Un solo nivel**: `/vector:raw` ✅, `/vector:spec:new` ❌.
-- El palette muestra `/vector:raw` entero, **sin tag de plugin** (a diferencia de un skill de
+- `.claude/commands/vector/idea.md` → se invoca y **se muestra en el palette** como `/vector:idea`.
+- El subdirectorio (`vector`) = parte antes del colon; el nombre del archivo (`idea`) = parte
+  después. **Un solo nivel**: `/vector:idea` ✅, `/vector:spec:new` ❌.
+- El palette muestra `/vector:idea` entero, **sin tag de plugin** (a diferencia de un skill de
   plugin, que se ve `/raw (vector)`). Esto replica el look de `opsx` (`/opsx:apply`, `:propose`, …).
 
 > Por qué commands y no skills de plugin: queremos invocación **explícita** `/vector:*` con el
@@ -37,7 +37,7 @@ Cada archivo es markdown con frontmatter + cuerpo-prompt (patrón observado en `
 
 ```markdown
 ---
-name: "Vector: Raw"
+name: "Vector: Idea"
 description: Turn a raw idea into a structured Vector spec and register it (status open).
 category: Workflow
 tags: [vector, spec, capture]
@@ -46,27 +46,28 @@ tags: [vector, spec, capture]
 <instrucciones para Claude: refinar $ARGUMENTS y llamar al binario `vector …`>
 ```
 
-- `description` aparece en el palette. `$ARGUMENTS` recibe el texto tras `/vector:raw …`.
+- `description` aparece en el palette. `$ARGUMENTS` recibe el texto tras `/vector:idea …`.
 - El cuerpo orquesta llamadas al binario `vector`; nunca escribe `.vector/` a mano.
 
 ## Decisión: los slash commands bajo el namespace `vector`
 
-`/vector:raw` · `/vector:research` · `/vector:bug` · `/vector:quick` · `/vector:link` ·
+`/vector:idea` · `/vector:research` · `/vector:bug` · `/vector:quick` · `/vector:epic` · `/vector:link` ·
 `/vector:status` · `/vector:daily` · `/vector:apply` · `/vector:close` · `/vector:archive` ·
 `/vector:comment`
 
-`/vector:research` es el hermano exhaustivo de `/vector:raw`: antes de especificar, **investiga la
+`/vector:research` es el hermano exhaustivo de `/vector:idea`: antes de especificar, **investiga la
 viabilidad** de la idea por lentes (`technical` siempre; `security`/`marketing`/`design` por
 señales del texto), delega cada lente a un revisor Sonnet (`vector-feasibility-reviewer`, read-only)
 que reúne su propia evidencia y emite un veredicto `go`/`go-with-risks`/`no-go`, consolida un
 veredicto global, **gatea go/no-go con el usuario** y —solo con go— autora el spec de 20 secciones
-con el **reporte de viabilidad embebido** y registra la card `draft` (reusando el pipeline de `raw`:
-refiner Haiku + validator Sonnet). No corre las cuatro lentes "por si acaso"; pregunta si la
+con el **reporte de viabilidad embebido**, crea sus artefactos OpenSpec y registra la card `open`
+(refiner Haiku + validator Sonnet). No corre las cuatro lentes "por si acaso"; pregunta si la
 detección es ambigua.
 
-`/vector:bug` es la contraparte bug-framed de `/vector:raw`: refina un reporte (Haiku), deduce
+`/vector:bug` es la contraparte bug-framed de `/vector:idea`: refina un reporte (Haiku), deduce
 la **causa raíz** vía `git blame`/`git log` (mapeando commits sospechosos a una spec de Vector
-o a un ticket) y registra el bug como card `draft` con relaciones `relatedTo[]` persistidas.
+o a un ticket), crea sus artefactos OpenSpec y registra el bug como card `open` con relaciones
+`relatedTo[]` persistidas.
 
 `/vector:quick` es el equivalente Vector-native de `/quick-win`: aplica un cambio pequeño y de
 bajo riesgo (refactor, rename, helper extraído, ajuste de copy, índice faltante) **en la misma
@@ -74,7 +75,17 @@ corrida**. Refina con un agente Haiku (`vector-quick-refiner`, sin validador Son
 card directamente `in-progress` **marcada quick-win** (`quickWin:true`), implementa, valida con el
 gate de lint/typecheck del repo, loguea el trabajo (`work.logged`), commitea opcionalmente
 (preguntando) y la deja en `review`. No crea un change de OpenSpec; si el cambio crece, escala a
-`/vector:raw`.
+`/vector:idea`.
+
+`/vector:epic` administra **épicas** en lenguaje natural: crea/lista/muestra/edita/borra épicas y
+asigna o quita specs existentes ("meteme estos 5 specs en la épica App Mobile"). Resuelve las
+referencias con `vector epic list --json` + `vector spec list --json`, confirma con
+`AskUserQuestion` las operaciones en lote, ambiguas, que mueven un spec de épica o que borran, y
+escribe solo vía `vector epic …` / `vector spec epic …` (el binario rechaza borrar una épica
+mientras haya specs asignados). Los commands que crean specs (`idea`/`bug`/`quick`/`research`)
+eligen la épica antes de `vector spec create`: la pasan con `--epic` si el pedido la nombra o calza
+con una sola, preguntan si hay más de una plausible y proponen crearla si el pedido nombra una que
+no existe.
 
 `init` queda **fuera** de los slash commands: es el subcomando de terminal `vector init` que
 bootstrapea el repo y siembra los de arriba (ver §Distribución).
@@ -88,10 +99,11 @@ kit/                              # fuente versionada en el repo Vector
 ├── CLAUDE.md
 └── commands/
     └── vector/                   # el subdirectorio = namespace del colon
-        ├── raw.md                # → /vector:raw  (template ≈ /idea)
+        ├── idea.md               # → /vector:idea  (template ≈ /idea)
         ├── research.md           # → /vector:research (raw + feasibility lenses + go/no-go gate)
         ├── bug.md                # → /vector:bug  (raw bug-framed + traza de causa)
         ├── quick.md              # → /vector:quick (apply-in-run ≈ /quick-win)
+        ├── epic.md               # → /vector:epic (épicas en lenguaje natural)
         ├── link.md
         ├── status.md
         ├── daily.md
@@ -107,7 +119,7 @@ subcomando del binario, no un slash command.)
 
 Los **agentes** distribuibles viven en `kit/agents/` (mismo embed): refiners, validators,
 writers, evaluators y `vector-ui-ux-designer`. Este último es un agente **Sonnet** que
-`/vector:raw` y `/vector:research` lanzan (opt-in) al final del flujo, sobre una señal fuerte de
+`/vector:idea` y `/vector:research` lanzan (opt-in) al final del flujo, sobre una señal fuerte de
 UI, para emitir un wireframe **Excalidraw** (`.excalidraw`); el agente escribe el JSON a un temp y
 llama a **`vector spec attach-sketch <id> --file <path>`**, que valida el shape
 (`{type, version, elements}`) y persiste el sketch en `.vector/specs/<id>/sketches/` (CLI-owns-writes).
@@ -137,8 +149,8 @@ Dos artefactos con ciclo de vida distinto:
 
 ## Dogfooding en este mismo repo
 
-Vector se usa a sí mismo: `.claude/commands/vector/raw.md` es la copia instalada en este repo
-(idéntica a la fuente `kit/commands/vector/raw.md`). Pasos en `docs/uat.md`.
+Vector se usa a sí mismo: `.claude/commands/vector/idea.md` es la copia instalada en este repo
+(idéntica a la fuente `kit/commands/vector/idea.md`). Pasos en `docs/uat.md`.
 
 > Implementado: `vector init` siembra el motor (commands + agents `vector-spec-*` + template),
 > embebido vía `internal/scaffold` (sync de `kit/{commands,agents,vector}` por `go generate`),

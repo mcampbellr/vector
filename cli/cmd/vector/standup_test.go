@@ -197,6 +197,42 @@ func TestEnrichProjectionSetsReviewAndBlockedSignals(t *testing.T) {
 	}
 }
 
+// TestStandupSurfacesFixedSpecWithoutWorklog is the end-to-end guard for leak #1:
+// a spec whose only in-window activity is a /vector:fix (spec.fixed, no work.logged)
+// still appears in `vector standup --json` with its classification and files.
+func TestStandupSurfacesFixedSpecWithoutWorklog(t *testing.T) {
+	root := t.TempDir()
+	store, err := state.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if _, err := store.CreateSpec(state.CreateSpecParams{ID: "alpha", Title: "Alpha", Status: state.StatusInProgress, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	// A /vector:fix correction — emits spec.fixed, no work.logged.
+	if _, err := store.FixSpec("alpha", "code-only", "", nil, []string{"a.go", "b.go"}, "tester", now); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() error { return runStandup([]string{"--repo-root", root, "--json"}) })
+	var proj standup.Projection
+	if err := json.Unmarshal([]byte(out), &proj); err != nil {
+		t.Fatalf("unmarshal projection: %v\n%s", err, out)
+	}
+	if len(proj.PerSpec) != 1 {
+		t.Fatalf("perSpec len = %d, want 1\n%s", len(proj.PerSpec), out)
+	}
+	alpha := proj.PerSpec[0]
+	if len(alpha.Fixed) != 1 || alpha.Fixed[0].Classification != "code-only" || len(alpha.Fixed[0].Files) != 2 {
+		t.Errorf("fixed = %+v, want one code-only entry with 2 files", alpha.Fixed)
+	}
+	// The projection also surfaces the captured upper bound for the commit step.
+	if proj.Until.IsZero() {
+		t.Errorf("until = zero, want the captured window upper bound")
+	}
+}
+
 func writeTempDigest(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "digest.json")

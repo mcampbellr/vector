@@ -40,6 +40,15 @@ Fetch the ship knobs and worktree layout from the binary in one call:
 CONTEXT=$(vector context --json --repo-root "$REPO_ROOT" 2>/dev/null)
 ```
 
+**Newer release available?** If `CONTEXT.update.available` is `true`, ask once via
+`AskUserQuestion` — "Vector `<CONTEXT.update.current>` → `<CONTEXT.update.latest>` is available":
+- **Upgrade now** → run `vector upgrade --yes`, then continue this command. If the upgrade fails,
+  show its error and continue with the current binary.
+- **Not now** → continue with the current binary.
+
+Never upgrade without this explicit confirmation. The field is absent on dev builds, when
+no update exists, or when GitHub was unreachable — then skip silently.
+
 Extract from `CONTEXT.ship` (falls back to defaults when the repo configured no `ship` block —
 `vector config set-ship` writes it):
 
@@ -67,7 +76,7 @@ Read `.vector/specs/<id>/state.json`. If `status` is not `review`, refuse with a
 - `open` / `in-progress` → "implement it first with `/vector:apply <id>`".
 - `needs-attention` → "resolve the blocker, then `/vector:apply <id>`, then ship".
 - `closed` / `archived` → "already finished; nothing to ship".
-- `draft` → "formalize it with `/vector:propose <id>` first".
+- Legacy pre-v0.8 lifecycle value → "run `/vector:apply <id>` to migrate and implement it first".
 
 Do not proceed unless the status is exactly `review`.
 

@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import type { MouseEvent } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { useCopyFeedback } from '../../lib/useCopyFeedback'
 import styles from './CopyableSlug.module.css'
 
 interface CopyableSlugProps {
@@ -10,19 +10,15 @@ interface CopyableSlugProps {
 // CopyableSlug is the always-visible, copyable spec slug shown under the title on
 // the card face and in the details drawer header: the bare slug (card.id) as a
 // compact monospace chip plus a copy-to-clipboard button. It mirrors the copy
-// pattern of CardNextCommand (stopPropagation + Copy → Check feedback ~1.5s) so
+// pattern of CardSlugButton (stopPropagation + Copy → Check feedback ~1.5s) so
 // copying on the card does not also open the drawer. Presentational only — no
 // fetch, no board mutation.
 export function CopyableSlug({ slug }: CopyableSlugProps) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyFeedback()
 
   function handleCopy(event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation()
-    if (!navigator.clipboard) return
-    navigator.clipboard.writeText(slug).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
+    copy(slug)
   }
 
   return (

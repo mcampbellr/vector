@@ -17,23 +17,26 @@ const MODE_LABEL: Record<ThemeMode, string> = {
 }
 
 // ThemeControl is the tri-state Light → Dark → System cycle button in the board
-// header: one icon reflecting the current mode, an accessible name announcing it,
-// and a visible focus ring. It drives the ThemeProvider only — no styling logic.
+// header. The icon shows the *current* mode, not the next one, and the tooltip
+// says where the click leads — one button instead of a three-slot segmented
+// control that does not fit a 56px header. It drives the ThemeProvider only —
+// no styling logic.
 export function ThemeControl() {
   const { mode, setMode } = useTheme()
-  const label = `Theme: ${MODE_LABEL[mode]} (click to change)`
+  const next = NEXT_MODE[mode]
+  const label = `${MODE_LABEL[mode]} · click → ${MODE_LABEL[next]}`
 
   return (
     <button
       type="button"
       className={styles.themeControl}
-      onClick={() => setMode(NEXT_MODE[mode])}
-      aria-label={label}
+      onClick={() => setMode(next)}
+      aria-label={`Theme: ${label}`}
       title={label}
     >
-      {mode === 'light' && <Sun size={16} strokeWidth={2} />}
-      {mode === 'dark' && <Moon size={16} strokeWidth={2} />}
-      {mode === 'system' && <Monitor size={16} strokeWidth={2} />}
+      {mode === 'light' && <Sun size={14} strokeWidth={2} />}
+      {mode === 'dark' && <Moon size={14} strokeWidth={2} />}
+      {mode === 'system' && <Monitor size={14} strokeWidth={2} />}
     </button>
   )
 }

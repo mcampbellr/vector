@@ -36,7 +36,7 @@ export function TokenBreakdownView({ board }: TokenBreakdownViewProps) {
         <div className={styles.state}>
           <p className={styles.empty}>No routed token events yet</p>
           <p className={styles.hint}>
-            Run /vector:raw and follow-up commands to log cheap-agent routing here.
+            Run /vector:idea and follow-up commands to log cheap-agent routing here.
           </p>
         </div>
       </section>

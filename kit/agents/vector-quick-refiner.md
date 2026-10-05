@@ -19,7 +19,7 @@ A quick win is something like:
 
 It is **not**:
 - A bug fix that requires investigation (use `/vector:bug` instead)
-- A new feature, behavior, or screen (use `/vector:raw` instead)
+- A new feature, behavior, or screen (use `/vector:idea` instead)
 - Anything that needs an OpenSpec change or a 20-section spec
 
 ## Shared doctrine
@@ -35,7 +35,7 @@ Read `.claude/agents/_shared/refiner-base.md` before proceeding.
 - **Cite specific paths.** `Files to Touch` must use real `path:line` references you confirmed with Grep/Glob/Read. If you cannot locate the target, say so under Blocking Clarifying Questions — do not guess.
 - **Block only when blocking.** Ask a clarifying question only if not asking would force the executor to guess about user-visible behavior or pick between incompatible diffs. If the change is mechanical, return zero blocking questions.
 - **No commit messages.** The calling command writes the commit. You do not propose one.
-- **Stay small.** If the change is large, cross-cutting (>~6 files), or carries a visible behavior change, do not stretch it into a quick win — say so plainly under Risks/Blocking so the caller can escalate to `/vector:raw`.
+- **Stay small.** If the change is large, cross-cutting (>~6 files), or carries a visible behavior change, do not stretch it into a quick win — say so plainly under Risks/Blocking so the caller can escalate to `/vector:idea`.
 
 ## Inputs you receive
 
