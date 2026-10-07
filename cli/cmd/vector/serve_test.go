@@ -109,7 +109,7 @@ func TestPrintServeBannerRoutesAndContent(t *testing.T) {
 		"Vite dev proxy (which targets 8787) will NOT reach this instance",
 		"pass --port 8787", "VECTOR_API",
 		"embedded board is broken", "/assets/index-abc.js", "BLANK",
-		"npm --prefix web run build", "distribution-packaging.md",
+		"make install", "distribution-packaging.md",
 	} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
@@ -120,6 +120,34 @@ func TestPrintServeBannerRoutesAndContent(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "  ui ") {
 		t.Errorf("embedded UI must not print a ui line:\n%s", stdout.String())
+	}
+}
+
+// TestPrintServeBannerBoardNotBuilt asserts the "compiled without a web build"
+// state gets its own stderr notice pointing at the canonical install path — the
+// broken-embed warning cannot cover it, since an embed with no index.html has no
+// dangling /assets/* refs to report.
+func TestPrintServeBannerBoardNotBuilt(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	printServeBanner(&stdout, &stderr, serveBanner{
+		root:          "/work/repos/cdr",
+		address:       "127.0.0.1:8787",
+		uiSource:      "embedded",
+		requestedPort: 8787,
+		boardNotBuilt: true,
+	})
+	for _, want := range []string{
+		"embeds no web board", "not built", "make install", "distribution-packaging.md",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "no web board") {
+		t.Errorf("the not-built warning leaked to stdout:\n%s", stdout.String())
+	}
+	if strings.Contains(stderr.String(), "board is broken") {
+		t.Errorf("the not-built state must not also report a broken embed:\n%s", stderr.String())
 	}
 }
 

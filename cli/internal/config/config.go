@@ -583,13 +583,36 @@ func Exists(repoRoot string) bool {
 	return err == nil
 }
 
+// userHomeDir is os.UserHomeDir behind a seam so tests can relocate $HOME.
+var userHomeDir = os.UserHomeDir
+
+// globalStateParent returns the absolute directory that holds Vector's global
+// state dir (~/.vector). An unresolvable home yields "", which matches no
+// directory — the stray walk then behaves exactly as it did before.
+func globalStateParent() string {
+	home, err := userHomeDir()
+	if err != nil {
+		return ""
+	}
+	abs, err := filepath.Abs(home)
+	if err != nil {
+		return ""
+	}
+	return abs
+}
+
 // FindAncestorConfigs walks up from startDir and returns every directory holding
 // a valid .vector/config.json, ordered from nearest to outermost. The walk starts
 // at startDir itself and stops at the filesystem root.
 //
 // A .vector/ directory WITHOUT a loadable config.json is a stray: it is recorded
 // in strayDirs (so the caller can warn) but never adopted, and the walk keeps
-// going up — an intermediate stray must not hide the real ancestor.
+// going up — an intermediate stray must not hide the real ancestor. The single
+// exception is the user's home directory: ~/.vector is Vector's OWN global state
+// (vector open writes ~/.vector/<repo-id>/active.json there), never a project
+// store, so it has no config.json by design and must not be reported as a stray.
+// It is still adopted as a root if it does hold a valid config.json — somebody
+// who ran `vector init` in $HOME gets the store they asked for.
 //
 // It is read-only: no writes, no side effects, and no opinion on git/worktree
 // boundaries. Callers select the canonical root from the returned candidates.
@@ -598,11 +621,12 @@ func FindAncestorConfigs(startDir string) (roots, strayDirs []string) {
 	if err != nil {
 		return nil, nil
 	}
+	home := globalStateParent()
 	for {
 		if _, err := os.Stat(filepath.Join(dir, ".vector")); err == nil {
 			if _, err := Load(dir); err == nil {
 				roots = append(roots, dir)
-			} else {
+			} else if dir != home {
 				strayDirs = append(strayDirs, dir)
 			}
 		}

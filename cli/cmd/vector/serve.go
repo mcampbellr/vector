@@ -98,6 +98,7 @@ func newServeCmd() *cobra.Command {
 				portFallback:  portFallback,
 			}
 			if uiSource == "embedded" {
+				banner.boardNotBuilt = !webui.EmbeddedBoardBuilt()
 				banner.missingEmbeddedAssets = webui.EmbeddedAssetsMissing()
 			}
 			return runServeLoop(root, httpServer, listener, banner, pollMs, srv.Broadcast)
@@ -236,6 +237,7 @@ type serveBanner struct {
 	uiSource              string
 	requestedPort         int
 	portFallback          bool
+	boardNotBuilt         bool
 	missingEmbeddedAssets []string
 }
 
@@ -271,18 +273,32 @@ func printServeBanner(stdout, stderr io.Writer, banner serveBanner) {
 		))
 		fmt.Fprintln(stderr)
 	}
+	if banner.boardNotBuilt {
+		// Placeholder-only embed: this binary was compiled without a web build, so
+		// there is no board to serve. The placeholder page says so in the browser;
+		// say it here too, with the one command that fixes it.
+		fmt.Fprintln(stderr, ui.WarningBlock(
+			"this binary embeds no web board — it was compiled without a web build",
+			"The board shows a \"not built\" page. Reinstall through the canonical path, which",
+			"always rebuilds + re-embeds the panel before compiling:",
+			"  "+ui.Cyan("make install")+ui.Dim("   # or: scripts/dev-install.sh"),
+			"then restart this server. (See .claude/rules/architecture/distribution-packaging.md.)",
+		))
+		fmt.Fprintln(stderr)
+	}
 	if len(banner.missingEmbeddedAssets) > 0 {
-		// The embed is broken: index.html references assets that were never built
-		// into the binary (built from a worktree with no web build — dist/assets is
-		// gitignored). Warn LOUD instead of serving a blank board silently.
+		// The embed is broken: index.html references assets that are not in the
+		// binary (a partial/stale re-embed — dist/assets is gitignored). Warn LOUD
+		// instead of serving a blank board silently.
 		details := make([]string, 0, len(banner.missingEmbeddedAssets)+4)
 		for _, ref := range banner.missingEmbeddedAssets {
 			details = append(details, "  "+ui.Dim(ref))
 		}
 		details = append(details,
-			"The board will render "+ui.Bold("BLANK")+". Rebuild the web panel and re-embed before reinstalling:",
-			"  "+ui.Cyan("npm --prefix web run build && rm -rf cli/internal/webui/dist/assets cli/internal/webui/dist/index.html && cp -R web/dist/. cli/internal/webui/dist/"),
-			"then rebuild the binary. (See .claude/rules/architecture/distribution-packaging.md.)",
+			"The board will render "+ui.Bold("BLANK")+". Reinstall through the canonical path, which",
+			"rebuilds the web panel, re-embeds it and runs the integrity guard:",
+			"  "+ui.Cyan("make install")+ui.Dim("   # or: scripts/dev-install.sh"),
+			"then restart this server. (See .claude/rules/architecture/distribution-packaging.md.)",
 		)
 		fmt.Fprintln(stderr, ui.WarningBlock(
 			"WARNING: the embedded board is broken — index.html references assets not in this binary:",

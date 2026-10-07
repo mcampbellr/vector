@@ -12,9 +12,12 @@ cli/bin/
 web/node_modules/
 web/dist/
 web/tsconfig.tsbuildinfo
-# Built web assets copied into the binary embed dir for release; the committed
-# placeholder index.html is kept so the embed (and the build) stay valid.
+# Built web assets embedded into the binary. The real, hashed index.html is a
+# product of `web build`, so it is gitignored alongside assets/; the committed
+# dist/index.placeholder.html — which carries no /assets/* refs — is what keeps a
+# clean checkout's embed valid and the build-time integrity guard decidable.
 cli/internal/webui/dist/assets/
+cli/internal/webui/dist/index.html
 
 # Local
 *.local
