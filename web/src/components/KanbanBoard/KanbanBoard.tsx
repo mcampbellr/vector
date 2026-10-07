@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { Card, Column, EpicSummary } from '../../types/board'
 import { BoardColumn } from '../BoardColumn/BoardColumn'
+import { useNow } from '../../lib/useNow'
 import styles from './KanbanBoard.module.css'
 
 interface KanbanBoardProps {
@@ -16,6 +17,10 @@ interface KanbanBoardProps {
 // open a spec too; the board only delegates clicks through onSelectCard.
 export function KanbanBoard({ columns, epics, onSelectCard }: KanbanBoardProps) {
   const epicsById = useMemo(() => new Map(epics.map((epic) => [epic.id, epic])), [epics])
+  // One timer for the whole board. Each card's age is a pure function of this
+  // tick, so a per-card useNow would mean ~95 intervals for a datum whose
+  // resolution is an hour. 30s is well inside that.
+  const now = useNow(30_000)
 
   return (
     <div className={styles.board}>
@@ -24,6 +29,7 @@ export function KanbanBoard({ columns, epics, onSelectCard }: KanbanBoardProps) 
           key={column.status}
           column={column}
           epicsById={epicsById}
+          now={now}
           onSelectCard={onSelectCard}
         />
       ))}

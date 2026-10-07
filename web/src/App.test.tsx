@@ -174,34 +174,34 @@ describe('App command palette wiring', () => {
 describe('App epic filter and epics view', () => {
   it('narrows the kanban to one epic from the header and persists it in the URL', () => {
     renderApp()
-    expect(screen.getByRole('button', { name: 'Open details for Fix login' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Open details for Fix login/ })).toBeTruthy()
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter the board by epic' }), {
       target: { value: 'epic:app-mobile' },
     })
 
-    expect(screen.getByRole('button', { name: 'Open details for Dark mode' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Open details for Fix login' })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Open details for Dark mode/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Open details for Fix login/ })).toBeNull()
     expect(new URLSearchParams(window.location.search).get('epic')).toBe('app-mobile')
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter the board by epic' }), {
       target: { value: '__none__' },
     })
-    expect(screen.queryByRole('button', { name: 'Open details for Dark mode' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Open details for Fix login' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Open details for Dark mode/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Open details for Fix login/ })).toBeTruthy()
     expect(new URLSearchParams(window.location.search).get('epic')).toBe('none')
   })
 
   it('restores the filter from ?epic= and ignores an epic that no longer exists', () => {
     window.history.replaceState(null, '', '/?epic=app-mobile')
     renderApp()
-    expect(screen.queryByRole('button', { name: 'Open details for Fix login' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Open details for Fix login/ })).toBeNull()
     cleanup()
 
     window.history.replaceState(null, '', '/?epic=deleted-epic')
     renderApp()
-    expect(screen.getByRole('button', { name: 'Open details for Fix login' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Open details for Dark mode' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Open details for Fix login/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Open details for Dark mode/ })).toBeTruthy()
   })
 
   it('reaches the epics tab from the header and applies its filter back on the board', () => {
@@ -212,8 +212,8 @@ describe('App epic filter and epics view', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /show on board/ }))
     // Back on the kanban, narrowed to the epic.
-    expect(screen.getByRole('button', { name: 'Open details for Dark mode' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Open details for Fix login' })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Open details for Dark mode/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Open details for Fix login/ })).toBeNull()
     const select = screen.getByRole('combobox', { name: 'Filter the board by epic' }) as HTMLSelectElement
     expect(select.value).toBe('epic:app-mobile')
   })
@@ -221,7 +221,7 @@ describe('App epic filter and epics view', () => {
   it('opens the details drawer from a spec listed in the epics tab', () => {
     renderApp()
     fireEvent.click(screen.getByRole('button', { name: 'epics' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for Dark mode' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Open details for Dark mode/ }))
     expect(screen.getByRole('dialog', { name: 'Details for Dark mode' })).toBeTruthy()
   })
 })

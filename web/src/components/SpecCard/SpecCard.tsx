@@ -3,15 +3,19 @@ import { ClipboardCheck, Clock, Layers, Zap } from 'lucide-react'
 import type { Card, EpicSummary } from '../../types/board'
 import { EpicChip } from '../EpicChip/EpicChip'
 import { FocusToggle } from '../FocusToggle/FocusToggle'
+import { CardAgeStamp } from './CardAgeStamp'
 import { CardArtifactMeter } from './CardArtifactMeter'
 import { CardAttentionRow } from './CardAttentionRow'
 import { CardPriorityFlag } from './CardPriorityFlag'
 import { CardSlugButton } from './CardSlugButton'
 import { CardVerbButton } from './CardVerbButton'
 import { ResolutionBadge } from './ResolutionBadge'
+import { cardAge } from './cardAge'
+import type { CardAge } from './cardAge'
 import { clipTitle } from './clipTitle'
+import { nextVerbFor } from './nextCommandFor'
+import { rowThreeFit } from './rowThreeFit'
 import { shortTicketRef } from './shortTicketRef'
-import { formatCompact, formatEstimate } from '../../lib/format'
 import { statusRailColor } from '../../lib/statusRailColor'
 import styles from './SpecCard.module.css'
 
@@ -20,6 +24,9 @@ interface SpecCardProps {
   /** The card's epic, resolved from Board.epics by the column (absent when the
    *  spec has no epic or the epic is not on the board). */
   epic?: EpicSummary
+  /** One tick for the whole board, resolved in KanbanBoard and passed down, so
+   *  the age stays current without 95 cards each owning a timer. */
+  now: number
   onSelect: (card: Card) => void
 }
 
@@ -32,7 +39,7 @@ interface SpecCardProps {
 //
 // The card is an article[role=button][tabindex=0], not a <button>: buttons do
 // not nest and there are three inside (the slug, the focus pin and the verb).
-export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
+export function SpecCard({ card, epic, now, onSelect }: SpecCardProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     // Only the card itself opens the drawer. A keydown on the slug or the verb
     // bubbles up here, and preventDefault() from an ancestor cancels the nested
@@ -50,13 +57,36 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
   const titleShown = clipTitle(card.title, card.ticket ? 54 : 62)
   const railStyle: CSSProperties = { background: statusRailColor(card.status) }
   const sketchCount = card.sketches?.length ?? 0
+  const age = cardAge(card.updatedAt, card.status, now)
+  const focusVisible = card.focus === true || card.focusInherited === true
+
+  // Row 3 budgets itself: it overflowed in the worst case and clipped the verb.
+  const fit = rowThreeFit({
+    priority: card.priority,
+    status: card.status,
+    resolution: card.resolution,
+    quickWin: card.quickWin === true,
+    uat: card.needsUat === true,
+    focusVisible,
+    sketchCount,
+    estimateMinutes: card.estimateMinutes,
+    tokens: card.tokensIn + card.tokensOut,
+    routes: card.routes,
+    verb: nextVerbFor(card),
+  })
+
+  // The age rides along in the label: a screen reader gets the card's freshness
+  // without reaching the stamp, which is not focusable.
+  const ariaLabel = age
+    ? `Open details for ${card.title}, updated ${age.relative}${ariaToneSuffix(age.tone)}`
+    : `Open details for ${card.title}`
 
   return (
     <article
       className={styles.card}
       role="button"
       tabIndex={0}
-      aria-label={`Open details for ${card.title}`}
+      aria-label={ariaLabel}
       onClick={() => onSelect(card)}
       onKeyDown={handleKeyDown}
     >
@@ -82,7 +112,8 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
               <EpicChip epicId={card.epic} epic={epic} />
             </span>
           )}
-          <CardArtifactMeter artifacts={card.artifacts} />
+          {age && <CardAgeStamp age={age} />}
+          <CardArtifactMeter artifacts={card.artifacts} afterAge={age !== null} />
         </div>
 
         <div className={styles.statusRow}>
@@ -103,6 +134,8 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
               <Zap size={11} strokeWidth={2} />
             </span>
           )}
+          {/* Glyph-only, like quick win: the word `uat` cost width the verb
+              needed, and the meaning is already in the title and the label. */}
           {card.status === 'review' && card.needsUat && (
             <span
               className={styles.glyph}
@@ -110,10 +143,9 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
               aria-label="Requires manual UAT before closing"
             >
               <ClipboardCheck size={11} strokeWidth={2} />
-              uat
             </span>
           )}
-          {sketchCount > 0 && (
+          {fit.showSketches && sketchCount > 0 && (
             <span
               className={`${styles.glyph} ${styles.glyphDim}`}
               title={`${sketchCount} Excalidraw sketch${sketchCount > 1 ? 'es' : ''} attached`}
@@ -123,16 +155,17 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
               {sketchCount}
             </span>
           )}
-          {/* Planned before spent: the glyph is the only thing telling them apart. */}
-          {card.estimateMinutes ? (
+          {/* Planned before spent: the glyph is the only thing telling them apart.
+              Both are sheddable — the drawer shows either in full. */}
+          {fit.showEstimate && (
             <span className={`${styles.glyph} ${styles.glyphDim}`} title="Estimate">
               <Clock size={11} strokeWidth={2} />
-              {formatEstimate(card.estimateMinutes)}
+              {fit.estimateText}
             </span>
-          ) : null}
-          {card.routes > 0 && (
+          )}
+          {fit.showTokens && (
             <span className={styles.tokens} title={`Tokens spent · ${card.routes} cheap-agent routes`}>
-              {formatCompact(card.tokensIn + card.tokensOut)} tok
+              {fit.tokensText}
             </span>
           )}
           <CardVerbButton card={card} />
@@ -142,4 +175,10 @@ export function SpecCard({ card, epic, onSelect }: SpecCardProps) {
       </div>
     </article>
   )
+}
+
+function ariaToneSuffix(tone: CardAge['tone']): string {
+  if (tone === 'stale') return ', stale'
+  if (tone === 'very-stale') return ', very stale'
+  return ''
 }

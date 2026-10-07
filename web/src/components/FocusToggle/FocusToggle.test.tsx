@@ -34,7 +34,10 @@ describe('FocusToggle', () => {
 
     const button = screen.getByRole('button', { name: 'Unfocus spec' })
     expect(button.getAttribute('aria-pressed')).toBe('true')
-    expect(button.textContent).toBe('focus')
+    // Glyph-only on the card: the status row budgets its width (rowThreeFit.ts),
+    // so the state is carried by aria-label and title, not by a text label.
+    expect(button.textContent).toBe('')
+    expect(button.getAttribute('title')).toContain('Click to unfocus')
     fireEvent.click(button)
     expect(requests[0].body).toEqual({ focus: false })
   })
@@ -86,7 +89,9 @@ describe('FocusToggle', () => {
     const button = screen.getByRole('button', { name: 'Focus spec (focus currently inherited from epic App Mobile)' })
     expect(button.getAttribute('aria-pressed')).toBe('false')
     expect(button.getAttribute('title')).toContain('inherited from epic “App Mobile”')
-    expect(button.textContent).toBe('focus')
+    // Glyph-only on the card; the inherited state is spelled out in aria-label
+    // and title, asserted just above.
+    expect(button.textContent).toBe('')
     // Outlined: the own-focus pin is filled, the inherited one is not.
     expect(button.querySelector('svg')?.getAttribute('fill')).toBe('none')
     fireEvent.click(button)

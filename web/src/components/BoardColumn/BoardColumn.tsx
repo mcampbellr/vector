@@ -8,6 +8,8 @@ interface BoardColumnProps {
   column: Column
   /** Board epics by id, so each card can render its epic chip. */
   epicsById: ReadonlyMap<string, EpicSummary>
+  /** The board's single freshness tick, forwarded to every card's age. */
+  now: number
   onSelectCard: (card: Card) => void
 }
 
@@ -15,7 +17,7 @@ interface BoardColumnProps {
 // rail dot) that stays put, over its own vertical scroller. The header sits
 // outside the scroll area, so it needs no sticky trick, and the scroller carries
 // overscroll-behavior:contain so reaching the end does not drag the board row.
-export function BoardColumn({ column, epicsById, onSelectCard }: BoardColumnProps) {
+export function BoardColumn({ column, epicsById, now, onSelectCard }: BoardColumnProps) {
   const cards = column.cards ?? []
   const dotStyle: CSSProperties = { background: statusRailColor(column.status) }
 
@@ -38,6 +40,7 @@ export function BoardColumn({ column, epicsById, onSelectCard }: BoardColumnProp
               key={card.id}
               card={card}
               epic={card.epic ? epicsById.get(card.epic) : undefined}
+              now={now}
               onSelect={onSelectCard}
             />
           ))

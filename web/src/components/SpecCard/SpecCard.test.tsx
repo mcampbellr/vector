@@ -5,6 +5,12 @@ import { SpecCard } from './SpecCard'
 
 afterEach(cleanup)
 
+// A fixed tick for every render: the card's age is derived, not live, so the
+// tests pin `now` instead of leaning on the clock. Three days after the
+// fixture's updatedAt, which keeps the age quiet (`3d`, no escalation) and out
+// of the way of the assertions below.
+const NOW = Date.parse('2026-06-30T00:00:00Z')
+
 // makeCard builds a minimal Card; override per test.
 function makeCard(overrides: Partial<Card>): Card {
   return {
@@ -32,7 +38,7 @@ describe('SpecCard needs-attention', () => {
           attentionSummary: 'Zoho api_names pending settings-read credentials',
           attentionReason: 'Zoho api_names pending settings-read credentials',
         })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -45,7 +51,7 @@ describe('SpecCard needs-attention', () => {
     render(
       <SpecCard
         card={makeCard({ status: 'needs-attention', attentionSummary: 'waiting on a decision' })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -57,7 +63,7 @@ describe('SpecCard needs-attention', () => {
     render(
       <SpecCard
         card={makeCard({ status: 'needs-attention', attentionReason: 'blocked on the DTO rename' })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -69,7 +75,7 @@ describe('SpecCard needs-attention', () => {
   })
 
   it('renders nothing attention-related when the card is not blocked', () => {
-    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({})} now={NOW} onSelect={() => {}} />)
     expect(screen.queryByText('Dependency')).toBeNull()
   })
 })
@@ -87,7 +93,7 @@ describe('SpecCard ticket ref', () => {
             url: 'https://linear.app/acme/issue/MH-1814',
           },
         })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -110,7 +116,7 @@ describe('SpecCard ticket ref', () => {
             url: 'https://github.com/mcampbellr/cdr-monorepo/issues/174',
           },
         })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -125,27 +131,27 @@ describe('SpecCard ticket ref', () => {
 describe('SpecCard status row', () => {
   it('prints the flag only for urgent and high', () => {
     for (const priority of ['urgent', 'high'] as const) {
-      render(<SpecCard card={makeCard({ priority })} onSelect={() => {}} />)
+      render(<SpecCard card={makeCard({ priority })} now={NOW} onSelect={() => {}} />)
       expect(screen.getByTitle(`Priority: ${priority === 'urgent' ? 'Urgent' : 'High'}`)).toBeTruthy()
       cleanup()
     }
 
     for (const priority of ['normal', 'low'] as const) {
-      render(<SpecCard card={makeCard({ priority })} onSelect={() => {}} />)
+      render(<SpecCard card={makeCard({ priority })} now={NOW} onSelect={() => {}} />)
       expect(screen.queryByTitle(/^Priority: /)).toBeNull()
       cleanup()
     }
   })
 
   it('drops the flag and the verb on a closed card — it is no longer a call to action', () => {
-    render(<SpecCard card={makeCard({ status: 'closed', priority: 'urgent' })} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({ status: 'closed', priority: 'urgent' })} now={NOW} onSelect={() => {}} />)
 
     expect(screen.queryByTitle('Priority: Urgent')).toBeNull()
     expect(screen.queryByLabelText(/^Copy next command/)).toBeNull()
   })
 
   it('collapses the next command to its verb, keeping the full line in the tooltip', () => {
-    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags' })} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags' })} now={NOW} onSelect={() => {}} />)
 
     const verb = screen.getByTitle('/vector:ship fix-raw-tags')
     expect(verb.textContent).toBe('ship')
@@ -153,14 +159,14 @@ describe('SpecCard status row', () => {
 
   it('switches the review verb to close once a PR is recorded', () => {
     const pr: PullRequest = { url: 'https://github.com/o/r/pull/7', number: 7, draft: false, openedAt: '2026-06-27T00:00:00Z' }
-    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags', pr })} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags', pr })} now={NOW} onSelect={() => {}} />)
 
     const verb = screen.getByTitle('/vector:close fix-raw-tags')
     expect(verb.textContent).toBe('close')
   })
 
   it('renders the quick-win glyph with no label', () => {
-    render(<SpecCard card={makeCard({ quickWin: true })} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({ quickWin: true })} now={NOW} onSelect={() => {}} />)
 
     const glyph = screen.getByLabelText('Quick win')
     expect(glyph).toBeTruthy()
@@ -168,7 +174,7 @@ describe('SpecCard status row', () => {
   })
 
   it('omits the quick-win glyph when quickWin is absent', () => {
-    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({})} now={NOW} onSelect={() => {}} />)
 
     expect(screen.queryByLabelText('Quick win')).toBeNull()
   })
@@ -181,7 +187,7 @@ describe('SpecCard keyboard interaction', () => {
   // on the slug would copy nothing and open the drawer instead.
   it('does not open the drawer when Enter reaches the card from a nested button', () => {
     const onSelect = vi.fn()
-    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags' })} onSelect={onSelect} />)
+    render(<SpecCard card={makeCard({ status: 'review', id: 'fix-raw-tags' })} now={NOW} onSelect={onSelect} />)
 
     for (const name of [/^Copy spec id/, /^Copy next command/]) {
       const inner = screen.getByLabelText(name)
@@ -197,9 +203,9 @@ describe('SpecCard keyboard interaction', () => {
   it('still opens the drawer on Enter over the card itself', () => {
     const onSelect = vi.fn()
     const card = makeCard({})
-    render(<SpecCard card={card} onSelect={onSelect} />)
+    render(<SpecCard card={card} now={NOW} onSelect={onSelect} />)
 
-    fireEvent.keyDown(screen.getByRole('button', { name: `Open details for ${card.title}` }), {
+    fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(`^Open details for ${card.title}`) }), {
       key: 'Enter',
     })
     expect(onSelect).toHaveBeenCalledWith(card)
@@ -217,7 +223,7 @@ describe('SpecCard attention row colour', () => {
           attentionCategory: 'brand-new-category' as never,
           attentionSummary: 'waiting on something new',
         })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -233,7 +239,7 @@ describe('SpecCard attention row colour', () => {
           attentionCategory: 'env',
           attentionSummary: 'staging snapshot is stale',
         })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -244,7 +250,7 @@ describe('SpecCard attention row colour', () => {
 
 describe('SpecCard artifact meter', () => {
   it('is always present, unlit, when the spec carries no artifacts', () => {
-    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({})} now={NOW} onSelect={() => {}} />)
 
     expect(screen.getByLabelText('Artifacts: no artifacts yet')).toBeTruthy()
   })
@@ -253,7 +259,7 @@ describe('SpecCard artifact meter', () => {
     render(
       <SpecCard
         card={makeCard({ artifacts: { proposal: true, design: true, tasks: false } })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -275,7 +281,7 @@ describe('SpecCard focus and epic', () => {
           byStatus: { 'in-progress': 1 },
           updatedAt: '2026-06-27T00:00:00Z',
         }}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
 
@@ -283,16 +289,16 @@ describe('SpecCard focus and epic', () => {
   })
 
   it('renders no epic chip for a spec without an epic', () => {
-    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({})} now={NOW} onSelect={() => {}} />)
     expect(screen.queryByTitle(/^Epic: /)).toBeNull()
   })
 
   it('shows a pressed focus pin on a focused card and an unpressed one otherwise', () => {
-    render(<SpecCard card={makeCard({ focus: true })} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({ focus: true })} now={NOW} onSelect={() => {}} />)
     expect(screen.getByRole('button', { name: 'Unfocus spec' }).getAttribute('aria-pressed')).toBe('true')
     cleanup()
 
-    render(<SpecCard card={makeCard({})} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({})} now={NOW} onSelect={() => {}} />)
     expect(screen.getByRole('button', { name: 'Focus spec' }).getAttribute('aria-pressed')).toBe('false')
   })
 
@@ -300,7 +306,7 @@ describe('SpecCard focus and epic', () => {
     const fetchMock = vi.fn(async () => new Response('{"id":"spec-id","focus":true,"changed":true}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const onSelect = vi.fn()
-    render(<SpecCard card={makeCard({})} onSelect={onSelect} />)
+    render(<SpecCard card={makeCard({})} now={NOW} onSelect={onSelect} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Focus spec' }))
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -312,14 +318,14 @@ describe('SpecCard focus and epic', () => {
     const { unmount } = render(
       <SpecCard
         card={makeCard({ status: 'closed', resolution: 'duplicate', resolutionNote: 'dup of login-v2' })}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
     const badge = screen.getByLabelText('Closed as duplicate — dup of login-v2 (not counted as done)')
     expect(badge.textContent).toBe('duplicate')
     unmount()
 
-    render(<SpecCard card={makeCard({ status: 'closed', resolution: 'done' })} onSelect={() => {}} />)
+    render(<SpecCard card={makeCard({ status: 'closed', resolution: 'done' })} now={NOW} onSelect={() => {}} />)
     expect(screen.queryByLabelText(/Closed as/)).toBeNull()
   })
 
@@ -328,9 +334,147 @@ describe('SpecCard focus and epic', () => {
       <SpecCard
         card={makeCard({ epic: 'app-mobile', focusInherited: true })}
         epic={{ id: 'app-mobile', title: 'App Mobile', total: 1, done: 0, byStatus: {}, updatedAt: '', focus: true }}
-        onSelect={() => {}}
+        now={NOW} onSelect={() => {}}
       />,
     )
     expect(screen.getByRole('button', { name: 'Focus spec (focus currently inherited from epic App Mobile)' })).toBeTruthy()
   })
 })
+
+// The fixture's own updatedAt. NOW sits 3 days after it, so the default age is
+// a quiet `3d`; the tests that need another step move `now`, not the card.
+describe('SpecCard age stamp', () => {
+  const updatedAt = updatedAtFixture
+  const at = (iso: string) => Date.parse(iso)
+
+  it('prints the age in card units with the full tooltip', () => {
+    render(
+      <SpecCard
+        card={makeCard({ updatedAt })}
+        now={NOW}
+        onSelect={() => {}}
+      />,
+    )
+
+    const stamp = screen.getByText('3d')
+    expect(stamp.getAttribute('title')?.replace(/ /g, ' ')).toContain('Updated 3 days ago · ')
+  })
+
+  it('escalates a stale card and keeps the glyph for the very stale one', () => {
+    const { unmount } = render(
+      <SpecCard card={makeCard({ updatedAt })} now={at('2026-07-06T00:00:00Z')} onSelect={() => {}} />,
+    )
+    // 9 days: stale, no glyph.
+    expect(screen.getByText('1w').querySelector('svg')).toBeNull()
+    unmount()
+
+    render(
+      <SpecCard card={makeCard({ updatedAt })} now={at('2026-08-07T00:00:00Z')} onSelect={() => {}} />,
+    )
+    // 41 days: very stale, and the only step that spends a hue.
+    expect(screen.getByText('1mo').querySelector('svg')).toBeTruthy()
+  })
+
+  it('never escalates a closed card, whatever its age', () => {
+    render(
+      <SpecCard
+        card={makeCard({ status: 'closed', updatedAt })}
+        now={at('2026-08-07T00:00:00Z')}
+        onSelect={() => {}}
+      />,
+    )
+
+    const stamp = screen.getByText('1mo')
+    expect(stamp.querySelector('svg')).toBeNull()
+    expect(stamp.getAttribute('title')).not.toContain('Stale')
+  })
+
+  it('carries the age and its tone in the card label, for the keyboard path', () => {
+    render(
+      <SpecCard card={makeCard({ updatedAt })} now={at('2026-07-06T00:00:00Z')} onSelect={() => {}} />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'Open details for A spec, updated 9 days ago, stale' }),
+    ).toBeTruthy()
+  })
+
+  it('renders no age and leaves the label untouched when the timestamp is unusable', () => {
+    render(
+      <SpecCard card={makeCard({ updatedAt: '0001-01-01T00:00:00Z' })} now={NOW} onSelect={() => {}} />,
+    )
+
+    // Go's zero time: the card is whole, just without the datum.
+    expect(screen.getByRole('button', { name: 'Open details for A spec' })).toBeTruthy()
+    const meter = screen.getByLabelText(/^Artifacts:/)
+    expect(meter.className).not.toMatch(/meterAfterAge/)
+  })
+
+  it('hands the row-3 auto margin to the age when one renders', () => {
+    render(<SpecCard card={makeCard({ updatedAt })} now={NOW} onSelect={() => {}} />)
+
+    const meter = screen.getByLabelText(/^Artifacts:/)
+    expect(meter.className).toMatch(/meterAfterAge/)
+  })
+})
+
+describe('SpecCard row 3 fit', () => {
+  it('uses the compact card formats for the estimate and the tokens', () => {
+    render(
+      <SpecCard
+        card={makeCard({ estimateMinutes: 120, routes: 2, tokensIn: 7_000, tokensOut: 5_400 })}
+        now={NOW}
+        onSelect={() => {}}
+      />,
+    )
+
+    // `2h`, not the drawer's `2 h`; `12k tok`, not `12.4k tok`.
+    expect(screen.getByTitle('Estimate').textContent).toBe('2h')
+    expect(screen.getByTitle(/Tokens spent/).textContent).toBe('12k tok')
+  })
+
+  it('sheds the tokens before anything else when the row runs out of width', () => {
+    render(
+      <SpecCard
+        card={makeCard({
+          status: 'review',
+          priority: 'urgent',
+          needsUat: true,
+          focus: true,
+          sketches: [
+            { name: 'a.excalidraw', createdAt: updatedAtFixture },
+            { name: 'b.excalidraw', createdAt: updatedAtFixture },
+          ],
+          estimateMinutes: 90,
+          routes: 3,
+          tokensIn: 7_000,
+          tokensOut: 5_400,
+        })}
+        now={NOW}
+        onSelect={() => {}}
+      />,
+    )
+
+    expect(screen.queryByTitle(/Tokens spent/)).toBeNull()
+    // The protected data and the sheddable ones above tokens all stay.
+    expect(screen.getByTitle('Estimate').textContent).toBe('90m')
+    expect(screen.getByLabelText('2 Excalidraw sketches attached')).toBeTruthy()
+    expect(screen.getByTitle('/vector:ship spec-id')).toBeTruthy()
+  })
+
+  it('drops the uat label but keeps its glyph and its meaning', () => {
+    render(
+      <SpecCard
+        card={makeCard({ status: 'review', needsUat: true })}
+        now={NOW}
+        onSelect={() => {}}
+      />,
+    )
+
+    const uat = screen.getByLabelText('Requires manual UAT before closing')
+    expect(uat.textContent).toBe('')
+    expect(uat.querySelector('svg')).toBeTruthy()
+  })
+})
+
+const updatedAtFixture = '2026-06-27T00:00:00Z'

@@ -43,7 +43,7 @@ describe('KanbanBoard', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for Dark mode' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Open details for Dark mode/ }))
     expect(onSelectCard).toHaveBeenCalledWith(card)
   })
 
@@ -58,7 +58,37 @@ describe('KanbanBoard', () => {
     )
 
     // Clicking a card only delegates — no drawer (role="dialog") appears.
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for Dark mode' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Open details for Dark mode/ }))
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('KanbanBoard freshness tick', () => {
+  it('resolves one tick and propagates it to every card through its column', () => {
+    // The board owns the single timer; the cards take `now` as a prop. If the
+    // tick stopped reaching them, the age would not render at all and the
+    // card's label would fall back to the bare title.
+    render(
+      <KanbanBoard
+        columns={[
+          makeColumn({ cards: [makeCard({ id: 'a', title: 'First' })], count: 1 }),
+          makeColumn({
+            status: 'review',
+            label: 'Review',
+            cards: [makeCard({ id: 'b', title: 'Second', status: 'review' })],
+            count: 1,
+          }),
+        ]}
+        epics={[]}
+        onSelectCard={() => {}}
+      />,
+    )
+
+    // The age itself is relative to the real clock here, so this asserts that it
+    // arrived, not what it says — cardAge.test.ts pins the values.
+    for (const title of ['First', 'Second']) {
+      const card = screen.getByRole('button', { name: new RegExp(`^Open details for ${title}`) })
+      expect(card.getAttribute('aria-label')).toContain(', updated ')
+    }
   })
 })
