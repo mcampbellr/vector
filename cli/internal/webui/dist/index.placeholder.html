@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vector board — not built</title>
+    <style>
+      /* Inline only: the placeholder must reference no /assets/* so the embed
+         integrity guard stays decidable on a clean checkout. */
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #fafafa;
+        color: #18181b;
+        font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 36rem; padding: 2rem; }
+      h1 { margin: 0 0 0.75rem; font-size: 1.25rem; font-weight: 600; }
+      p { margin: 0 0 1rem; opacity: 0.8; }
+      code, pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+      }
+      pre {
+        margin: 0;
+        padding: 0.75rem 1rem;
+        border: 1px solid rgba(127, 127, 127, 0.3);
+        border-radius: 6px;
+        background: rgba(127, 127, 127, 0.08);
+        overflow-x: auto;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #09090b; color: #fafafa; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Vector board not built</h1>
+      <p>
+        This binary was compiled without a web build embedded, so there is no board to
+        serve. Reinstall through the canonical path, which always rebuilds and re-embeds
+        the panel before compiling:
+      </p>
+      <pre>make install</pre>
+      <p>
+        Then restart <code>vector serve</code>. See
+        <code>.claude/rules/architecture/distribution-packaging.md</code>.
+      </p>
+    </main>
+  </body>
+</html>

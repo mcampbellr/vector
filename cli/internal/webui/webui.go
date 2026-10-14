@@ -1,8 +1,12 @@
 // Package webui embeds the built web/ panel and serves it as a single-page app.
-// The release pipeline builds web/ into ./dist (Vite outDir) before the binary
-// is compiled, so the panel ships inside the binary with no Node runtime
-// (architecture/distribution-packaging.md). A committed placeholder index.html
-// keeps the embed — and the build — valid before the first web build.
+// The canonical install path (make install / scripts/dev-install.sh) builds web/
+// into ./dist (Vite outDir) and re-embeds it before the binary is compiled, so the
+// panel ships inside the binary with no Node runtime
+// (architecture/distribution-packaging.md). The real, hashed dist/index.html is a
+// build product and is gitignored; a separate committed dist/index.placeholder.html
+// (which references no /assets/*) is embedded instead when web/ has not been built,
+// so a clean checkout embeds a valid, integrity-checkable board and serves an honest
+// "board not built" page rather than a blank one.
 package webui
 
 import (
@@ -49,6 +53,21 @@ func ValidateAssets(fsys fs.FS) []string {
 		}
 	}
 	return missing
+}
+
+// EmbeddedBoardBuilt reports whether the embed carries a real web build (a
+// dist/index.html produced by `web build` and re-embedded) rather than only the
+// tracked dist/index.placeholder.html. `vector serve` uses it to tell the honest
+// "never built" state apart from a working board, so the not-built case gets its
+// own notice instead of passing silently through the asset-integrity guard (which
+// has nothing to validate when index.html is absent).
+func EmbeddedBoardBuilt() bool {
+	sub, err := fs.Sub(embedded, "dist")
+	if err != nil {
+		return false
+	}
+	_, err = fs.Stat(sub, "index.html")
+	return err == nil
 }
 
 // EmbeddedAssetsMissing runs ValidateAssets against the embedded dist — the guard
@@ -138,11 +157,33 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Unknown app path → SPA entry point (client router resolves it).
-		h.serveFile(w, r, "index.html")
+		h.serveIndex(w, r)
 		return
 	}
 	f.Close()
+	if name == "index.html" {
+		// Route the entry point through serveIndex so the placeholder fallback
+		// also applies to a bare "/" (and explicit /index.html) request.
+		h.serveIndex(w, r)
+		return
+	}
 	h.serveFile(w, r, name)
+}
+
+// serveIndex serves the SPA entry point, with a placeholder fallback. When a real
+// index.html is present in the embed (a proper web build was re-embedded) it is
+// served as-is. When it is absent — a binary built from a worktree that never ran
+// `web build`, whose embed carries only the tracked index.placeholder.html — the
+// placeholder is served (200, text/html) so "/" shows an honest "board not built"
+// page instead of a blank board or a confusing 404. This path is never reached for
+// /assets/* (those 404 above), preserving the loud-failure guarantee for missing JS/CSS.
+func (h spaHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
+	if f, err := h.fsys.Open("index.html"); err == nil {
+		f.Close()
+		h.serveFile(w, r, "index.html")
+		return
+	}
+	h.serveFile(w, r, "index.placeholder.html")
 }
 
 func (h spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name string) {
