@@ -2,7 +2,7 @@ import type { MouseEvent } from 'react'
 import { Check } from 'lucide-react'
 import type { Card } from '../../types/board'
 import { useCopyFeedback } from '../../lib/useCopyFeedback'
-import { nextCommandFor } from './nextCommandFor'
+import { nextCommandFor, nextVerbFor } from './nextCommandFor'
 import styles from './SpecCard.module.css'
 
 interface CardVerbButtonProps {
@@ -20,7 +20,7 @@ export function CardVerbButton({ card }: CardVerbButtonProps) {
   const command = nextCommandFor(card)
   if (command === null) return null
 
-  const verb = command.split(' ')[0].replace('/vector:', '')
+  const verb = nextVerbFor(card)
 
   // An arrow, not a function declaration: TypeScript keeps the `command !== null`
   // narrowing inside a closure created after the check, but a hoisted declaration

@@ -163,6 +163,42 @@
   flex: 0 1 auto;
 }
 
+/* The age: last-updated, right-aligned so the datum lands at the same x on
+   every card and a column reads down one line. flex:none on purpose — the slug
+   and the epic chip give up width for it, never the other way round, and the
+   epic chip ellipsizes first. tabular-nums keeps `1w` and `4w` the same width,
+   so the column does not shimmer as ages tick over. */
+.age {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ledger-text-dim);
+}
+
+/* Stale (7–29d) and very stale (30d+) share one escalation: full-contrast text
+   at 600. Luminance and weight are what the eye catches before reading; a
+   five-colour ramp here would turn the column into confetti, and amber would
+   collide with --priority-high (the same value in dark). */
+.ageStale,
+.ageVeryStale {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* The only hue in the whole scale, and only on the last step — so a healthy
+   column carries zero or one red mark. */
+.ageGlyph {
+  flex: none;
+  color: var(--status-attention-fg);
+}
+
 /* The artifact meter is always present: three segments, unlit in --color-border.
    Hiding it made absence invisible; leaving it lets a whole column be read at a
    glance. */
@@ -172,6 +208,14 @@
   gap: 3px;
   flex: none;
   margin-left: auto;
+}
+
+/* With an age present, the age takes the `margin-left: auto` and the meter sits
+   right beside it. A sibling selector would do the same, but a class is what a
+   test can assert: the suite runs in happy-dom, which applies no CSS-module
+   styles, so computed margins are not observable there. */
+.meterAfterAge {
+  margin-left: 0;
 }
 
 .segment {

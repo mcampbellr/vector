@@ -5,6 +5,9 @@ import { BoardColumn } from './BoardColumn'
 
 afterEach(cleanup)
 
+/** Fixed tick: the cards' ages are derived from it, never from the clock. */
+const NOW = Date.parse('2026-06-30T00:00:00Z')
+
 // makeCard builds a minimal Card so a column can hold real cards; override per test.
 function makeCard(overrides: Partial<Card>): Card {
   return {
@@ -45,7 +48,7 @@ describe('BoardColumn', () => {
       <BoardColumn
         column={makeColumn({ status: 'in-progress', label: 'In progress', cards, count: cards.length })}
         epicsById={new Map()}
-        onSelectCard={() => {}}
+        now={NOW} onSelectCard={() => {}}
       />,
     )
 
@@ -63,7 +66,7 @@ describe('BoardColumn', () => {
       <BoardColumn
         column={makeColumn({ status: 'review', label: 'Review', cards: [], count: 0 })}
         epicsById={new Map()}
-        onSelectCard={() => {}}
+        now={NOW} onSelectCard={() => {}}
       />,
     )
 

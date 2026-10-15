@@ -68,7 +68,11 @@ export function FocusToggle({ specId, focused, canFocus, variant, inheritedFrom 
           fill={focused && variant === 'card' ? 'currentColor' : 'none'}
         />
         {variant === 'drawer' && <span>{focused ? 'unfocus' : inherited ? 'focus (inherited from epic)' : 'focus'}</span>}
-        {variant === 'card' && (focused || inherited) && <span>focus</span>}
+        {/* The card's pin is glyph-only, like quick win and uat: its status row
+            budgets itself (rowThreeFit.ts) and the word `focus` cost ~40px that
+            the verb button needed. The meaning is not lost — `aria-label` and
+            `title` above already spell out all three states, including the one
+            inherited from an epic. The drawer keeps its label; it has the room. */}
       </button>
       {error && (
         <span className={styles.error} role="alert" title={error}>
